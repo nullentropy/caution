@@ -1,0 +1,78 @@
+TODO
+====
+
+input
+
+- synthetic release on window blur/occlusion. a drag whose release is lost
+  to a mid-gesture visibility change leaves glass drag state (left or
+  right button) dangling. a synthetic pointer-up at the last known position
+  closes both. glass's drop-is-authoritative contract absorbs it cleanly.
+  native half is a GLFW focus callback, browser half blur/visibilitychange.
+
+protocol and platform
+
+- resize should report tree space, not window space. with an in-window
+  menubar the tree's layout space is smaller than the window by one row
+  height, so fill-derived sizes are wrong server-side. report the space the
+  tree lays out in, and re-report when a later menu op adds or removes the
+  bar.
+- video node. trivial in the browser (hidden video element into
+  texImage2D), but a codec dependency natively. options: browser-only and
+  accept the split, take the ffmpeg dependency and keep parity, or stay
+  out and let apps hand frames in as images. decide when an app needs it.
+- color emoji. needs a COLR paint-graph interpreter over go-text's exposed
+  paint data (the color face is 4.8MB vs 1.9MB monochrome). wait for
+  demand.
+- binary wire framing (msgpack or flatbuffers). if ever JSON measurably
+  hurts.
+
+auth
+
+the model: auth is app state, not framework machinery. mount a login tree,
+check credentials in the handler, SetRoot to the real app. Authorize is for
+apps that already have SSO or a proxy in front and want the socket refused
+before it opens.
+
+- client storage op. this is the gap that makes app-level auth incomplete:
+  after a page reload the app gets a fresh mount with no way to know this
+  browser was logged in a second ago, so the user signs in again. the only
+  thing the client stores today is the resume token in sessionStorage, good
+  for the 60s grace and nothing else. add a generic key/value op: the server
+  says remember this, the client keeps it in localStorage and presents what
+  it has at mount. the app issues its own token after login and checks it on
+  the next mount. not auth specific (ui prefs want the same thing), roughly
+  thirty lines on each side.
+- resumeGrace is a hardcoded 60s const in session.go. make it an option.
+- no way to end a session from outside. add s.Close() for when the app
+  decides a session is over.
+- document that sessions are a sync.Map in one process, so a deployment
+  behind a load balancer needs sticky routing. optionally sign resume
+  tokens so another instance can tell "not mine" from "expired" instead of
+  behaving oddly.
+- moving a live session between instances is not possible in the go sdk and
+  probably never will be: a session is a closure graph.
+  the recovery path is remount, with the app rebuilding from its own store. the
+  clojure sdk is the one that could actually do it, since state is
+  immutable data and the view is a pure function of it.
+- what someone would actually build instead is affinity: find the instance
+  already serving them and send them there. the bounce belongs on the host
+  page request, not the socket, since browsers do not reliably follow
+  redirects on a websocket handshake but the page load is ordinary http.
+  the framework's only job is to not foreclose it: the resume token is an
+  opaque random string today, and if an instance id were in it (or an app
+  could supply a prefix) a load balancer could route on the query param
+  alone. worth remembering whenever tokens get signed.
+- if an app does use Authorize: a rejected connection currently looks like
+  an outage. the 403 on the upgrade reaches the terminals as a connection
+  error they retry forever, so a signed-out user sees a network failure.
+  and gating the host page means owning "/", which ServeClient registers
+  along with /app.js and /shaper.wasm, so it needs splitting up before an
+  app can put its own check in front.
+
+shipping
+
+- codesigning and notarization for distributing .apps beyond the local
+  machine.
+- wayland desktop pass on real hardware. checklist in linux/README.md
+  first item is the missing xdg_toplevel app_id (needs GLFW 3.4's
+  GLFW_WAYLAND_APP_ID).

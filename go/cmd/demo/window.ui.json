@@ -1,0 +1,127 @@
+{
+  "caution": 1,
+  "root": {
+    "type": "panel",
+    "name": "window",
+    "p": {
+      "bg": "$panel",
+      "radius": 12,
+      "borderColor": "$edge",
+      "borderWidth": 1,
+      "shadow": { "blur": 32, "dx": 0, "dy": 14, "color": "#00000080" }
+    },
+    "kids": [
+      {
+        "type": "dock",
+        "p": { "anchors": { "left": 0, "right": 0, "top": 0, "bottom": 0 } },
+        "kids": [
+          {
+            "type": "panel",
+            "p": {
+              "dock": "top",
+              "height": 40,
+              "bg": "$titlebar",
+              "radius": { "tl": 12, "tr": 12, "br": 0, "bl": 0 }
+            },
+            "kids": [
+              { "type": "panel", "p": { "frame": [16, 14, 12, 12], "bg": "#ff5f57", "radius": 6 } },
+              { "type": "panel", "p": { "frame": [36, 14, 12, 12], "bg": "#febc2e", "radius": 6 } },
+              { "type": "panel", "p": { "frame": [56, 14, 12, 12], "bg": "#28c840", "radius": 6 } },
+              {
+                "type": "label",
+                "p": {
+                  "text": "Server Counter",
+                  "size": 13,
+                  "weight": 600,
+                  "color": "$inkDim",
+                  "anchors": { "centerX": 0, "centerY": 0 }
+                }
+              }
+            ]
+          },
+          {
+            "type": "panel",
+            "p": { "dock": "top", "height": 1, "bg": "$edge" }
+          },
+          {
+            "type": "panel",
+            "p": { "dock": "bottom", "height": 64 },
+            "kids": [
+              {
+                "type": "hstack",
+                "p": { "spacing": 8, "anchors": { "left": 20, "bottom": 20 } },
+                "kids": [
+                  { "type": "button", "name": "dec", "p": { "label": "−" } },
+                  { "type": "button", "name": "inc", "p": { "label": "+", "primary": true } },
+                  { "type": "button", "name": "addRow", "p": { "label": "Add row" } },
+                  { "type": "button", "name": "clearRows", "p": { "label": "Clear rows…" } }
+                ]
+              }
+            ]
+          },
+          {
+            "type": "panel",
+            "p": { "dock": "fill", "clips": true },
+            "kids": [
+              {
+                "type": "label",
+                "name": "counter",
+                "p": { "text": "0", "size": 28, "weight": 600, "anchors": { "left": 24, "top": 20 } }
+              },
+              {
+                "type": "label",
+                "p": {
+                  "text": "this number lives in Go - every click is a WebSocket round-trip; a patch comes back",
+                  "size": 13,
+                  "color": "$inkDim",
+                  "selectable": true,
+                  "anchors": { "left": 24, "top": 66, "right": 24 }
+                }
+              },
+              {
+                "type": "checkbox",
+                "name": "auto",
+                "p": {
+                  "label": "Auto-increment every second (server push, no clicks)",
+                  "checked": false,
+                  "anchors": { "left": 24, "top": 106 }
+                }
+              },
+              {
+                "type": "grid",
+                "p": {
+                  "columns": [
+                    { "kind": "content", "align": "end" },
+                    { "kind": "fill", "weight": 1, "align": "stretch" }
+                  ],
+                  "colGap": 12,
+                  "rowGap": 10,
+                  "anchors": { "left": 24, "top": 144, "right": 24 }
+                },
+                "kids": [
+                  { "type": "label", "p": { "text": "Row prefix", "size": 13, "color": "$inkDim" } },
+                  {
+                    "type": "textfield",
+                    "name": "prefix",
+                    "p": { "value": "row", "placeholder": "row prefix - Enter commits" }
+                  },
+                  { "type": "label", "p": { "text": "Theme", "size": 13, "color": "$inkDim" } },
+                  {
+                    "type": "select",
+                    "name": "theme",
+                    "p": { "options": ["Midnight", "Violet", "Light"], "selected": 0 }
+                  },
+                  {
+                    "type": "label",
+                    "name": "mirror",
+                    "p": { "text": "server sees: \"row\"", "size": 13, "color": "$inkDim", "selectable": true, "span": 2 }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}
