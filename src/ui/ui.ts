@@ -296,20 +296,26 @@ export class Ui {
           dx = dy;
           dy = 0;
         }
+        // a modal dialog confines the wheel to itself, just as it does clicks:
+        // scrolling the scrim (or anywhere outside the dialog's own scroll) is
+        // swallowed rather than leaking to the background
+        const scope = this.lastDialog(this.root) ?? this.root;
         // a subscribed glass under the point owns the wheel: custom
         // interaction (cameras, zoomable canvases) outranks whatever
         // scroll-view sits beneath the pane
-        const g = this.glassWheelAt(this.root, x, y);
+        const g = this.glassWheelAt(scope, x, y);
         if (g) {
           g.wheelAt(x, y, dx, dy);
           e.preventDefault();
           return;
         }
-        const sv = this.scrollViewAt(this.root, x, y);
+        const sv = this.scrollViewAt(scope, x, y);
         if (sv) {
           if (dy) sv.scrollBy(dy);
           if (dx && sv instanceof Scroller) sv.scrollByX(dx);
           e.preventDefault();
+        } else if (scope !== this.root) {
+          e.preventDefault(); // a modal is open: swallow the wheel, never scroll the background
         }
       },
       { passive: false },

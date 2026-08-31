@@ -639,13 +639,20 @@ func (u *Ui) pointerUp(x, y float32) {
 
 func (u *Ui) wheel(x, y, dx, dy float32) {
 	u.clearTip()
+	// A modal dialog confines the wheel to itself, just as it does clicks:
+	// scrolling the scrim (or anywhere outside the dialog's own scroll) is
+	// swallowed rather than leaking to the background.
+	var scope Widget = u.Root
+	if d := lastDialog(u.Root); d != nil {
+		scope = d
+	}
 	// A subscribed glass under the point owns the wheel, so a camera or zoomable
 	// canvas outranks whatever scroll view sits beneath the pane.
-	if g := u.glassWheelAt(u.Root, x, y); g != nil {
+	if g := u.glassWheelAt(scope, x, y); g != nil {
 		g.WheelAt(x, y, dx, dy)
 		return
 	}
-	sv := u.scrollTargetAt(u.Root, x, y)
+	sv := u.scrollTargetAt(scope, x, y)
 	if sv == nil {
 		return
 	}
