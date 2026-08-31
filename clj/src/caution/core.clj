@@ -56,6 +56,8 @@
   session/set-keys!)
 (def set-aux!     "Handle mouse buttons 4 (back) and 5 (forward): (fn [state button])."
   session/set-aux!)
+(def set-fullscreen! "Handle entering/leaving system fullscreen: (fn [state on?])."
+  session/set-fullscreen!)
 (def preload!     "Warm client resource caches (images) ahead of first use."
   session/preload!)
 (def set-menu!    "Replace the menu bar: a vector of {:title _ :items [...]},

@@ -195,6 +195,14 @@
   (swap! sess assoc :aux-handler f)
   nil)
 
+(defn set-fullscreen!
+  "Handle the window entering and leaving the system's own fullscreen, where f
+  is (fn [state on?]). A custom titlebar usually wants to restyle there, since
+  fullscreen has no traffic lights to leave room for"
+  [sess f]
+  (swap! sess assoc :fullscreen-handler f)
+  nil)
+
 (defn set-menu!
   "Replace the session's menu bar (a vector of menu maps; see
   caution.core/set-menu! for the shape)"
@@ -290,6 +298,10 @@
                    (swap! (:!state @sess) (fn [s] (or (h s) s))))
         "aux"    (when-let [h (and (number? value) (:aux-handler @sess))]
                    (swap! (:!state @sess) (fn [s] (or (h s (long value)) s))))
+        "fullscreen" (do (swap! sess assoc :fullscreen (boolean value))
+                          (when-let [h (:fullscreen-handler @sess)]
+                            (swap! (:!state @sess)
+                                   (fn [s] (or (h s (boolean value)) s)))))
         nil)
 
       :else

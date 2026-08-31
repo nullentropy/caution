@@ -492,3 +492,26 @@ func TestAuxWithoutAHandlerIsDropped(t *testing.T) {
 	tc.event(kidIDs(t, m)[0], "click", seq) // still alive
 	expectFire(t, fired, "go")
 }
+
+func TestFullscreenReachesTheSession(t *testing.T) {
+	fired := make(chan string, 8)
+	var sess *Session
+	mount := func(s *Session) *Node {
+		sess = s
+		s.OnFullscreen(func(on bool) { fired <- fmt.Sprintf("fullscreen=%v", on) })
+		return Panel().Kids(Button("go").OnClick(func() { fired <- "go" }))
+	}
+	tc := dialSession(t, mount)
+	m := tc.read()
+	seq := seqOf(t, m)
+	tc.eventValue(0, "fullscreen", true, seq)
+	expectFire(t, fired, "fullscreen=true")
+	tc.eventValue(0, "fullscreen", false, seq)
+	expectFire(t, fired, "fullscreen=false")
+
+	done := make(chan bool, 1)
+	sess.Update(func() { done <- sess.Fullscreen() })
+	if <-done {
+		t.Fatal("Fullscreen() still true after the client left fullscreen")
+	}
+}

@@ -21,6 +21,7 @@ export class Session {
   private mounted = false;
   /** True once any mount landed - from then on the tree outlives the socket. */
   private everMounted = false;
+  private fullscreen = false;
 
   constructor(
     private ui: Ui,
@@ -33,6 +34,10 @@ export class Session {
     // Viewport reporting: the connect URL carries the initial size (so it is
     // known at mount); later changes flow as a debounced session-level event
     // (node id 0 - no widget owns the viewport).
+    document.addEventListener('fullscreenchange', () => {
+      this.fullscreen = document.fullscreenElement != null;
+      this.sendEvent(0, 'fullscreen', this.fullscreen);
+    });
     let timer: ReturnType<typeof setTimeout> | null = null;
     window.addEventListener('resize', () => {
       if (timer) clearTimeout(timer);
@@ -97,6 +102,8 @@ export class Session {
       this.everMounted = true;
       this.ui.setRoot(root);
       this.hideBanner();
+      // a client that reconnects while fullscreen has to say so again
+      if (this.fullscreen) this.sendEvent(0, 'fullscreen', true);
       // headless capture (go/cmd/goldens) waits for this before screenshotting
       ((window as any).__caution ??= { frames: 0, mounted: false }).mounted = true;
     } else if (msg.t === 'resume') {

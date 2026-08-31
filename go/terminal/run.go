@@ -71,17 +71,21 @@ type Options struct {
 	// the window, and a double-click zooms. This shell provides both, since the
 	// GL view owns every pixel including the strip. Leave the top-left ~78x28
 	// logical px free of controls, where the traffic lights float. macOS only.
-	// Accepted and ignored elsewhere, and in shot and fullscreen modes.
+	// Accepted and ignored elsewhere, and in shot mode and under Fullscreen.
 	CustomTitlebar bool
 	// TitlebarStyle picks where the traffic lights sit under CustomTitlebar.
 	// "" keeps the standard 28pt inset, hugging the top-left corner. "compact"
 	// and "tall" let AppKit center them in a ~40pt / ~66pt strip, using an
 	// invisible empty NSToolbar in unifiedCompact / unified style. Match the
-	// app's bar height to the strip.
+	// app's bar height to the strip. The toolbar comes out for the duration of
+	// system fullscreen, where AppKit would otherwise park it in the
+	// auto-hiding strip on top of the app's own titlebar.
 	TitlebarStyle string
 
-	// Fullscreen opens on the primary monitor at its current video mode
-	// instead of a window (ignored in shot mode, which is offscreen).
+	// Fullscreen opens on the primary monitor at its current video mode instead
+	// of a window (ignored in shot mode, which is offscreen). This is not the
+	// system's own fullscreen, which the user drives with the green button and
+	// which arrives at the app through Session.OnFullscreen.
 	Fullscreen bool
 	// HideCursor hides the pointer while it is over the window.
 	HideCursor bool
@@ -475,6 +479,7 @@ func Run(o Options) error {
 		SetTitle: win.SetTitle,
 		Preload:  r.Images.Preload,
 	})
+	watchFullscreen(win, func(on bool) { sess.NoteFullscreen(on) })
 
 	// ExitOnInput: any input closes the window. A grace period swallows the
 	// launch burst (the keystroke or click that started the app, a cursor already

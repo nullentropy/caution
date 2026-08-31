@@ -5,6 +5,7 @@ package terminal
 /*
 #cgo LDFLAGS: -framework Cocoa
 void caution_custom_titlebar(void *nswindow, int style);
+void caution_watch_fullscreen(void *nswindow);
 */
 import "C"
 
@@ -26,4 +27,21 @@ func applyCustomTitlebar(win *glfw.Window, style string) {
 		s = 2
 	}
 	C.caution_custom_titlebar(unsafe.Pointer(win.GetCocoaWindow()), C.int(s))
+}
+
+var onFullscreen func(bool)
+
+//export cautionFullscreenChanged
+func cautionFullscreenChanged(on C.int) {
+	if onFullscreen != nil {
+		onFullscreen(on != 0)
+	}
+}
+
+// watchFullscreen reports the window entering and leaving the system's own
+// fullscreen, which is not Options.Fullscreen: that one takes over a monitor at
+// a video mode, while this is the green button and Cmd+Ctrl+F.
+func watchFullscreen(win *glfw.Window, fn func(on bool)) {
+	onFullscreen = fn
+	C.caution_watch_fullscreen(unsafe.Pointer(win.GetCocoaWindow()))
 }

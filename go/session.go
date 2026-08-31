@@ -55,9 +55,11 @@ type Session struct {
 	menu         []any
 	menuHandlers map[int]func()
 
-	keys        []any
-	keyHandlers map[int]func()
-	onAux       func(button int)
+	keys         []any
+	keyHandlers  map[int]func()
+	onAux        func(button int)
+	onFullscreen func(on bool)
+	fullscreen   bool
 
 	preloads []string
 
@@ -363,6 +365,15 @@ func (s *Session) OnKey(combo string, fn func()) {
 // never navigates its own history out from under the app.
 func (s *Session) OnAux(fn func(button int)) { s.onAux = fn }
 
+// OnFullscreen handles the window entering and leaving the system's own
+// fullscreen: the green button and Cmd+Ctrl+F on macOS, the browser's fullscreen
+// API on the web. A custom titlebar usually wants to restyle there, since
+// fullscreen has no traffic lights to leave room for.
+func (s *Session) OnFullscreen(fn func(on bool)) { s.onFullscreen = fn }
+
+// Fullscreen reports the client's last known fullscreen state.
+func (s *Session) Fullscreen() bool { return s.fullscreen }
+
 // normalizeCombo canonicalizes modifier order and case so the client's
 // event-derived string always matches: cmd+ctrl+alt+shift+<key>.
 func normalizeCombo(combo string) string {
@@ -626,6 +637,12 @@ func (s *Session) dispatch(m clientMsg) {
 			log.Printf("caution: session %d <- mouse button %d", s.sid, int(b))
 			if s.onAux != nil {
 				s.onAux(int(b))
+			}
+		case "fullscreen":
+			on, _ := m.Value.(bool)
+			s.fullscreen = on
+			if s.onFullscreen != nil {
+				s.onFullscreen(on)
 			}
 		}
 		return

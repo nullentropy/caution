@@ -225,6 +225,17 @@ s.OnAux(func(button int) {
 Both terminals swallow the press whether or not the app handles it, so the
 browser will not navigate its own history out from under the app.
 
+Entering and leaving the system's own fullscreen is reported the same way. On
+macOS that is the green button and Cmd+Ctrl+F, in the browser it is the
+fullscreen API. It is worth handling under `CustomTitlebar`, because fullscreen
+has no traffic lights and the gutter the app leaves for them is dead space:
+
+```go
+s.OnFullscreen(func(on bool) {
+    bar.H(map[bool]float64{false: 38, true: 28}[on])
+})
+```
+
 ## Custom shaders
 
 Apps can ship GLSL over the wire. Two forms:
@@ -357,6 +368,7 @@ Each event carries the last patch seq the client applied.
 {"t": "ev", "id": 60, "ev": "visible-range", "value": {"start": 180, "end": 260}, "seq": 2}
 {"t": "ev", "id": 60, "ev": "row-select", "value": {"row": 14, "key": "E00015"}, "seq": 2}
 {"t": "ev", "id": 0, "ev": "aux", "value": 4, "seq": 2}
+{"t": "ev", "id": 0, "ev": "fullscreen", "value": true, "seq": 2}
 ```
 
 Node id 0 means the session owns the event, not a widget: viewport resizes, menu
@@ -365,8 +377,8 @@ picks, key combos, and the mouse's extra buttons.
 ### Rules
 
 - Events are subscription-based: the client only emits what the server
-  declared its interest in, with the session-level ones (resize, aux) as the
-  exception, since no node exists to carry the subscription
+  declared its interest in, with the session-level ones (resize, aux,
+  fullscreen) as the exception, since no node exists to carry the subscription
 - Node ids are server-owned
 - An event is delivered only if its target id is known and its seq is at least
   the id's birth seq (the mount or patch that introduced it), so an event fired

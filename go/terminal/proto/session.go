@@ -153,6 +153,8 @@ type Session struct {
 	lastSeq int
 	sid     string
 
+	fullscreen bool
+
 	mounted bool
 	// everMounted flips once any mount happens (main thread only). From then
 	// on the tree outlives the socket, disconnects show a banner instead of
@@ -331,6 +333,12 @@ func (s *Session) handle(msg *serverMsg) {
 			s.ui.SetRoot(root)
 			s.hideBanner()
 		}
+		s.mu.Lock()
+		fs := s.fullscreen
+		s.mu.Unlock()
+		if fs {
+			s.Event(0, "fullscreen", true)
+		}
 	case "resume":
 		// Nothing changed while we were away: the tree we're showing is
 		// still right, keep everything.
@@ -467,6 +475,16 @@ func (s *Session) Event(id int, ev string, value any) {
 	if err := s.conn.WriteJSON(msg); err != nil {
 		log.Println("caution: event send failed:", err)
 	}
+}
+
+// NoteFullscreen reports the window entering or leaving the system's fullscreen.
+// The state is remembered so a client that reconnects while fullscreen tells the
+// app so at the next mount.
+func (s *Session) NoteFullscreen(on bool) {
+	s.mu.Lock()
+	s.fullscreen = on
+	s.mu.Unlock()
+	s.Event(0, "fullscreen", on)
 }
 
 // NoteResize debounces window resizes into the session-level resize event
