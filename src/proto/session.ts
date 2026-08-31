@@ -27,6 +27,7 @@ export class Session {
     private url: string,
   ) {
     this.store = new NodeStore({ event: (id, ev, value) => this.sendEvent(id, ev, value) });
+    ui.onAux = (button) => this.sendEvent(0, 'aux', button);
     this.showStatus(`connecting to ${url} …`);
     this.connect();
     // Viewport reporting: the connect URL carries the initial size (so it is

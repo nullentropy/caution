@@ -48,3 +48,38 @@ func TestWindowDragRouting(t *testing.T) {
 		t.Fatal("an open overlay must suspend window dragging")
 	}
 }
+
+func TestAuxGoesUpstream(t *testing.T) {
+	u := fakeUi()
+	root := NewPanel()
+	root.Add(NewButton("under the pointer"))
+	u.Root = root
+	layout(u, root, 200, 100)
+
+	var got []int
+	u.OnAux = func(b int) { got = append(got, b) }
+	u.AuxDown(4)
+	u.AuxDown(5)
+	if len(got) != 2 || got[0] != 4 || got[1] != 5 {
+		t.Fatalf("aux presses reported %v; want [4 5]", got)
+	}
+}
+
+func TestAuxClosesAnOpenPopover(t *testing.T) {
+	u := fakeUi()
+	u.Root = NewPanel()
+	u.Overlay = NewPanel()
+	fired := 0
+	u.OnAux = func(int) { fired++ }
+	u.AuxDown(4)
+	if u.Overlay != nil {
+		t.Fatal("an aux press left the popover open")
+	}
+	if fired != 0 {
+		t.Fatal("the press that closed the popover also navigated")
+	}
+	u.AuxDown(4)
+	if fired != 1 {
+		t.Fatalf("aux fired %d times after the popover closed; want 1", fired)
+	}
+}

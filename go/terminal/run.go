@@ -106,7 +106,8 @@ type Options struct {
 // a right-click ("rclick:x,y@ms", context menus), a press-drag-release
 // ("drag:x1,y1,x2,y2@ms", sliders, dividers, splits), a wheel tick
 // ("wheel:x,y,dx,dy@ms"), a menu pick ("menu:id@ms"), typed text
-// ("type:hello@ms"), or a key chord ("key:cmd+a@ms").
+// ("type:hello@ms"), a key chord ("key:cmd+a@ms"), or one of the mouse's extra
+// buttons ("aux:4@ms", 4 = back and 5 = forward).
 type click struct {
 	x, y   float32
 	atMs   float64
@@ -117,6 +118,7 @@ type click struct {
 	wheel  bool
 	x2, y2 float32
 	menu   int
+	aux    int
 	typ    string
 	key    string
 }
@@ -141,6 +143,10 @@ func parseClicks(s string) ([]click, error) {
 		case strings.HasPrefix(body, "menu:"):
 			if _, err := fmt.Sscanf(body[5:], "%d", &c.menu); err != nil {
 				return nil, fmt.Errorf("bad clicks entry %q (want menu:id@ms)", part)
+			}
+		case strings.HasPrefix(body, "aux:"):
+			if _, err := fmt.Sscanf(body[4:], "%d", &c.aux); err != nil || c.aux < 4 || c.aux > 5 {
+				return nil, fmt.Errorf("bad clicks entry %q (want aux:4@ms or aux:5@ms)", part)
 			}
 		case strings.HasPrefix(body, "type:"):
 			c.typ = body[5:]
@@ -548,6 +554,12 @@ func Run(o Options) error {
 			}
 			return
 		}
+		if b == glfw.MouseButton4 || b == glfw.MouseButton5 {
+			if a == glfw.Press {
+				u.AuxDown(int(b) + 1) // GLFW counts from 0, the SDK from 1
+			}
+			return
+		}
 		if b == glfw.MouseButtonLeft && mods&glfw.ModControl != 0 {
 			if a == glfw.Press {
 				u.ContextClick(mouseX, mouseY)
@@ -713,6 +725,8 @@ func Run(o Options) error {
 						(u.Menubar == nil || !u.Menubar.Perform(c.menu)) {
 						fmt.Printf("menu probe: no item with id %d\n", c.menu)
 					}
+				case c.aux > 0:
+					u.AuxDown(c.aux)
 				case c.typ != "":
 					for _, r := range c.typ {
 						u.CharInput(r)

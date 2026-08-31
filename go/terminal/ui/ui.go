@@ -67,6 +67,8 @@ type Ui struct {
 	KeyCombos  map[string]int
 	OnKeyCombo func(id int)
 
+	OnAux func(button int)
+
 	// Active theme tween (nil when idle), advanced at each BuildFrame and
 	// kept alive by TickIn.
 	tween *themeTween
@@ -505,6 +507,17 @@ func (u *Ui) RightDown(x, y float32) bool {
 		}
 	})
 	return captured
+}
+
+func (u *Ui) AuxDown(button int) {
+	u.clearTip()
+	if u.Overlay != nil {
+		u.CloseOverlay()
+		return
+	}
+	if u.OnAux != nil {
+		guardInput("aux-down", func() { u.OnAux(button) })
+	}
 }
 
 // RightUp ends a captured right-button gesture.

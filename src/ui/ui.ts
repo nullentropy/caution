@@ -53,6 +53,8 @@ export class Ui {
   private tipState: { w: Widget; x: number; y: number; shown: boolean } | null = null;
   private tipTimer: ReturnType<typeof setTimeout> | null = null;
 
+  onAux: ((button: number) => void) | null = null;
+
   /** Session-registered shortcuts (canonical combo string -> id). */
   private keyCombos = new Map<string, number>();
   private keyComboCb: ((id: number) => void) | null = null;
@@ -192,7 +194,20 @@ export class Ui {
       this.contextClick(x, y);
     });
 
+    // unprevented, the browser navigates its history and leaves the app
+    const AUX = new Set([3, 4]);
+    for (const name of ['pointerup', 'auxclick', 'mouseup'] as const) {
+      canvas.addEventListener(name, (e) => {
+        if (AUX.has((e as MouseEvent).button)) e.preventDefault();
+      });
+    }
+
     canvas.addEventListener('pointerdown', (e) => {
+      if (AUX.has(e.button)) {
+        e.preventDefault();
+        this.auxDown(e.button + 1); // the DOM counts from 0, the SDK from 1
+        return;
+      }
       if (e.button === 2) {
         // a glass subscribed to right gestures captures the right button
         // its context menu never opens (the app chose orbit/measure/etc)
@@ -478,6 +493,15 @@ export class Ui {
       this.menuCombos = this.menubar.combos();
     }
     this.invalidate();
+  }
+
+  auxDown(button: number): void {
+    this.clearTip();
+    if (this.overlay) {
+      this.closeOverlay();
+      return;
+    }
+    this.onAux?.(button);
   }
 
   /** Right-click: open the context menu of the deepest carrier under (x, y). */

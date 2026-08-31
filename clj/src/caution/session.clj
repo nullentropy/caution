@@ -187,6 +187,14 @@
     (send-ops! sess [{"op" "keys" "keys" ks}]))
   nil)
 
+(defn set-aux!
+  "Handle the mouse's extra buttons, 4 (back) and 5 (forward), where f is
+  (fn [state button]). Both terminals swallow the press whether or not an app
+  takes it, so the browser never navigates its history out from under it"
+  [sess f]
+  (swap! sess assoc :aux-handler f)
+  nil)
+
 (defn set-menu!
   "Replace the session's menu bar (a vector of menu maps; see
   caution.core/set-menu! for the shape)"
@@ -280,6 +288,8 @@
         "key"    (when-let [h (and (number? value)
                                    (get (:key-handlers @sess) (long value)))]
                    (swap! (:!state @sess) (fn [s] (or (h s) s))))
+        "aux"    (when-let [h (and (number? value) (:aux-handler @sess))]
+                   (swap! (:!state @sess) (fn [s] (or (h s (long value)) s))))
         nil)
 
       :else

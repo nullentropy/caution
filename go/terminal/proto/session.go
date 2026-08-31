@@ -186,6 +186,7 @@ func NewSession(u *ui.Ui, cfg Config) *Session {
 		retry:    500 * time.Millisecond,
 	}
 	s.store = NewNodeStore(s)
+	u.OnAux = func(button int) { s.Event(0, "aux", button) }
 	s.showStatus(fmt.Sprintf("connecting to %s …", cfg.URL))
 	go s.connect()
 	return s

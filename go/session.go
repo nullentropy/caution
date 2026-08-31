@@ -57,6 +57,7 @@ type Session struct {
 
 	keys        []any
 	keyHandlers map[int]func()
+	onAux       func(button int)
 
 	preloads []string
 
@@ -357,6 +358,11 @@ func (s *Session) OnKey(combo string, fn func()) {
 	}
 }
 
+// OnAux handles the mouse's extra buttons, 4 (back) and 5 (forward). Both
+// terminals swallow the press whether or not an app takes it, so the browser
+// never navigates its own history out from under the app.
+func (s *Session) OnAux(fn func(button int)) { s.onAux = fn }
+
 // normalizeCombo canonicalizes modifier order and case so the client's
 // event-derived string always matches: cmd+ctrl+alt+shift+<key>.
 func normalizeCombo(combo string) string {
@@ -614,6 +620,12 @@ func (s *Session) dispatch(m clientMsg) {
 			log.Printf("caution: session %d <- key combo %d", s.sid, int(id))
 			if fn := s.keyHandlers[int(id)]; fn != nil {
 				fn()
+			}
+		case "aux":
+			b, _ := m.Value.(float64)
+			log.Printf("caution: session %d <- mouse button %d", s.sid, int(b))
+			if s.onAux != nil {
+				s.onAux(int(b))
 			}
 		}
 		return

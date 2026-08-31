@@ -64,6 +64,14 @@ func (tc *testClient) event(id int, ev string, seq int) {
 	}
 }
 
+func (tc *testClient) eventValue(id int, ev string, value any, seq int) {
+	tc.t.Helper()
+	m := map[string]any{"t": "ev", "id": id, "ev": ev, "value": value, "seq": seq}
+	if err := tc.c.WriteJSON(m); err != nil {
+		tc.t.Fatalf("event write: %v", err)
+	}
+}
+
 func seqOf(t *testing.T, m map[string]any) int {
 	t.Helper()
 	f, ok := m["seq"].(float64)
@@ -454,4 +462,33 @@ func TestGlassPickUnknownTargetIsNil(t *testing.T) {
 		t.Fatal(err)
 	}
 	expectFire(t, got, "nil")
+}
+
+func TestAuxButtonsReachTheSession(t *testing.T) {
+	fired := make(chan string, 8)
+	mount := func(s *Session) *Node {
+		s.OnAux(func(b int) { fired <- fmt.Sprintf("aux%d", b) })
+		return Panel().Kids(Button("go").OnClick(func() { fired <- "go" }))
+	}
+	tc := dialSession(t, mount)
+	m := tc.read()
+	seq := seqOf(t, m)
+	tc.eventValue(0, "aux", 4, seq)
+	expectFire(t, fired, "aux4")
+	tc.eventValue(0, "aux", 5, seq)
+	expectFire(t, fired, "aux5")
+}
+
+func TestAuxWithoutAHandlerIsDropped(t *testing.T) {
+	fired := make(chan string, 8)
+	mount := func(_ *Session) *Node {
+		return Panel().Kids(Button("go").OnClick(func() { fired <- "go" }))
+	}
+	tc := dialSession(t, mount)
+	m := tc.read()
+	seq := seqOf(t, m)
+	tc.eventValue(0, "aux", 4, seq)
+	expectQuiet(t, fired)
+	tc.event(kidIDs(t, m)[0], "click", seq) // still alive
+	expectFire(t, fired, "go")
 }

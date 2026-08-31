@@ -18,7 +18,7 @@
 // refreshed into src/vendor/ first, so the bundled loader always matches
 // the toolchain that built the wasm.
 //
-//	go run ./cmd/bundle [-o path/app.js] [-minify]
+//	go run ./cmd/bundle [-o path/app.js] [-pretty]
 package main
 
 import (
@@ -39,7 +39,7 @@ import (
 func main() {
 	entry := flag.String("entry", "", "client entrypoint (default: <checkout>/src/terminal.ts)")
 	out := flag.String("o", "", "output bundle path (default: <checkout>/dist/app.js)")
-	minify := flag.Bool("minify", false, "minify the bundle")
+	pretty := flag.Bool("pretty", false, "leave the bundle unminified, for reading it")
 	flag.Parse()
 
 	// Every path hangs off the checkout root, so bundle runs from any cwd.
@@ -70,9 +70,9 @@ func main() {
 		Target:            api.ES2022,
 		Write:             false,
 		LogLevel:          api.LogLevelWarning,
-		MinifyWhitespace:  *minify,
-		MinifyIdentifiers: *minify,
-		MinifySyntax:      *minify,
+		MinifyWhitespace:  !*pretty,
+		MinifyIdentifiers: !*pretty,
+		MinifySyntax:      !*pretty,
 	})
 	if len(res.Errors) > 0 {
 		for _, m := range api.FormatMessages(res.Errors, api.FormatMessagesOptions{Kind: api.ErrorMessage}) {
