@@ -515,3 +515,86 @@ func TestFullscreenReachesTheSession(t *testing.T) {
 		t.Fatal("Fullscreen() still true after the client left fullscreen")
 	}
 }
+
+func TestSoundPreloadsRideMountAndPatchLive(t *testing.T) {
+	var sess *Session
+	tc := dialSession(t, func(s *Session) *Node {
+		sess = s
+		s.PreloadSounds("/ding.wav")
+		return Panel()
+	})
+	m := tc.read()
+	res, _ := m["resources"].(map[string]any)
+	sounds, _ := res["sounds"].([]any)
+	if len(sounds) != 1 || sounds[0] != "/ding.wav" {
+		t.Fatalf("mount resources.sounds = %v; want [/ding.wav]", sounds)
+	}
+	if _, hasImages := res["images"]; hasImages {
+		t.Fatalf("mount resources grew an images key with nothing preloaded: %v", res)
+	}
+
+	sess.Update(func() { sess.PreloadSounds("/ding.wav", "/pop.wav") })
+	p := tc.read()
+	ops, _ := p["ops"].([]any)
+	if len(ops) != 1 {
+		t.Fatalf("patch ops = %v; want one resource op", ops)
+	}
+	op, _ := ops[0].(map[string]any)
+	got, _ := op["sounds"].([]any)
+	if op["op"] != "resource" || len(got) != 1 || got[0] != "/pop.wav" {
+		t.Fatalf("live preload op = %v; want resource with only the new src", op)
+	}
+}
+
+func TestPlayIsAnOpAfterMountAndDroppedBefore(t *testing.T) {
+	var sess *Session
+	tc := dialSession(t, func(s *Session) *Node {
+		sess = s
+		s.Play("/too-early.wav") // no client yet
+		return Panel().Kids(Label("x"))
+	})
+	m := tc.read()
+	if _, has := m["play"]; has {
+		t.Fatalf("a pre-mount Play leaked into the mount message: %v", m)
+	}
+	sess.Update(func() { sess.Play("/ding.wav") })
+	p := tc.read()
+	ops, _ := p["ops"].([]any)
+	if len(ops) != 1 {
+		t.Fatalf("patch ops = %v; want exactly the play op, nothing from before the mount", ops)
+	}
+	op, _ := ops[0].(map[string]any)
+	if op["op"] != "play" || op["src"] != "/ding.wav" {
+		t.Fatalf("op = %v; want play /ding.wav", op)
+	}
+}
+
+func TestSoundTableRidesMountAndPatchesLive(t *testing.T) {
+	var sess *Session
+	tc := dialSession(t, func(s *Session) *Node {
+		sess = s
+		s.SetSounds(map[string]string{"press": "/click.wav"})
+		return Panel().Kids(Button("go").Sound("none"))
+	})
+	m := tc.read()
+	sounds, _ := m["sounds"].(map[string]any)
+	if sounds["press"] != "/click.wav" {
+		t.Fatalf("mount sounds = %v; want press -> /click.wav", m["sounds"])
+	}
+	root, _ := m["root"].(map[string]any)
+	kids, _ := root["kids"].([]any)
+	k0, _ := kids[0].(map[string]any)
+	p, _ := k0["p"].(map[string]any)
+	if p["sound"] != "none" {
+		t.Fatalf("button props = %v; want sound none", p)
+	}
+
+	sess.Update(func() { sess.SetSounds(map[string]string{"press": "/other.wav", "toggle": "/t.wav"}) })
+	patch := tc.read()
+	ops, _ := patch["ops"].([]any)
+	op, _ := ops[0].(map[string]any)
+	tokens, _ := op["tokens"].(map[string]any)
+	if len(ops) != 1 || op["op"] != "sounds" || tokens["press"] != "/other.wav" || tokens["toggle"] != "/t.wav" {
+		t.Fatalf("live table op = %v", ops)
+	}
+}

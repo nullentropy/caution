@@ -614,6 +614,10 @@ func (n *Node) Wrap() *Node { return n.set("wrap", true) }
 // short hover idle, never an event.
 func (n *Node) Tip(s string) *Node { return n.set("tip", s) }
 
+// Sound picks the gesture token this widget fires instead of its own, or "none"
+// to silence it. See Session.SetSounds.
+func (n *Node) Sound(token string) *Node { return n.set("sound", token) }
+
 // ContextItem is one entry in a node's right-click context menu.
 type ContextItem struct {
 	Title  string

@@ -49,6 +49,7 @@ export class ContextMenu extends Widget {
     let py = y + h > vh - 8 ? Math.max(8, y - h) : y; // flip up at the bottom edge
     menu.bounds = rect(Math.max(8, px), py, w, h);
     ui.openOverlay(menu);
+    ui.sound('open');
   }
 
   override get interactive(): boolean {
@@ -84,7 +85,8 @@ export class ContextMenu extends Widget {
     const i = this.rowAt(y);
     const it = i >= 0 ? this.items[i] : undefined;
     if (it?.id != null) {
-      this.ui?.closeOverlay();
+      this.ui?.dismissOverlay();
+      this.sound('select');
       this.onPick(it.id);
     }
   }

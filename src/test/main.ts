@@ -6,6 +6,7 @@ import './cluster_test';
 import './damage_test';
 import './layoutskip_test';
 import './metrics_test';
+import './sounds_test';
 import './wrap_test';
 
 done();

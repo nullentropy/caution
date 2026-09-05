@@ -401,6 +401,7 @@ export class Button extends Widget {
       this.pressed = false;
       this.invalidate();
     }, 100);
+    this.sound('press');
     this.onClick?.();
   }
 
@@ -441,7 +442,10 @@ export class Button extends Widget {
     const wasInside = contains(this.bounds, x, y);
     this.pressed = false;
     this.invalidate();
-    if (wasInside) this.onClick?.();
+    if (wasInside) {
+      this.sound('press');
+      this.onClick?.();
+    }
   }
 
   override onHoverChange(hovered: boolean): void {
@@ -509,6 +513,7 @@ export class Checkbox extends Widget {
 
   override activate(): void {
     this.checked = !this.checked;
+    this.sound('toggle');
     this.onToggle?.(this.checked);
     this.invalidate();
   }

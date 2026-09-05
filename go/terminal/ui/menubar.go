@@ -119,6 +119,7 @@ func (m *MenuBar) Perform(id int) bool {
 		walk(menu.Items)
 	}
 	if found {
+		m.sound("select")
 		m.onPick(id)
 	}
 	return found
@@ -193,6 +194,7 @@ func (m *MenuBar) OnHoverChange(hovered bool) {
 func (m *MenuBar) open(i int) {
 	m.openIdx = i
 	m.popover = openMenuPopover(m.UI, m.menus[i].Items, m.onPick, m.titleX(i), m.Bounds.Y+m.Bounds.H)
+	m.sound("open")
 	m.Invalidate()
 }
 
@@ -319,7 +321,8 @@ func (p *menuPopover) OnPointerDown(_, y float32, _ int) {
 		return
 	}
 	id := p.rows[i].item.ID
-	p.UI.CloseOverlay()
+	p.UI.dismissOverlay()
+	p.sound("select")
 	p.onPick(id)
 }
 

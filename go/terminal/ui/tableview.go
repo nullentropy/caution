@@ -207,6 +207,7 @@ func (t *TableView) OnKey(k Key) bool {
 
 func (t *TableView) toggleRow(row int) {
 	if m, ok := t.meta[row]; ok && m.Expandable && t.OnToggle != nil {
+		t.sound("toggle")
 		t.OnToggle(row, m.Key)
 	}
 }
@@ -524,9 +525,11 @@ func (t *TableView) activateRow(row int) {
 		if key == "" {
 			return // skeleton row - no identity yet
 		}
+		t.sound("press")
 		t.OnRowActivate(row, key)
 		return
 	}
+	t.sound("press")
 	t.OnRowActivate(row, "")
 }
 
@@ -586,6 +589,7 @@ func (t *TableView) selectRow(row int) {
 			return // skeleton row - no identity to select yet
 		}
 		t.SelectedKey = key // local echo
+		t.sound("select")
 		t.Invalidate()
 		if t.OnRowSelect != nil {
 			t.OnRowSelect(row, key)
@@ -593,6 +597,7 @@ func (t *TableView) selectRow(row int) {
 		return
 	}
 	t.Selected = row // local echo
+	t.sound("select")
 	t.Invalidate()
 	if t.OnRowSelect != nil {
 		t.OnRowSelect(row, "")

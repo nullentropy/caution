@@ -21,6 +21,7 @@ type serverMsg struct {
 	Root      *nodeJSON          `json:"root"`
 	SID       string             `json:"sid"`
 	Theme     map[string]string  `json:"theme"`
+	Sounds    map[string]string  `json:"sounds"`
 	Metrics   map[string]float64 `json:"metrics"`
 	Menu      []MenuSpec         `json:"menu"`
 	Title     string             `json:"title"`
@@ -29,10 +30,10 @@ type serverMsg struct {
 	Ops       []patchOp          `json:"ops"`
 }
 
-// resourceSpec is the mount's preload block (the `resource` op inline);
-// images today, fonts once the terminal has a font pipeline.
+// resourceSpec is the mount's preload block, the `resource` op inline.
 type resourceSpec struct {
 	Images []string `json:"images"`
+	Sounds []string `json:"sounds"`
 }
 
 // keySpec is one session-registered shortcut.
@@ -75,6 +76,8 @@ type patchOp struct {
 	Title   string             `json:"title"`
 	Keys    []keySpec          `json:"keys"`
 	Images  []string           `json:"images"`
+	Sounds  []string           `json:"sounds"`
+	Src     string             `json:"src"`
 	Meta    []metaSpec         `json:"meta"`
 }
 
@@ -124,6 +127,10 @@ type Config struct {
 	// Preload warms a resource cache entry (server-driven `resource` op -
 	// images today). Called on the Pump thread. nil ignores preloads.
 	Preload func(src string)
+	// PreloadSound and Play are the sound half: decode ahead of time, and play
+	// once. nil means the terminal is silent, as in shot mode.
+	PreloadSound func(src string)
+	Play         func(src string)
 }
 
 // Session is the native terminal's protocol client: connects, applies
@@ -141,10 +148,12 @@ type Session struct {
 	dialer *websocket.Dialer
 	Wake   func()
 	// ViewSize reports the current logical window size (for the connect URL).
-	ViewSize func() (int, int)
-	setMenu  func(menus []MenuSpec)
-	setTitle func(title string)
-	preload  func(src string)
+	ViewSize     func() (int, int)
+	setMenu      func(menus []MenuSpec)
+	setTitle     func(title string)
+	preload      func(src string)
+	preloadSound func(src string)
+	play         func(src string)
 
 	queue chan func()
 
@@ -176,19 +185,22 @@ func NewSession(u *ui.Ui, cfg Config) *Session {
 		dialer = websocket.DefaultDialer
 	}
 	s := &Session{
-		ui:       u,
-		url:      cfg.URL,
-		dialer:   dialer,
-		Wake:     cfg.Wake,
-		ViewSize: cfg.ViewSize,
-		setMenu:  cfg.SetMenu,
-		setTitle: cfg.SetTitle,
-		preload:  cfg.Preload,
-		queue:    make(chan func(), 256),
-		retry:    500 * time.Millisecond,
+		ui:           u,
+		url:          cfg.URL,
+		dialer:       dialer,
+		Wake:         cfg.Wake,
+		ViewSize:     cfg.ViewSize,
+		setMenu:      cfg.SetMenu,
+		setTitle:     cfg.SetTitle,
+		preload:      cfg.Preload,
+		preloadSound: cfg.PreloadSound,
+		play:         cfg.Play,
+		queue:        make(chan func(), 256),
+		retry:        500 * time.Millisecond,
 	}
 	s.store = NewNodeStore(s)
 	u.OnAux = func(button int) { s.Event(0, "aux", button) }
+	u.PlaySound = cfg.Play
 	s.showStatus(fmt.Sprintf("connecting to %s …", cfg.URL))
 	go s.connect()
 	return s
@@ -313,6 +325,7 @@ func (s *Session) handle(msg *serverMsg) {
 		if msg.Metrics != nil {
 			s.ui.ApplyMetrics(msg.Metrics)
 		}
+		s.applySounds(msg.Sounds) // nil is silent, and replaces a table a resume left behind
 		if msg.Menu != nil && s.setMenu != nil {
 			s.setMenu(msg.Menu)
 		}
@@ -323,7 +336,7 @@ func (s *Session) handle(msg *serverMsg) {
 			s.applyKeys(msg.Keys)
 		}
 		if msg.Resources != nil {
-			s.applyResources(msg.Resources.Images)
+			s.applyResources(msg.Resources.Images, msg.Resources.Sounds)
 		}
 		clear(s.store.ByID)
 		if msg.Root != nil {
@@ -415,7 +428,13 @@ func (s *Session) applyOp(op *patchOp) bool {
 	case "keys":
 		s.applyKeys(op.Keys)
 	case "resource":
-		s.applyResources(op.Images)
+		s.applyResources(op.Images, op.Sounds)
+	case "play":
+		if s.play != nil {
+			s.play(op.Src)
+		}
+	case "sounds":
+		s.applySounds(op.Tokens)
 	case "move":
 		w, okW := s.store.ByID[op.ID]
 		parent, okP := s.store.ByID[op.Parent]
@@ -452,12 +471,26 @@ func (s *Session) applyKeys(keys []keySpec) {
 	s.ui.OnKeyCombo = func(id int) { s.Event(0, "key", id) }
 }
 
-func (s *Session) applyResources(images []string) {
-	if s.preload == nil {
-		return
+// applySounds installs the gesture table and decodes every source now
+func (s *Session) applySounds(tokens map[string]string) {
+	s.ui.SetSounds(tokens)
+	if s.preloadSound != nil {
+		for _, src := range tokens {
+			s.preloadSound(src)
+		}
 	}
-	for _, src := range images {
-		s.preload(src)
+}
+
+func (s *Session) applyResources(images, sounds []string) {
+	if s.preload != nil {
+		for _, src := range images {
+			s.preload(src)
+		}
+	}
+	if s.preloadSound != nil {
+		for _, src := range sounds {
+			s.preloadSound(src)
+		}
 	}
 }
 

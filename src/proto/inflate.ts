@@ -133,6 +133,7 @@ function applyCommon(w: Widget, p: Props): void {
   if ('windowDrag' in p) w.windowDrag = bool(p.windowDrag) ?? false;
   if ('outline' in p) w.outline = bool(p.outline) ?? false;
   if ('tip' in p) w.tip = str(p.tip) ?? null;
+  if ('sound' in p) w.soundToken = str(p.sound) ?? null;
 }
 
 function applyLabelFont(w: Label, p: Props): void {

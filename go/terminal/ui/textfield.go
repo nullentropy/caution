@@ -307,6 +307,7 @@ func (t *TextField) OnChar(r rune) bool {
 	if r < 0x20 || r == 0x7f {
 		return false
 	}
+	t.sound("type")
 	s, e := t.selRange()
 	t.editKind(s, e, string(r), true)
 	return true

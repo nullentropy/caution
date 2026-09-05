@@ -83,6 +83,12 @@ export abstract class Widget {
   outline = false;
 
   /**
+   * `sound` prop: replaces the token this widget's gestures fire. null keeps
+   * each gesture's own, 'none' silences the widget.
+   */
+  soundToken: string | null = null;
+
+  /**
    * Tooltip text (`tip` prop): client-local, shown by the UI after a short
    * hover idle. A tip makes an otherwise inert widget hover-targetable.
    */
@@ -99,6 +105,11 @@ export abstract class Widget {
   /** Last-seen values of the server's universal one-shot command props. */
   focusSeq = 0;
   revealSeq = 0;
+
+  sound(token: string): void {
+    if (this.soundToken === 'none') return;
+    this.ui?.sound(this.soundToken ?? token);
+  }
 
   /** Server-driven focus. Text fields override to rebind the input funnel. */
   grabFocus(): void {

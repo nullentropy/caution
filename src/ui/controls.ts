@@ -189,6 +189,7 @@ export class RadioGroup extends Widget {
   private pick(i: number): void {
     if (i < 0 || i >= this.options.length || i === this.selected) return;
     this.selected = i; // local echo
+    this.sound('toggle');
     this.invalidate();
     this.onSelect?.(i);
   }
@@ -300,6 +301,7 @@ export class Tabs extends Widget {
   private pick(i: number): void {
     if (i < 0 || i >= this.options.length || i === this.selected) return;
     this.selected = i; // local echo
+    this.sound('select');
     this.invalidate();
     this.onSelect?.(i);
   }

@@ -195,6 +195,9 @@ func applyCommon(w ui.Widget, p props) {
 	if v, ok := p["tip"]; ok {
 		b.Tip, _ = str(v)
 	}
+	if v, ok := p["sound"]; ok {
+		b.SoundToken, _ = str(v)
+	}
 }
 
 func contextItems(v any) []ui.ContextItem {

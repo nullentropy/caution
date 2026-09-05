@@ -258,6 +258,38 @@ own damage. Compile errors log and fall back to passthrough.
 For sprite animation, `Preload` image frames once and patch a single `src`
 prop per tick (`examples/nyan` runs 12fps this way on ~40 bytes per frame).
 
+## Sound
+
+Sounds are WAV files served the way images are, by URL or `data:` URI:
+
+```go
+s.PreloadSounds("/assets/ding.wav") // decode ahead of time; rides the mount
+s.Play("/assets/ding.wav")          // from any handler or Update
+```
+
+`Play` is fire and forget. WAV only (8/16/24/32-bit PCM and float, any
+channel count).
+
+Interaction feedback is declared ahead of time and fires from the client.
+
+```go
+s.SetSounds(map[string]string{
+    "press":  "/assets/click.wav",  // buttons, row activation
+    "toggle": "/assets/tick.wav",   // checkboxes, radios, tree disclosure
+    "select": "/assets/pick.wav",   // tabs, dropdown options, rows, menu items
+    "open":   "/assets/open.wav",   // popovers
+    "close":  "/assets/close.wav",  // popovers closing without a pick, dialog dismiss
+    "type":   "/assets/key.wav",    // each character typed
+})
+```
+
+Tokens left out are silent. A widget can fire a different token than it normally would (or nothing):
+
+```go
+caution.Button("Send").Sound("whoosh") // a token you added to the table
+caution.Button("Cancel").Sound("none")
+```
+
 ## Glass
 
 `caution.Glass()` is a transparent pointer-capture surface for custom
@@ -322,9 +354,9 @@ screen readers.
 - mount, handlers, and `Update` closures run behind a recover barrier: a
   panicking handler logs a stack trace and shows an in-app crash dialog
 
-`ServeAssets(prefix, dir)` serves static files. `Image()` also accepts
-`data:` URIs. `s.Preload(srcs...)` warms image caches for screens not yet
-mounted.
+`ServeAssets(prefix, dir)` serves static files. `Image()` and `Play()` also
+accept `data:` URIs. `s.Preload(srcs...)` and `s.PreloadSounds(srcs...)` warm
+the client's caches for screens not yet mounted.
 
 ## Clojure SDK
 
@@ -356,7 +388,14 @@ Table rows travel as an op too:
 ```
 
 Theme, metrics, menu, shortcut, and preload ops follow the same pattern and
-also ride the mount.
+also ride the mount. Preloads name images and sounds separately, and a sound
+plays through its own op:
+
+```jsonc
+{"op": "resource", "images": ["/assets/next.png"], "sounds": ["/assets/ding.wav"]}
+{"op": "play", "src": "/assets/ding.wav"}
+{"op": "sounds", "tokens": {"press": "/assets/click.wav"}}
+```
 
 ### Client to server
 

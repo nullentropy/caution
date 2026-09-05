@@ -108,11 +108,24 @@ export interface OpKeys {
 }
 
 /**
- * Resource preload hint: warm caches before first use 
+ * Resource preload hint: warm caches before first use
  */
 export interface OpResource {
   op: 'resource';
   images?: string[];
+  sounds?: string[];
+}
+
+/** Play a sound once. */
+export interface OpPlay {
+  op: 'play';
+  src: string;
+}
+
+/** The gesture -> source table */
+export interface OpSounds {
+  op: 'sounds';
+  tokens: Record<string, string> | null;
 }
 
 export type PatchOp =
@@ -126,7 +139,9 @@ export type PatchOp =
   | OpMenu
   | OpTitle
   | OpKeys
-  | OpResource;
+  | OpResource
+  | OpPlay
+  | OpSounds;
 
 export type ServerMsg =
   | {
@@ -136,10 +151,11 @@ export type ServerMsg =
       sid?: string;
       theme?: Record<string, string>;
       metrics?: Record<string, number>;
+      sounds?: Record<string, string> | null;
       menu?: OpMenu['menu'];
       title?: string;
       keys?: KeySpec[];
-      resources?: { images?: string[] };
+      resources?: { images?: string[]; sounds?: string[] };
     }
   | { t: 'patch'; seq: number; ops: PatchOp[] }
   /** Resume ack: the client's tree is still current; nothing to rebuild. */

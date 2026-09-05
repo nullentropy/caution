@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/nullentropy/caution/go/internal/appicon"
+	"github.com/nullentropy/caution/go/terminal/audio"
 	"github.com/nullentropy/caution/go/terminal/gfx"
 	"github.com/nullentropy/caution/go/terminal/pacer"
 	"github.com/nullentropy/caution/go/terminal/proto"
@@ -441,6 +442,11 @@ func Run(o Options) error {
 
 	r.Images.Fetch = fetch
 	r.Images.OnLoad = func() { u.Invalidate() }
+	var playSound, preloadSound func(string)
+	if o.Shot == "" {
+		sounds := &audio.Store{Fetch: fetch}
+		playSound, preloadSound = sounds.Play, sounds.Preload
+	}
 
 	cursors := map[string]*glfw.Cursor{
 		"":           glfw.CreateStandardCursor(glfw.ArrowCursor),
@@ -474,10 +480,12 @@ func Run(o Options) error {
 				u.SetMenubar(menubarSpec(menus), pick)
 				return
 			}
-			installMenu(menus, pick)
+			installMenu(menus, func(id int) { u.Sound("select"); pick(id) })
 		},
-		SetTitle: win.SetTitle,
-		Preload:  r.Images.Preload,
+		SetTitle:     win.SetTitle,
+		Preload:      r.Images.Preload,
+		PreloadSound: preloadSound,
+		Play:         playSound,
 	})
 	watchFullscreen(win, func(on bool) { sess.NoteFullscreen(on) })
 

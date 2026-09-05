@@ -55,6 +55,9 @@ export class Ui {
 
   onAux: ((button: number) => void) | null = null;
 
+  sounds: Record<string, string> = {};
+  playSound: ((src: string) => void) | null = null;
+
   /** Session-registered shortcuts (canonical combo string -> id). */
   private keyCombos = new Map<string, number>();
   private keyComboCb: ((id: number) => void) | null = null;
@@ -234,7 +237,7 @@ export class Ui {
           // click-away closes and swallows the press
           // except on the menu bar, where the press opens the next menu in
           // the same gesture
-          this.closeOverlay(); 
+          this.closeOverlay();
           const barHit = this.menubar?.hitTest(x, y);
           if (barHit) barHit.onPointerDown(x, y, 1);
           e.preventDefault();
@@ -374,8 +377,10 @@ export class Ui {
           this.closeOverlay();
         } else {
           const dialog = this.lastDialog(this.root);
-          if (dialog?.onDismiss) dialog.onDismiss();
-          else this.clearSelection();
+          if (dialog?.onDismiss) {
+            dialog.sound('close');
+            dialog.onDismiss();
+          } else this.clearSelection();
         }
       }
     });
@@ -495,6 +500,15 @@ export class Ui {
     this.invalidate();
   }
 
+  setSounds(tokens: Record<string, string>): void {
+    this.sounds = tokens;
+  }
+
+  sound(token: string): void {
+    const src = this.sounds[token];
+    if (src && this.playSound) this.playSound(src);
+  }
+
   auxDown(button: number): void {
     this.clearTip();
     if (this.overlay) {
@@ -507,7 +521,7 @@ export class Ui {
   /** Right-click: open the context menu of the deepest carrier under (x, y). */
   contextClick(x: number, y: number): void {
     this.clearTip();
-    this.closeOverlay(); // a previous menu/popover yields to the new press
+    this.dismissOverlay(); // a previous menu/popover yields to the new press
     const hit = this.root?.hitTest(x, y) ?? null;
     for (let w: Widget | null = hit; w; w = w.parent) {
       if (w.contextItems.length) {
@@ -519,6 +533,13 @@ export class Ui {
   }
 
   closeOverlay(): void {
+    if (this.overlay) {
+      this.sound('close');
+      this.dismissOverlay();
+    }
+  }
+
+  dismissOverlay(): void {
     if (this.overlay) {
       this.overlay = null;
       this.invalidate();

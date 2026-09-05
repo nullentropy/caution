@@ -162,6 +162,7 @@ export class TableView extends Scroller {
         if (!this.tree || this.cursorRow < 0) return false;
         const m = this.meta.get(this.cursorRow);
         if (m?.k && !m.x) {
+          this.sound('toggle');
           this.onToggle?.(this.cursorRow, m.key);
           return true;
         }
@@ -173,6 +174,7 @@ export class TableView extends Scroller {
         if (!this.tree || this.cursorRow < 0) return false;
         const m = this.meta.get(this.cursorRow);
         if (m?.k && m.x) {
+          this.sound('toggle');
           this.onToggle?.(this.cursorRow, m.key);
           return true;
         }
@@ -405,6 +407,7 @@ export class TableView extends Scroller {
         const gx = this.bounds.x - this.scrollX + cellPad() + m.d * TREE_INDENT;
         if (x >= gx - 4 && x < gx + TREE_GLYPH_W) {
           this.lastDownRow = -1; // a toggle is not half of a double-click
+          this.sound('toggle');
           this.onToggle?.(row, m.key);
           return;
         }
@@ -444,9 +447,11 @@ export class TableView extends Scroller {
     if (this.tree || this.keyCol >= 0) {
       const key = this.rowKeyOf(row);
       if (key == null) return; // skeleton row - no identity yet
+      this.sound('press');
       this.onRowActivate?.(row, key);
       return;
     }
+    this.sound('press');
     this.onRowActivate?.(row, null);
   }
 
@@ -483,10 +488,12 @@ export class TableView extends Scroller {
       const key = this.rowKeyOf(row);
       if (key == null) return; // skeleton row - no identity to select yet
       this.selectedKey = key; // local echo
+      this.sound('select');
       this.invalidate();
       this.onRowSelect?.(row, key);
     } else {
       this.selected = row; // local echo
+      this.sound('select');
       this.invalidate();
       this.onRowSelect?.(row, null);
     }

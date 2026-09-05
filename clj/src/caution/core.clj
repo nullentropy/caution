@@ -60,6 +60,12 @@
   session/set-fullscreen!)
 (def preload!     "Warm client resource caches (images) ahead of first use."
   session/preload!)
+(def preload-sounds! "Decode WAV sources on the client ahead of their first play!."
+  session/preload-sounds!)
+(def set-sounds!  "Set the gesture sound table: {\"press\" \"/click.wav\" ...}."
+  session/set-sounds!)
+(def play!        "Play a WAV once on the client (URL or data: URI)."
+  session/play!)
 (def set-menu!    "Replace the menu bar: a vector of {:title _ :items [...]},
   where an item is {:title _ :key \"n\" :on-pick (fn [state])}, {:sep true},
   or a submenu {:title _ :items [...]}. Realized natively (NSMenu) by the

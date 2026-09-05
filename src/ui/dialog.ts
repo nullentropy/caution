@@ -51,7 +51,10 @@ export class Dialog extends Widget {
   }
 
   override onPointerDown(x: number, y: number): void {
-    if (!contains(this.cardRect(), x, y)) this.onDismiss?.();
+    if (!contains(this.cardRect(), x, y) && this.onDismiss) {
+      this.sound('close');
+      this.onDismiss();
+    }
   }
 
   override semantics(): SemanticSpec {

@@ -61,7 +61,9 @@ type Session struct {
 	onFullscreen func(on bool)
 	fullscreen   bool
 
-	preloads []string
+	preloads      []string
+	soundPreloads []string
+	sounds        map[string]string
 
 	vw, vh   float64
 	onResize func(w, h float64)
@@ -342,6 +344,37 @@ func (s *Session) Preload(srcs ...string) {
 	}
 }
 
+// SetSounds sets the gesture table: which WAV plays when the user presses,
+// toggles, selects, opens, closes or types, fired by the client at the moment
+// of the gesture
+func (s *Session) SetSounds(tokens map[string]string) {
+	s.sounds = tokens
+	if s.mounted {
+		s.ops = append(s.ops, map[string]any{"op": "sounds", "tokens": tokens})
+	}
+}
+
+// PreloadSounds decodes WAV sources on the client ahead of their first Play
+func (s *Session) PreloadSounds(srcs ...string) {
+	var fresh []string
+	for _, src := range srcs {
+		if !slices.Contains(s.soundPreloads, src) {
+			s.soundPreloads = append(s.soundPreloads, src)
+			fresh = append(fresh, src)
+		}
+	}
+	if s.mounted && len(fresh) > 0 {
+		s.ops = append(s.ops, map[string]any{"op": "resource", "sounds": fresh})
+	}
+}
+
+// Play plays a WAV once on the client. src is a URL or data: URI
+func (s *Session) Play(src string) {
+	if s.mounted {
+		s.ops = append(s.ops, map[string]any{"op": "play", "src": src})
+	}
+}
+
 // OnKey registers a session-wide keyboard shortcut: "cmd+k",
 // "ctrl+shift+p", "alt+enter": one or more of cmd/ctrl/alt/shift plus a
 // key. A combo fires only when the focused widget declines the chord, so a
@@ -546,6 +579,9 @@ func (s *Session) sendMount() {
 	if s.theme != nil {
 		msg["theme"] = s.theme
 	}
+	if s.sounds != nil {
+		msg["sounds"] = s.sounds
+	}
 	if s.metrics != nil {
 		msg["metrics"] = s.metrics
 	}
@@ -558,8 +594,15 @@ func (s *Session) sendMount() {
 	if s.keys != nil {
 		msg["keys"] = s.keys
 	}
-	if s.preloads != nil {
-		msg["resources"] = map[string]any{"images": s.preloads}
+	if s.preloads != nil || s.soundPreloads != nil {
+		res := map[string]any{}
+		if s.preloads != nil {
+			res["images"] = s.preloads
+		}
+		if s.soundPreloads != nil {
+			res["sounds"] = s.soundPreloads
+		}
+		msg["resources"] = res
 	}
 	if err := s.conn.WriteJSON(msg); err != nil {
 		log.Printf("caution: session %d mount write failed: %v", s.sid, err)

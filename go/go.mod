@@ -3,6 +3,7 @@ module github.com/nullentropy/caution/go
 go 1.26
 
 require (
+	github.com/ebitengine/oto/v3 v3.4.1
 	github.com/evanw/esbuild v0.28.1
 	github.com/go-gl/gl v0.0.0-20260331235117-4566fea9a276
 	github.com/go-gl/glfw/v3.3/glfw v0.0.0-20260802143932-8fa725040a18
@@ -13,6 +14,7 @@ require (
 
 require (
 	github.com/Microsoft/go-winio v0.6.2 // indirect
+	github.com/ebitengine/purego v0.9.0 // indirect
 	github.com/go-json-experiment/json v0.0.0-20260623181947-01eb4420fa68 // indirect
 	github.com/klauspost/cpuid/v2 v2.2.10 // indirect
 	github.com/mackerelio/go-osstat v0.2.7 // indirect

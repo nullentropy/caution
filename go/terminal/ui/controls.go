@@ -198,6 +198,7 @@ func (r *RadioGroup) pick(i int) {
 		return
 	}
 	r.Selected = i // local echo
+	r.sound("toggle")
 	r.Invalidate()
 	if r.OnSelect != nil {
 		r.OnSelect(i)
@@ -316,6 +317,7 @@ func (t *Tabs) pick(i int) {
 		return
 	}
 	t.Selected = i // local echo
+	t.sound("select")
 	t.Invalidate()
 	if t.OnSelect != nil {
 		t.OnSelect(i)

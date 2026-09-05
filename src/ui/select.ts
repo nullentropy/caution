@@ -94,9 +94,10 @@ export class Select extends Widget {
   pick(index: number): void {
     if (index !== this.selected) {
       this.selected = index; // local echo and server syncs silently
+      this.sound('select');
       this.onSelect?.(index);
     }
-    this.ui?.closeOverlay();
+    this.ui?.dismissOverlay();
     this.invalidate();
   }
 
@@ -116,6 +117,7 @@ export class Select extends Widget {
     if (y + h > viewH - 8) y = Math.max(8, this.bounds.y - 4 - h);
     popup.bounds = rect(this.bounds.x, y, w, h);
     ui.openOverlay(popup);
+    this.sound('open');
   }
 }
 

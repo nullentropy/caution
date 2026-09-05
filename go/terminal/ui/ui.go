@@ -69,6 +69,11 @@ type Ui struct {
 
 	OnAux func(button int)
 
+	// Sounds maps gesture tokens to sources (SetSounds) and PlaySound is the
+	// audio store
+	Sounds    map[string]string
+	PlaySound func(src string)
+
 	// Active theme tween (nil when idle), advanced at each BuildFrame and
 	// kept alive by TickIn.
 	tween *themeTween
@@ -443,6 +448,13 @@ func (u *Ui) OpenOverlay(w Widget) {
 
 func (u *Ui) CloseOverlay() {
 	if u.Overlay != nil {
+		u.Sound("close")
+		u.dismissOverlay()
+	}
+}
+
+func (u *Ui) dismissOverlay() {
+	if u.Overlay != nil {
 		u.Overlay = nil
 		u.Invalidate()
 	}
@@ -517,6 +529,19 @@ func (u *Ui) AuxDown(button int) {
 	}
 	if u.OnAux != nil {
 		guardInput("aux-down", func() { u.OnAux(button) })
+	}
+}
+
+// SetSounds replaces the gesture -> source table.
+func (u *Ui) SetSounds(tokens map[string]string) { u.Sounds = tokens }
+
+// Sound plays whatever the table maps token to.
+func (u *Ui) Sound(token string) {
+	if u.PlaySound == nil || token == "" {
+		return
+	}
+	if src := u.Sounds[token]; src != "" {
+		u.PlaySound(src)
 	}
 }
 
@@ -837,6 +862,7 @@ func (u *Ui) keyDown(k Key) bool {
 			return true
 		}
 		if d := lastDialog(u.Root); d != nil && d.OnDismiss != nil {
+			d.sound("close")
 			d.OnDismiss()
 			return true
 		}

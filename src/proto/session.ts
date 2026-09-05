@@ -3,6 +3,7 @@ import { font } from '../gfx/font';
 import { TableView } from '../ui/tableview';
 import { bumpThemeEpoch, theme } from '../ui/theme';
 import { Ui } from '../ui/ui';
+import { SoundStore } from '../audio';
 import { Label, Panel } from '../ui/widgets';
 import { Widget } from '../ui/widget';
 import { NodeStore } from './inflate';
@@ -22,6 +23,7 @@ export class Session {
   /** True once any mount landed - from then on the tree outlives the socket. */
   private everMounted = false;
   private fullscreen = false;
+  private sounds = new SoundStore();
 
   constructor(
     private ui: Ui,
@@ -29,6 +31,7 @@ export class Session {
   ) {
     this.store = new NodeStore({ event: (id, ev, value) => this.sendEvent(id, ev, value) });
     ui.onAux = (button) => this.sendEvent(0, 'aux', button);
+    ui.playSound = (src) => this.sounds.play(src);
     this.showStatus(`connecting to ${url} …`);
     this.connect();
     // Viewport reporting: the connect URL carries the initial size (so it is
@@ -92,10 +95,12 @@ export class Session {
       if (msg.sid) sessionStorage.setItem('caution:sid', msg.sid);
       if (msg.theme) this.applyTheme(msg.theme);
       if (msg.metrics) this.ui.applyMetrics(msg.metrics);
+      this.applySounds(msg.sounds); // absent is silent, and replaces a table a resume left behind
       if (msg.title) document.title = msg.title;
       if (msg.keys) this.applyKeys(msg.keys);
       this.applyMenu(msg.menu ?? []);
       if (msg.resources?.images) for (const src of msg.resources.images) this.ui.preloadImage(src);
+      for (const src of msg.resources?.sounds ?? []) this.sounds.preload(src);
       this.store.byId.clear();
       const root = this.store.build(msg.root);
       this.mounted = true;
@@ -159,6 +164,11 @@ export class Session {
       return true;
     } else if (op.op === 'resource') {
       for (const src of op.images ?? []) this.ui.preloadImage(src);
+      for (const src of op.sounds ?? []) this.sounds.preload(src);
+    } else if (op.op === 'play') {
+      this.sounds.play(op.src);
+    } else if (op.op === 'sounds') {
+      this.applySounds(op.tokens);
     } else if (op.op === 'move') {
       const w = this.store.byId.get(op.id);
       const parent = this.store.byId.get(op.parent);
@@ -173,6 +183,13 @@ export class Session {
       return true;
     }
     return false;
+  }
+
+  // the table's whole point is that the first press is not late, so every
+  // source decodes now
+  private applySounds(tokens: Record<string, string> | null | undefined): void {
+    this.ui.setSounds(tokens ?? {});
+    for (const src of Object.values(tokens ?? {})) this.sounds.preload(src);
   }
 
   private applyKeys(keys: { id: number; key: string }[]): void {

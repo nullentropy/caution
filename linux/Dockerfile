@@ -6,6 +6,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       libxinerama-dev libxrandr-dev libxxf86vm-dev \
       libwayland-dev libxkbcommon-dev wayland-protocols \
       libgl1-mesa-dri libglx-mesa0 libegl1-mesa-dev \
+      libasound2-dev \
       xvfb xauth mesa-utils chromium nodejs fonts-dejavu-core \
       desktop-file-utils x11-utils \
       bc \

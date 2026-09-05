@@ -76,7 +76,8 @@ class InputFunnel {
     ta.wrap = 'off';
     document.body.appendChild(ta);
 
-    ta.addEventListener('input', () => {
+    ta.addEventListener('input', (e) => {
+      if ((e as InputEvent).inputType === 'insertText') this.current?.sound('type');
       this.current?.syncFromTextarea(ta.value, ta.selectionStart, ta.selectionEnd);
     });
     document.addEventListener('selectionchange', () => {

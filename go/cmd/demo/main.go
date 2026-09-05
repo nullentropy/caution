@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	_ "embed"
+	"encoding/binary"
 	"flag"
 	"fmt"
 	"image"
@@ -161,6 +162,15 @@ func main() {
 		w.Header().Set("Cache-Control", "public, max-age=3600")
 		_, _ = w.Write(avatar)
 	})
+	// Generated tones, the same way: no binary assets in the repo.
+	for name, wav := range makeTones() {
+		wav := wav
+		http.HandleFunc("/assets/sfx/"+name+".wav", func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Content-Type", "audio/wav")
+			w.Header().Set("Cache-Control", "public, max-age=3600")
+			_, _ = w.Write(wav)
+		})
+	}
 
 	// Demo login: /login?u=ada sets the identity cookie and reloads. A real
 	// app would validate a session/JWT here instead.
@@ -227,6 +237,40 @@ func makeAvatar() []byte {
 	return buf.Bytes()
 }
 
+// makeTones synthesizes the demo's sound effects: short decaying sines at
+// distinct pitches, so each gesture is recognizable.
+func makeTones() map[string][]byte {
+	tone := func(hz float64, ms int) []byte {
+		const rate = 48000
+		n := rate * ms / 1000
+		var pcm bytes.Buffer
+		for i := 0; i < n; i++ {
+			t := float64(i) / rate
+			env := math.Exp(-t*18) * math.Min(1, float64(i)/200) // fast attack, exponential decay
+			binary.Write(&pcm, binary.LittleEndian, int16(math.Sin(2*math.Pi*hz*t)*env*9000))
+		}
+		var out bytes.Buffer
+		out.WriteString("RIFF")
+		binary.Write(&out, binary.LittleEndian, uint32(36+pcm.Len()))
+		out.WriteString("WAVEfmt ")
+		for _, v := range []any{uint32(16), uint16(1), uint16(1), uint32(rate), uint32(rate * 2), uint16(2), uint16(16)} {
+			binary.Write(&out, binary.LittleEndian, v)
+		}
+		out.WriteString("data")
+		binary.Write(&out, binary.LittleEndian, uint32(pcm.Len()))
+		out.Write(pcm.Bytes())
+		return out.Bytes()
+	}
+	return map[string][]byte{
+		"press":  tone(880, 60),
+		"toggle": tone(1320, 70),
+		"select": tone(660, 80),
+		"open":   tone(523, 90),
+		"close":  tone(392, 90),
+		"ding":   tone(1046, 320),
+	}
+}
+
 func mount(s *caution.Session) *caution.Node {
 	// Per-session app state: plain Go locals. Handlers and the ticker all run
 	// on the session goroutine, so no locking is ever needed.
@@ -239,6 +283,33 @@ func mount(s *caution.Session) *caution.Node {
 
 	s.SetTitle(fmt.Sprintf("caution demo - %s", who))
 
+	// Interaction sounds are a token table the client fires itself, so a click
+	// never waits on the server to sound. The ding is the other kind: the
+	// server plays it when it has done something. Off until asked for, with
+	// every source decoded up front so turning them on costs nothing.
+	sfx := map[string]string{}
+	var srcs []string
+	for _, tok := range []string{"press", "toggle", "select", "open", "close"} {
+		sfx[tok] = "/assets/sfx/" + tok + ".wav"
+		srcs = append(srcs, sfx[tok])
+	}
+	const ding = "/assets/sfx/ding.wav"
+	s.PreloadSounds(append(srcs, ding)...)
+	soundsOn := false
+	var soundsBox *caution.Node
+	var installMenu func()
+	setSounds := func(on bool) {
+		events++
+		soundsOn = on
+		if on {
+			s.SetSounds(sfx)
+		} else {
+			s.SetSounds(nil)
+		}
+		soundsBox.SetChecked(on) // the footer box and the menu item both drive this
+		installMenu()
+	}
+
 	// Load the window nib and grab its outlets.
 	win := caution.MustLoadUI(windowUI)
 	counter := win.Node("counter")
@@ -247,6 +318,9 @@ func mount(s *caution.Session) *caution.Node {
 
 	status := caution.Label("connected").FontSize(12).Color("$inkFaint").
 		Anchor(caution.A{Left: caution.Px(32), CenterY: caution.Px(0)})
+	soundsBox = caution.Checkbox("sounds", false).Tip("The gesture sound table, patched live").
+		OnToggle(setSounds).
+		Anchor(caution.A{Right: caution.Px(32), CenterY: caution.Px(0)})
 
 	rowStack := caution.VStack().Gap(8).
 		Anchor(caution.A{Left: caution.Px(20), Top: caution.Px(16), Right: caution.Px(20)})
@@ -402,6 +476,7 @@ func mount(s *caution.Session) *caution.Node {
 		row := caution.Label(fmt.Sprintf("%s %02d - inserted by the Go server at %s",
 			prefix, rowN, time.Now().Format("15:04:05"))).FontSize(13).Selectable().Wrap()
 		rows = append(rows, rowStack.Add(row))
+		s.Play(ding)
 	}
 	postNote := func() {
 		events++
@@ -414,6 +489,7 @@ func mount(s *caution.Session) *caution.Node {
 		// lines at the pane's width.
 		rows = append(rows, rowStack.Add(caution.Label(v).FontSize(13).Selectable().Wrap()))
 		composer.ClearValue()
+		s.Play(ding)
 	}
 	win.Node("theme").OnSelect(applyTheme)
 	win.Node("addRow").OnClick(addRow)
@@ -425,18 +501,28 @@ func mount(s *caution.Session) *caution.Node {
 	// A registered combo works in BOTH terminals, independent of menus.
 	s.OnKey("cmd+j", addRow)
 
-	s.SetMenu(
-		caution.Menu{Title: "Rows", Items: []caution.MenuItem{
-			{Title: "Add Row", Key: "n", OnPick: addRow},
-			{Sep: true},
-			{Title: "Clear Rows…", Key: "shift+cmd+k", OnPick: func() { events++; openConfirm() }},
-		}},
-		caution.Menu{Title: "Theme", Items: []caution.MenuItem{
-			{Title: "Midnight", OnPick: func() { applyTheme(0) }},
-			{Title: "Violet", OnPick: func() { applyTheme(1) }},
-			{Title: "Light", OnPick: func() { applyTheme(2) }},
-		}},
-	)
+	installMenu = func() {
+		soundItem := "Turn Sounds On"
+		if soundsOn {
+			soundItem = "Turn Sounds Off"
+		}
+		s.SetMenu(
+			caution.Menu{Title: "Rows", Items: []caution.MenuItem{
+				{Title: "Add Row", Key: "n", OnPick: addRow},
+				{Sep: true},
+				{Title: "Clear Rows…", Key: "shift+cmd+k", OnPick: func() { events++; openConfirm() }},
+			}},
+			caution.Menu{Title: "Theme", Items: []caution.MenuItem{
+				{Title: "Midnight", OnPick: func() { applyTheme(0) }},
+				{Title: "Violet", OnPick: func() { applyTheme(1) }},
+				{Title: "Light", OnPick: func() { applyTheme(2) }},
+			}},
+			caution.Menu{Title: "Sound", Items: []caution.MenuItem{
+				{Title: soundItem, Key: "shift+cmd+m", OnPick: func() { setSounds(!soundsOn) }},
+			}},
+		)
+	}
+	installMenu()
 
 	shell.Kids(
 		// header
@@ -451,7 +537,7 @@ func mount(s *caution.Session) *caution.Node {
 				Anchor(caution.A{Right: caution.Px(32), CenterY: caution.Px(0)}),
 		),
 		// footer
-		caution.Panel().Dock("bottom").H(34).Kids(status),
+		caution.Panel().Dock("bottom").H(34).Kids(status, soundsBox),
 		// content
 		caution.Panel().Dock("fill").Kids(
 			// resizable panes: a vertical split (upper band / table), whose

@@ -35,7 +35,7 @@ type contextMenu struct {
 // the shell routes right presses here.
 func (u *Ui) contextClick(x, y float32) {
 	u.clearTip()
-	u.CloseOverlay() // a previous menu/popover yields to the new press
+	u.dismissOverlay() // a previous menu/popover yields to the new press
 	var hit Widget
 	if u.Root != nil {
 		hit = u.Root.HitTest(x, y)
@@ -76,6 +76,7 @@ func (u *Ui) openContextMenu(items []ContextItem, onPick func(id int), x, y floa
 	}
 	m.Bounds = gfx.R(px, py, w, h)
 	u.OpenOverlay(m)
+	u.Sound("open")
 }
 
 func (m *contextMenu) Interactive() bool { return true }
@@ -107,7 +108,8 @@ func (m *contextMenu) OnPointerDown(_, y float32, _ int) {
 		return
 	}
 	it := m.items[i]
-	m.UI.CloseOverlay()
+	m.UI.dismissOverlay()
+	m.sound("select")
 	m.onPick(it.ID)
 }
 

@@ -65,7 +65,10 @@ export class MenuBar extends Widget {
       }
     };
     for (const m of this.menus) walk(m.items);
-    if (found) this.onPick(id);
+    if (found) {
+      this.sound('select');
+      this.onPick(id);
+    }
     return found;
   }
 
@@ -142,6 +145,7 @@ export class MenuBar extends Widget {
     if (!this.ui) return;
     this.openIdx = i;
     this.popover = MenuPopover.open(this.ui, this.menus[i]!.items, this.onPick, this.titleX(i), this.bounds.y + this.bounds.h);
+    this.sound('open');
     this.invalidate();
   }
 
@@ -263,7 +267,8 @@ export class MenuPopover extends Widget {
     const i = this.rowAt(y);
     const r = i >= 0 ? this.rows[i] : undefined;
     if (r && !r.section && r.item.id != null) {
-      this.ui?.closeOverlay();
+      this.ui?.dismissOverlay();
+      this.sound('select');
       this.onPick(r.item.id);
     }
   }

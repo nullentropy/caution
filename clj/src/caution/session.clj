@@ -43,10 +43,15 @@
                               "root" (w/->wire (:tree m))}
                        (:theme m)    (assoc "theme" (:theme m))
                        (:metrics m)  (assoc "metrics" (:metrics m))
+                       (:sounds m)   (assoc "sounds" (:sounds m))
                        (:menu m)     (assoc "menu" (:menu m))
                        (:title m)    (assoc "title" (:title m))
                        (:keys m)     (assoc "keys" (:keys m))
-                       (:preloads m) (assoc "resources" {"images" (:preloads m)})))))
+                       (or (:preloads m) (:sound-preloads m))
+                       (assoc "resources"
+                              (cond-> {}
+                                (:preloads m)       (assoc "images" (:preloads m))
+                                (:sound-preloads m) (assoc "sounds" (:sound-preloads m))))))))
 
 (defn- send-ops! [sess ops]
   (when (seq ops)
@@ -175,6 +180,32 @@
     (when (seq fresh)
       (swap! sess update :preloads (fnil into []) fresh)
       (send-ops! sess [{"op" "resource" "images" fresh}])))
+  nil)
+
+(defn set-sounds!
+  "Set the gesture table: token -> WAV source, fired by the client at the
+  moment of the gesture. Tokens are press, toggle, select, open, close and
+  type; the ones left out are silent"
+  [sess tokens]
+  (swap! sess assoc :sounds tokens)
+  (send-ops! sess [{"op" "sounds" "tokens" tokens}])
+  nil)
+
+(defn preload-sounds!
+  "Decode WAV sources on the client ahead of their first play!"
+  [sess & srcs]
+  (let [known (set (:sound-preloads @sess))
+        fresh (vec (remove known srcs))]
+    (when (seq fresh)
+      (swap! sess update :sound-preloads (fnil into []) fresh)
+      (send-ops! sess [{"op" "resource" "sounds" fresh}])))
+  nil)
+
+(defn play!
+  "Play a WAV once on the client, by URL or data: URI. Fire and forget: a
+  browser drops sounds until the user has clicked or typed in the page"
+  [sess src]
+  (send-ops! sess [{"op" "play" "src" src}])
   nil)
 
 (defn set-keys!

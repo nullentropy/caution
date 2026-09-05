@@ -470,6 +470,7 @@ func (b *Button) OnKey(k Key) bool {
 }
 
 func (b *Button) Activate() {
+	b.sound("press")
 	if b.OnClick != nil {
 		b.OnClick()
 	}
@@ -528,8 +529,11 @@ func (b *Button) OnPointerUp(x, y float32) {
 	wasInside := Contains(b.Bounds, x, y)
 	b.pressed = false
 	b.Invalidate()
-	if wasInside && b.OnClick != nil {
-		b.OnClick()
+	if wasInside {
+		b.sound("press")
+		if b.OnClick != nil {
+			b.OnClick()
+		}
 	}
 }
 
@@ -588,6 +592,7 @@ func (c *Checkbox) OnKey(k Key) bool {
 
 func (c *Checkbox) Activate() {
 	c.Checked = !c.Checked
+	c.sound("toggle")
 	if c.OnToggle != nil {
 		c.OnToggle(c.Checked)
 	}

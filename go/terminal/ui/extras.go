@@ -138,11 +138,12 @@ func (s *Select) OnHoverChange(h bool) {
 func (s *Select) Pick(i int) {
 	if i != s.Selected {
 		s.Selected = i
+		s.sound("select")
 		if s.OnSelect != nil {
 			s.OnSelect(i)
 		}
 	}
-	s.UI.CloseOverlay()
+	s.UI.dismissOverlay()
 	s.Invalidate()
 }
 
@@ -167,6 +168,7 @@ func (s *Select) toggle() {
 	}
 	pop.Bounds = gfx.R(s.Bounds.X, y, w, h)
 	s.UI.OpenOverlay(pop)
+	s.sound("open")
 }
 
 // selectPopup is the client-local option list; it lives on the Ui overlay

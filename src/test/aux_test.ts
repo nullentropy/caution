@@ -11,7 +11,7 @@ function auxUi(): Ui {
   u.root.bounds = rect(0, 0, 200, 100);
   u.overlay = null;
   u.onAux = null;
-  Object.assign(u, { surface: { invalidate() {} }, tipTimer: null, tipState: null });
+  Object.assign(u, { surface: { invalidate() {} }, tipTimer: null, tipState: null, sounds: {} });
   return u;
 }
 

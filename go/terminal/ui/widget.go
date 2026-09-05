@@ -121,6 +121,9 @@ type Core struct {
 	// a short hover idle. A tip makes an otherwise inert widget
 	// hover-targetable.
 	Tip string
+	// SoundToken (`sound` prop) replaces the token this widget's gestures
+	// fire. "" keeps each gesture's own, "none" silences the widget.
+	SoundToken string
 	// ContextItems is the right-click menu (`context` prop): opened
 	// client-locally, and the deepest carrier under the pointer wins. Picks flow
 	// through OnContextPick with the item's server-assigned id.
@@ -181,6 +184,20 @@ func (b *Core) RequestReveal() {
 }
 
 func (b *Core) Base() *Core { return b }
+
+func (b *Core) sound(token string) {
+	if b.UI == nil {
+		return
+	}
+	switch b.SoundToken {
+	case "none":
+		return
+	case "":
+	default:
+		token = b.SoundToken
+	}
+	b.UI.Sound(token)
+}
 
 func (b *Core) Add(c Widget) {
 	c.Base().Parent = b.self

@@ -54,6 +54,7 @@ func (d *Dialog) PaintSelf(dl *gfx.DisplayList) {
 
 func (d *Dialog) OnPointerDown(x, y float32, _ int) {
 	if !Contains(d.cardRect(), x, y) && d.OnDismiss != nil {
+		d.sound("close")
 		d.OnDismiss()
 	}
 }
