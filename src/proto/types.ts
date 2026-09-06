@@ -120,6 +120,12 @@ export interface OpResource {
 export interface OpPlay {
   op: 'play';
   src: string;
+  loop?: boolean;
+}
+
+export interface OpStop {
+  op: 'stop';
+  src?: string;
 }
 
 /** The gesture -> source table */
@@ -141,6 +147,7 @@ export type PatchOp =
   | OpKeys
   | OpResource
   | OpPlay
+  | OpStop
   | OpSounds;
 
 export type ServerMsg =
@@ -152,6 +159,7 @@ export type ServerMsg =
       theme?: Record<string, string>;
       metrics?: Record<string, number>;
       sounds?: Record<string, string> | null;
+      loops?: string[];
       menu?: OpMenu['menu'];
       title?: string;
       keys?: KeySpec[];

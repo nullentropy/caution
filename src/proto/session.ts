@@ -96,6 +96,8 @@ export class Session {
       if (msg.theme) this.applyTheme(msg.theme);
       if (msg.metrics) this.ui.applyMetrics(msg.metrics);
       this.applySounds(msg.sounds); // absent is silent, and replaces a table a resume left behind
+      this.sounds.stop();
+      for (const src of msg.loops ?? []) this.sounds.play(src, true);
       if (msg.title) document.title = msg.title;
       if (msg.keys) this.applyKeys(msg.keys);
       this.applyMenu(msg.menu ?? []);
@@ -166,7 +168,9 @@ export class Session {
       for (const src of op.images ?? []) this.ui.preloadImage(src);
       for (const src of op.sounds ?? []) this.sounds.preload(src);
     } else if (op.op === 'play') {
-      this.sounds.play(op.src);
+      this.sounds.play(op.src, op.loop ?? false);
+    } else if (op.op === 'stop') {
+      this.sounds.stop(op.src);
     } else if (op.op === 'sounds') {
       this.applySounds(op.tokens);
     } else if (op.op === 'move') {

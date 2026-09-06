@@ -598,3 +598,45 @@ func TestSoundTableRidesMountAndPatchesLive(t *testing.T) {
 		t.Fatalf("live table op = %v", ops)
 	}
 }
+
+func TestLoopsRideMountAndStopsClearThem(t *testing.T) {
+	var sess *Session
+	tc := dialSession(t, func(s *Session) *Node {
+		sess = s
+		s.Loop("/alarm.wav")
+		s.Loop("/alarm.wav")
+		return Panel()
+	})
+	m := tc.read()
+	loops, _ := m["loops"].([]any)
+	if len(loops) != 1 || loops[0] != "/alarm.wav" {
+		t.Fatalf("mount loops = %v; want [/alarm.wav]", m["loops"])
+	}
+
+	sess.Update(func() {
+		sess.Loop("/alarm.wav")
+		sess.Loop("/hum.wav")
+	})
+	p := tc.read()
+	ops, _ := p["ops"].([]any)
+	op, _ := ops[0].(map[string]any)
+	if len(ops) != 1 || op["op"] != "play" || op["src"] != "/hum.wav" || op["loop"] != true {
+		t.Fatalf("ops = %v; want one looping play of /hum.wav", ops)
+	}
+
+	sess.Update(func() { sess.Stop("/alarm.wav") })
+	p = tc.read()
+	ops, _ = p["ops"].([]any)
+	op, _ = ops[0].(map[string]any)
+	if op["op"] != "stop" || op["src"] != "/alarm.wav" {
+		t.Fatalf("op = %v; want stop /alarm.wav", op)
+	}
+
+	sess.Update(func() { sess.StopAll() })
+	p = tc.read()
+	ops, _ = p["ops"].([]any)
+	op, _ = ops[0].(map[string]any)
+	if _, hasSrc := op["src"]; op["op"] != "stop" || hasSrc {
+		t.Fatalf("op = %v; want a stop with no src", op)
+	}
+}

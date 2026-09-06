@@ -442,10 +442,25 @@ func Run(o Options) error {
 
 	r.Images.Fetch = fetch
 	r.Images.OnLoad = func() { u.Invalidate() }
-	var playSound, preloadSound func(string)
+	var playSound func(string, bool)
+	var stopSound, preloadSound func(string)
 	if o.Shot == "" {
 		sounds := &audio.Store{Fetch: fetch}
-		playSound, preloadSound = sounds.Play, sounds.Preload
+		preloadSound = sounds.Preload
+		playSound = func(src string, loop bool) {
+			if loop {
+				sounds.Loop(src)
+			} else {
+				sounds.Play(src)
+			}
+		}
+		stopSound = func(src string) {
+			if src == "" {
+				sounds.StopAll()
+			} else {
+				sounds.Stop(src)
+			}
+		}
 	}
 
 	cursors := map[string]*glfw.Cursor{
@@ -486,6 +501,7 @@ func Run(o Options) error {
 		Preload:      r.Images.Preload,
 		PreloadSound: preloadSound,
 		Play:         playSound,
+		Stop:         stopSound,
 	})
 	watchFullscreen(win, func(on bool) { sess.NoteFullscreen(on) })
 

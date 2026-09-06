@@ -66,6 +66,9 @@
   session/set-sounds!)
 (def play!        "Play a WAV once on the client (URL or data: URI)."
   session/play!)
+(def loop!        "Play a WAV on repeat until stop!." session/loop!)
+(def stop!        "Stop every playing instance of a source." session/stop!)
+(def stop-all!    "Stop every sound." session/stop-all!)
 (def set-menu!    "Replace the menu bar: a vector of {:title _ :items [...]},
   where an item is {:title _ :key \"n\" :on-pick (fn [state])}, {:sep true},
   or a submenu {:title _ :items [...]}. Realized natively (NSMenu) by the

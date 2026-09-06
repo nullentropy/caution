@@ -22,6 +22,7 @@ type serverMsg struct {
 	SID       string             `json:"sid"`
 	Theme     map[string]string  `json:"theme"`
 	Sounds    map[string]string  `json:"sounds"`
+	Loops     []string           `json:"loops"`
 	Metrics   map[string]float64 `json:"metrics"`
 	Menu      []MenuSpec         `json:"menu"`
 	Title     string             `json:"title"`
@@ -78,6 +79,7 @@ type patchOp struct {
 	Images  []string           `json:"images"`
 	Sounds  []string           `json:"sounds"`
 	Src     string             `json:"src"`
+	Loop    bool               `json:"loop"`
 	Meta    []metaSpec         `json:"meta"`
 }
 
@@ -130,7 +132,8 @@ type Config struct {
 	// PreloadSound and Play are the sound half: decode ahead of time, and play
 	// once. nil means the terminal is silent, as in shot mode.
 	PreloadSound func(src string)
-	Play         func(src string)
+	Play         func(src string, loop bool)
+	Stop         func(src string)
 }
 
 // Session is the native terminal's protocol client: connects, applies
@@ -153,7 +156,8 @@ type Session struct {
 	setTitle     func(title string)
 	preload      func(src string)
 	preloadSound func(src string)
-	play         func(src string)
+	play         func(src string, loop bool)
+	stop         func(src string)
 
 	queue chan func()
 
@@ -195,12 +199,15 @@ func NewSession(u *ui.Ui, cfg Config) *Session {
 		preload:      cfg.Preload,
 		preloadSound: cfg.PreloadSound,
 		play:         cfg.Play,
+		stop:         cfg.Stop,
 		queue:        make(chan func(), 256),
 		retry:        500 * time.Millisecond,
 	}
 	s.store = NewNodeStore(s)
 	u.OnAux = func(button int) { s.Event(0, "aux", button) }
-	u.PlaySound = cfg.Play
+	if cfg.Play != nil {
+		u.PlaySound = func(src string) { cfg.Play(src, false) }
+	}
 	s.showStatus(fmt.Sprintf("connecting to %s …", cfg.URL))
 	go s.connect()
 	return s
@@ -326,6 +333,14 @@ func (s *Session) handle(msg *serverMsg) {
 			s.ui.ApplyMetrics(msg.Metrics)
 		}
 		s.applySounds(msg.Sounds) // nil is silent, and replaces a table a resume left behind
+		if s.stop != nil {
+			s.stop("")
+		}
+		if s.play != nil {
+			for _, src := range msg.Loops {
+				s.play(src, true)
+			}
+		}
 		if msg.Menu != nil && s.setMenu != nil {
 			s.setMenu(msg.Menu)
 		}
@@ -431,7 +446,11 @@ func (s *Session) applyOp(op *patchOp) bool {
 		s.applyResources(op.Images, op.Sounds)
 	case "play":
 		if s.play != nil {
-			s.play(op.Src)
+			s.play(op.Src, op.Loop)
+		}
+	case "stop":
+		if s.stop != nil {
+			s.stop(op.Src)
 		}
 	case "sounds":
 		s.applySounds(op.Tokens)

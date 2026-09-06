@@ -64,6 +64,7 @@ type Session struct {
 	preloads      []string
 	soundPreloads []string
 	sounds        map[string]string
+	loops         []string
 
 	vw, vh   float64
 	onResize func(w, h float64)
@@ -294,7 +295,6 @@ func queryFloat(r *http.Request, key string) float64 {
 }
 
 // SetTheme pushes design tokens ("bg", "ink", "accent", ...) as color strings.
-// Called during mount it rides the mount message. Later it patches live.
 func (s *Session) SetTheme(tokens map[string]string) {
 	s.theme = tokens
 	if s.mounted {
@@ -306,9 +306,7 @@ func (s *Session) SetTheme(tokens map[string]string) {
 // logical-px numbers, the geometry half of theming. It restyles the widget
 // vocabulary (square vs rounded, compact vs comfortable) without per-widget
 // props. Unknown tokens are ignored by terminals, and per-node props still
-// override. MetricsCompact and MetricsComfortable are ready-made maps. Same
-// contract as SetTheme: called during mount it rides the mount message;
-// later it patches live.
+// override. MetricsCompact and MetricsComfortable are ready-made maps.
 func (s *Session) SetMetrics(tokens map[string]float64) {
 	s.metrics = tokens
 	if s.mounted {
@@ -317,7 +315,7 @@ func (s *Session) SetMetrics(tokens map[string]float64) {
 }
 
 // SetTitle names the window: the browser tab's title, the native window's
-// titlebar. Same contract as SetTheme: rides the mount, patches live.
+// titlebar.
 func (s *Session) SetTitle(title string) {
 	s.title = title
 	if s.mounted {
@@ -372,6 +370,33 @@ func (s *Session) PreloadSounds(srcs ...string) {
 func (s *Session) Play(src string) {
 	if s.mounted {
 		s.ops = append(s.ops, map[string]any{"op": "play", "src": src})
+	}
+}
+
+// Loop plays src on repeat until Stop
+func (s *Session) Loop(src string) {
+	if slices.Contains(s.loops, src) {
+		return
+	}
+	s.loops = append(s.loops, src)
+	if s.mounted {
+		s.ops = append(s.ops, map[string]any{"op": "play", "src": src, "loop": true})
+	}
+}
+
+// Stop stops every playing instance of src
+func (s *Session) Stop(src string) {
+	s.loops = slices.DeleteFunc(s.loops, func(l string) bool { return l == src })
+	if s.mounted {
+		s.ops = append(s.ops, map[string]any{"op": "stop", "src": src})
+	}
+}
+
+// StopAll stops every sound
+func (s *Session) StopAll() {
+	s.loops = nil
+	if s.mounted {
+		s.ops = append(s.ops, map[string]any{"op": "stop"})
 	}
 }
 
@@ -581,6 +606,9 @@ func (s *Session) sendMount() {
 	}
 	if s.sounds != nil {
 		msg["sounds"] = s.sounds
+	}
+	if len(s.loops) > 0 {
+		msg["loops"] = s.loops
 	}
 	if s.metrics != nil {
 		msg["metrics"] = s.metrics

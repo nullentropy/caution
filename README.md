@@ -263,12 +263,22 @@ prop per tick (`examples/nyan` runs 12fps this way on ~40 bytes per frame).
 Sounds are WAV files served the way images are, by URL or `data:` URI:
 
 ```go
-s.PreloadSounds("/assets/ding.wav") // decode ahead of time; rides the mount
+s.PreloadSounds("/assets/ding.wav") // decode ahead of time
 s.Play("/assets/ding.wav")          // from any handler or Update
 ```
 
 `Play` is fire and forget. WAV only (8/16/24/32-bit PCM and float, any
 channel count).
+
+You can have a sound keep going by looping it, and you can stop a or any sounds:
+
+```go
+s.Loop("/assets/alarm.wav") // repeats until Stop
+s.Stop("/assets/alarm.wav") // every playing instance
+s.StopAll()
+```
+
+A stop fades out over 10ms.
 
 Interaction feedback is declared ahead of time and fires from the client.
 
@@ -394,8 +404,13 @@ plays through its own op:
 ```jsonc
 {"op": "resource", "images": ["/assets/next.png"], "sounds": ["/assets/ding.wav"]}
 {"op": "play", "src": "/assets/ding.wav"}
+{"op": "play", "src": "/assets/alarm.wav", "loop": true}
+{"op": "stop", "src": "/assets/alarm.wav"}
 {"op": "sounds", "tokens": {"press": "/assets/click.wav"}}
 ```
+
+The mount carries `loops` alongside `sounds`, and a client stops everything it
+was playing before starting them.
 
 ### Client to server
 

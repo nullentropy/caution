@@ -5,8 +5,10 @@ import (
 	"encoding/base64"
 	"encoding/binary"
 	"errors"
+	"io"
 	"math"
 	"os"
+	"sync"
 	"testing"
 	"time"
 )
@@ -144,9 +146,44 @@ func TestConvertSpreadsMonoAndResamples(t *testing.T) {
 	}
 }
 
-type fakeSink struct{ plays chan int }
+type fakeSink struct {
+	mu    sync.Mutex
+	plays chan int
+	drain []int
+	ended chan int
+}
 
-func (f *fakeSink) Play(samples []float32) { f.plays <- len(samples) }
+func newFakeSink() *fakeSink {
+	return &fakeSink{plays: make(chan int, 16), ended: make(chan int, 16)}
+}
+
+func (f *fakeSink) Play(r io.Reader) {
+	f.mu.Lock()
+	id := len(f.drain)
+	f.drain = append(f.drain, 0)
+	f.mu.Unlock()
+	f.plays <- id
+	go func() {
+		buf := make([]byte, 4096)
+		for {
+			n, err := r.Read(buf)
+			f.mu.Lock()
+			f.drain[id] += n
+			f.mu.Unlock()
+			if err != nil {
+				f.ended <- id
+				return
+			}
+			time.Sleep(time.Millisecond)
+		}
+	}()
+}
+
+func (f *fakeSink) drained(id int) int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.drain[id]
+}
 
 func (f *fakeSink) expect(t *testing.T, n int) {
 	t.Helper()
@@ -164,6 +201,20 @@ func (f *fakeSink) expect(t *testing.T, n int) {
 	}
 }
 
+func (f *fakeSink) waitEnded(t *testing.T, id int) {
+	t.Helper()
+	for {
+		select {
+		case got := <-f.ended:
+			if got == id {
+				return
+			}
+		case <-time.After(2 * time.Second):
+			t.Fatalf("voice %d never reached EOF", id)
+		}
+	}
+}
+
 func tone() []byte {
 	var pcm bytes.Buffer
 	for i := 0; i < 480; i++ {
@@ -173,7 +224,7 @@ func tone() []byte {
 }
 
 func TestStorePlaysAfterFetchAndFromCache(t *testing.T) {
-	sink := &fakeSink{plays: make(chan int, 8)}
+	sink := newFakeSink()
 	fetched := make(chan string, 8)
 	st := &Store{
 		Fetch:    func(src string) ([]byte, error) { fetched <- src; return tone(), nil },
@@ -189,7 +240,7 @@ func TestStorePlaysAfterFetchAndFromCache(t *testing.T) {
 }
 
 func TestStoreCollapsesPlaysQueuedBehindOneFetch(t *testing.T) {
-	sink := &fakeSink{plays: make(chan int, 8)}
+	sink := newFakeSink()
 	release := make(chan struct{})
 	st := &Store{
 		Fetch:    func(string) ([]byte, error) { <-release; return tone(), nil },
@@ -203,7 +254,7 @@ func TestStoreCollapsesPlaysQueuedBehindOneFetch(t *testing.T) {
 }
 
 func TestStorePreloadDoesNotPlayAndDoesNotOpenTheDevice(t *testing.T) {
-	sink := &fakeSink{plays: make(chan int, 8)}
+	sink := newFakeSink()
 	opened := false
 	done := make(chan struct{})
 	st := &Store{
@@ -221,7 +272,7 @@ func TestStorePreloadDoesNotPlayAndDoesNotOpenTheDevice(t *testing.T) {
 }
 
 func TestStoreSurvivesBadSourcesAndNoDevice(t *testing.T) {
-	sink := &fakeSink{plays: make(chan int, 8)}
+	sink := newFakeSink()
 	st := &Store{
 		Fetch: func(src string) ([]byte, error) {
 			if src == "/missing.wav" {
@@ -245,7 +296,7 @@ func TestStoreSurvivesBadSourcesAndNoDevice(t *testing.T) {
 }
 
 func TestDataURISources(t *testing.T) {
-	sink := &fakeSink{plays: make(chan int, 8)}
+	sink := newFakeSink()
 	st := &Store{OpenSink: func() (Sink, error) { return sink, nil }}
 	st.Play("data:audio/wav;base64," + b64(tone()))
 	sink.expect(t, 1)
@@ -268,7 +319,7 @@ func TestOtoSinkDrains(t *testing.T) {
 		t.Fatal(err)
 	}
 	samples := clip.Convert(Rate, Channels)
-	sink.Play(samples) // the production path, fire and forget
+	sink.Play(&voice{samples: samples, fadeLeft: -1, done: func() {}})
 
 	// and the same bytes through a player we can watch drain
 	buf := make([]byte, len(samples)*4)
@@ -287,4 +338,80 @@ func TestOtoSinkDrains(t *testing.T) {
 	if err := p.Err(); err != nil {
 		t.Fatal(err)
 	}
+}
+
+const onePass = 480 * Channels * 4
+
+func TestOneShotEndsAndIsReaped(t *testing.T) {
+	sink := newFakeSink()
+	st := &Store{
+		Fetch:    func(string) ([]byte, error) { return tone(), nil },
+		OpenSink: func() (Sink, error) { return sink, nil },
+	}
+	st.Play("/a.wav")
+	sink.expect(t, 1)
+	sink.waitEnded(t, 0)
+	if got := sink.drained(0); got != onePass {
+		t.Fatalf("drained %d bytes, want one pass of %d", got, onePass)
+	}
+	st.mu.Lock()
+	left := len(st.voices["/a.wav"])
+	st.mu.Unlock()
+	if left != 0 {
+		t.Fatalf("%d voices still tracked after the clip ended", left)
+	}
+}
+
+func TestLoopRepeatsUntilStoppedAndFadesOut(t *testing.T) {
+	sink := newFakeSink()
+	st := &Store{
+		Fetch:    func(string) ([]byte, error) { return tone(), nil },
+		OpenSink: func() (Sink, error) { return sink, nil },
+	}
+	st.Loop("/a.wav")
+	sink.expect(t, 1)
+	time.Sleep(40 * time.Millisecond)
+	before := sink.drained(0)
+	if before < 3*onePass {
+		t.Fatalf("drained only %d bytes after 40ms: not looping", before)
+	}
+	st.Stop("/a.wav")
+	sink.waitEnded(t, 0)
+	if extra := sink.drained(0) - before; extra > fadeSamples*4+4*4096 {
+		t.Fatalf("%d bytes after Stop, want no more than the fade", extra)
+	}
+
+	st.Loop("/a.wav")
+	sink.expect(t, 1)
+	st.StopAll()
+	sink.waitEnded(t, 1)
+}
+
+func TestLoopIsIdempotentWhilePlaying(t *testing.T) {
+	sink := newFakeSink()
+	st := &Store{
+		Fetch:    func(string) ([]byte, error) { return tone(), nil },
+		OpenSink: func() (Sink, error) { return sink, nil },
+	}
+	st.Loop("/a.wav")
+	sink.expect(t, 1)
+	st.Loop("/a.wav")
+	st.Loop("/a.wav")
+	sink.expect(t, 0)
+	st.StopAll()
+	sink.waitEnded(t, 0)
+}
+
+func TestStopBeforeDecodeCancelsThePlay(t *testing.T) {
+	sink := newFakeSink()
+	release := make(chan struct{})
+	st := &Store{
+		Fetch:    func(string) ([]byte, error) { <-release; return tone(), nil },
+		OpenSink: func() (Sink, error) { return sink, nil },
+	}
+	st.Play("/slow.wav")
+	st.Loop("/slow.wav")
+	st.Stop("/slow.wav")
+	close(release)
+	sink.expect(t, 0)
 }

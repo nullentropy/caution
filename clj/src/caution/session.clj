@@ -44,6 +44,7 @@
                        (:theme m)    (assoc "theme" (:theme m))
                        (:metrics m)  (assoc "metrics" (:metrics m))
                        (:sounds m)   (assoc "sounds" (:sounds m))
+                       (seq (:loops m)) (assoc "loops" (:loops m))
                        (:menu m)     (assoc "menu" (:menu m))
                        (:title m)    (assoc "title" (:title m))
                        (:keys m)     (assoc "keys" (:keys m))
@@ -206,6 +207,28 @@
   browser drops sounds until the user has clicked or typed in the page"
   [sess src]
   (send-ops! sess [{"op" "play" "src" src}])
+  nil)
+
+(defn loop!
+  "Play src on repeat until stop!"
+  [sess src]
+  (when-not (some #{src} (:loops @sess))
+    (swap! sess update :loops (fnil conj []) src)
+    (send-ops! sess [{"op" "play" "src" src "loop" true}]))
+  nil)
+
+(defn stop!
+  "Stop every playing instance of src, looping or not"
+  [sess src]
+  (swap! sess update :loops (fn [ls] (vec (remove #{src} ls))))
+  (send-ops! sess [{"op" "stop" "src" src}])
+  nil)
+
+(defn stop-all!
+  "Stop every sound"
+  [sess]
+  (swap! sess assoc :loops nil)
+  (send-ops! sess [{"op" "stop"}])
   nil)
 
 (defn set-keys!

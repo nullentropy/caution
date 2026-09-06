@@ -2,20 +2,26 @@ package audio
 
 import (
 	"encoding/base64"
+	"encoding/binary"
 	"errors"
+	"io"
 	"log"
+	"math"
 	"net/url"
 	"strings"
 	"sync"
+	"sync/atomic"
 )
 
 const (
 	Rate     = 48000
 	Channels = 2
+
+	fadeSamples = Rate / 100 * Channels
 )
 
 type Sink interface {
-	Play(samples []float32)
+	Play(r io.Reader)
 }
 
 type Store struct {
@@ -26,43 +32,122 @@ type Store struct {
 	opened bool
 	sink   Sink
 	clips  map[string]*clipEntry
+	voices map[string][]*voice
 }
 
 type clipEntry struct {
-	samples []float32
-	err     error
-	loading bool
-	pending bool
+	samples     []float32
+	err         error
+	loading     bool
+	pendingOnce bool
+	pendingLoop bool
 }
 
-func (s *Store) Preload(src string) { s.load(src, false) }
+type voice struct {
+	samples  []float32
+	pos      int
+	loop     bool
+	stop     atomic.Bool
+	fadeLeft int
+	finished bool
+	done     func()
+}
 
-func (s *Store) Play(src string) { s.load(src, true) }
+func (v *voice) Read(p []byte) (int, error) {
+	if v.finished {
+		return 0, io.EOF
+	}
+	frames := len(p) / (4 * Channels)
+	if frames == 0 {
+		return 0, io.ErrShortBuffer
+	}
+	if v.stop.Load() && v.fadeLeft < 0 {
+		v.fadeLeft = fadeSamples
+	}
+	i := 0
+	for ; i < frames*Channels; i++ {
+		if v.pos >= len(v.samples) {
+			if !v.loop {
+				break
+			}
+			v.pos = 0
+		}
+		f := v.samples[v.pos]
+		v.pos++
+		if v.fadeLeft >= 0 {
+			if v.fadeLeft == 0 {
+				break
+			}
+			f *= float32(v.fadeLeft) / float32(fadeSamples)
+			v.fadeLeft--
+		}
+		binary.LittleEndian.PutUint32(p[i*4:], math.Float32bits(f))
+	}
+	if i == 0 {
+		v.finished = true
+		v.done()
+		return 0, io.EOF
+	}
+	return i * 4, nil
+}
 
-func (s *Store) load(src string, play bool) {
+func (s *Store) Preload(src string) { s.load(src, false, false) }
+
+func (s *Store) Play(src string) { s.load(src, true, false) }
+
+func (s *Store) Loop(src string) { s.load(src, true, true) }
+
+func (s *Store) Stop(src string) {
+	s.mu.Lock()
+	if e := s.clips[src]; e != nil {
+		e.pendingOnce, e.pendingLoop = false, false
+	}
+	for _, v := range s.voices[src] {
+		v.stop.Store(true)
+	}
+	s.mu.Unlock()
+}
+
+func (s *Store) StopAll() {
+	s.mu.Lock()
+	for _, e := range s.clips {
+		e.pendingOnce, e.pendingLoop = false, false
+	}
+	for _, vs := range s.voices {
+		for _, v := range vs {
+			v.stop.Store(true)
+		}
+	}
+	s.mu.Unlock()
+}
+
+func (s *Store) load(src string, play, loop bool) {
 	s.mu.Lock()
 	if s.clips == nil {
 		s.clips = map[string]*clipEntry{}
 	}
 	e := s.clips[src]
-	if e == nil {
-		e = &clipEntry{loading: true, pending: play}
+	fresh := e == nil
+	if fresh {
+		e = &clipEntry{loading: true}
 		s.clips[src] = e
-		s.mu.Unlock()
-		go s.fetch(src, e)
-		return
 	}
 	if e.loading {
-		if play {
-			e.pending = true
+		if play && loop {
+			e.pendingLoop = true
+		} else if play {
+			e.pendingOnce = true
 		}
 		s.mu.Unlock()
+		if fresh {
+			go s.fetch(src, e)
+		}
 		return
 	}
 	samples, err := e.samples, e.err
 	s.mu.Unlock()
 	if play && err == nil {
-		s.play(samples)
+		s.start(src, samples, loop)
 	}
 }
 
@@ -80,11 +165,17 @@ func (s *Store) fetch(src string, e *clipEntry) {
 	}
 	s.mu.Lock()
 	e.samples, e.err, e.loading = samples, err, false
-	pending := e.pending
-	e.pending = false
+	once, loop := e.pendingOnce, e.pendingLoop
+	e.pendingOnce, e.pendingLoop = false, false
 	s.mu.Unlock()
-	if pending && err == nil {
-		s.play(samples)
+	if err != nil {
+		return
+	}
+	if once {
+		s.start(src, samples, false)
+	}
+	if loop {
+		s.start(src, samples, true)
 	}
 }
 
@@ -98,8 +189,19 @@ func (s *Store) bytes(src string) ([]byte, error) {
 	return s.Fetch(src)
 }
 
-func (s *Store) play(samples []float32) {
+func (s *Store) start(src string, samples []float32, loop bool) {
+	if len(samples) == 0 {
+		return
+	}
 	s.mu.Lock()
+	if loop {
+		for _, v := range s.voices[src] {
+			if v.loop && !v.stop.Load() {
+				s.mu.Unlock()
+				return
+			}
+		}
+	}
 	if !s.opened {
 		s.opened = true
 		open := s.OpenSink
@@ -112,10 +214,31 @@ func (s *Store) play(samples []float32) {
 		}
 	}
 	sink := s.sink
-	s.mu.Unlock()
-	if sink != nil && len(samples) > 0 {
-		sink.Play(samples)
+	if sink == nil {
+		s.mu.Unlock()
+		return
 	}
+	v := &voice{samples: samples, loop: loop, fadeLeft: -1}
+	v.done = func() {
+		s.mu.Lock()
+		vs := s.voices[src]
+		for i, w := range vs {
+			if w == v {
+				s.voices[src] = append(vs[:i], vs[i+1:]...)
+				break
+			}
+		}
+		if len(s.voices[src]) == 0 {
+			delete(s.voices, src)
+		}
+		s.mu.Unlock()
+	}
+	if s.voices == nil {
+		s.voices = map[string][]*voice{}
+	}
+	s.voices[src] = append(s.voices[src], v)
+	s.mu.Unlock()
+	sink.Play(v)
 }
 
 func decodeDataURI(src string) ([]byte, error) {

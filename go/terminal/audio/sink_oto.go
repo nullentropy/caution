@@ -1,16 +1,13 @@
 package audio
 
 import (
-	"bytes"
-	"encoding/binary"
-	"math"
+	"io"
 
 	"github.com/ebitengine/oto/v3"
 )
 
 type otoSink struct{ ctx *oto.Context }
 
-// openOto opens the platform's audio device through oto
 func openOto() (Sink, error) {
 	ctx, ready, err := oto.NewContext(&oto.NewContextOptions{
 		SampleRate:   Rate,
@@ -24,10 +21,6 @@ func openOto() (Sink, error) {
 	return &otoSink{ctx: ctx}, nil
 }
 
-func (o *otoSink) Play(samples []float32) {
-	buf := make([]byte, len(samples)*4)
-	for i, f := range samples {
-		binary.LittleEndian.PutUint32(buf[i*4:], math.Float32bits(f))
-	}
-	o.ctx.NewPlayer(bytes.NewReader(buf)).Play()
+func (o *otoSink) Play(r io.Reader) {
+	o.ctx.NewPlayer(r).Play()
 }

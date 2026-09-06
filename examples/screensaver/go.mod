@@ -20,5 +20,4 @@ require (
 // the checkout instead:
 replace github.com/nullentropy/caution/go => ../../go
 
-// The macOS .app packager rides along as a Go tool - `go tool appbundle`.
 tool github.com/nullentropy/caution/go/cmd/appbundle
