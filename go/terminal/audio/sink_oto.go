@@ -2,11 +2,17 @@ package audio
 
 import (
 	"io"
+	"sync"
 
 	"github.com/ebitengine/oto/v3"
 )
 
-type otoSink struct{ ctx *oto.Context }
+type otoSink struct {
+	ctx *oto.Context
+
+	mu      sync.Mutex
+	playing []*oto.Player
+}
 
 func openOto() (Sink, error) {
 	ctx, ready, err := oto.NewContext(&oto.NewContextOptions{
@@ -22,5 +28,18 @@ func openOto() (Sink, error) {
 }
 
 func (o *otoSink) Play(r io.Reader) {
-	o.ctx.NewPlayer(r).Play()
+	p := o.ctx.NewPlayer(r)
+	p.Play()
+	o.mu.Lock()
+
+	// we have to keep references to playing sounds otherwise once they become
+	// unreachable (after GC) they'll stop before we want them to
+	live := o.playing[:0]
+	for _, q := range o.playing {
+		if q.IsPlaying() {
+			live = append(live, q)
+		}
+	}
+	o.playing = append(live, p)
+	o.mu.Unlock()
 }

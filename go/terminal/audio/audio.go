@@ -28,11 +28,13 @@ type Store struct {
 	Fetch    func(src string) ([]byte, error)
 	OpenSink func() (Sink, error)
 
-	mu     sync.Mutex
-	opened bool
-	sink   Sink
-	clips  map[string]*clipEntry
-	voices map[string][]*voice
+	mu      sync.Mutex
+	opened  bool // open has been started
+	deaf    bool // the open failed so drop all sounds
+	sink    Sink
+	pending []*voice // waiting for the device to finish opening
+	clips   map[string]*clipEntry
+	voices  map[string][]*voice
 }
 
 type clipEntry struct {
@@ -202,19 +204,7 @@ func (s *Store) start(src string, samples []float32, loop bool) {
 			}
 		}
 	}
-	if !s.opened {
-		s.opened = true
-		open := s.OpenSink
-		if open == nil {
-			open = openOto
-		}
-		var err error
-		if s.sink, err = open(); err != nil {
-			log.Printf("caution: audio output unavailable: %v", err)
-		}
-	}
-	sink := s.sink
-	if sink == nil {
+	if s.deaf {
 		s.mu.Unlock()
 		return
 	}
@@ -237,8 +227,51 @@ func (s *Store) start(src string, samples []float32, loop bool) {
 		s.voices = map[string][]*voice{}
 	}
 	s.voices[src] = append(s.voices[src], v)
+
+	if s.sink != nil {
+		sink := s.sink
+		s.mu.Unlock()
+		sink.Play(v)
+		return
+	}
+
+	s.pending = append(s.pending, v)
+	if s.opened {
+		s.mu.Unlock()
+		return
+	}
+	s.opened = true
+	open := s.OpenSink
+	if open == nil {
+		open = openOto
+	}
 	s.mu.Unlock()
-	sink.Play(v)
+	go func() {
+		sink, err := open()
+		s.mu.Lock()
+		if err != nil {
+			log.Printf("caution: audio output unavailable: %v", err)
+			s.deaf = true
+			dropped := s.pending
+			s.pending = nil
+			s.mu.Unlock()
+			for _, pv := range dropped {
+				pv.done()
+			}
+			return
+		}
+		s.sink = sink
+		queued := s.pending
+		s.pending = nil
+		s.mu.Unlock()
+		for _, pv := range queued {
+			if pv.stop.Load() {
+				pv.done()
+				continue
+			}
+			sink.Play(pv)
+		}
+	}()
 }
 
 func decodeDataURI(src string) ([]byte, error) {

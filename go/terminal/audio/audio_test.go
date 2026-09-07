@@ -8,6 +8,7 @@ import (
 	"io"
 	"math"
 	"os"
+	"runtime"
 	"sync"
 	"testing"
 	"time"
@@ -304,16 +305,136 @@ func TestDataURISources(t *testing.T) {
 
 func b64(b []byte) string { return base64.StdEncoding.EncodeToString(b) }
 
-// TestOtoSinkDrains plays through the real output device, so it runs only when
-// asked: CAUTION_AUDIO_DEVICE=1 go test ./terminal/audio -run Oto
-func TestOtoSinkDrains(t *testing.T) {
+// waitLoaded blocks until a preloaded clip has finished decoding, so a
+// following Play reaches start() with the clip already cached
+func waitLoaded(t *testing.T, st *Store, src string) {
+	t.Helper()
+	for i := 0; i < 400; i++ {
+		st.mu.Lock()
+		e := st.clips[src]
+		ready := e != nil && !e.loading
+		st.mu.Unlock()
+		if ready {
+			return
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	t.Fatalf("clip %s never finished preloading", src)
+}
+
+// Opening the device blocks until the hardware is ready. Playing a cached clip
+// must not wait on that, or the first gesture sound freezes the caller, which
+// for a gesture is the render thread.
+func TestStoreOpensDeviceOffTheCallerGoroutine(t *testing.T) {
+	sink := newFakeSink()
+	release := make(chan struct{})
+	opening := make(chan struct{})
+	st := &Store{
+		Fetch: func(string) ([]byte, error) { return tone(), nil },
+		OpenSink: func() (Sink, error) {
+			close(opening)
+			<-release
+			return sink, nil
+		},
+	}
+	st.Preload("/a.wav")
+	waitLoaded(t, st, "/a.wav")
+
+	returned := make(chan struct{})
+	go func() { st.Play("/a.wav"); close(returned) }()
+	select {
+	case <-returned:
+	case <-time.After(time.Second):
+		t.Fatal("Play blocked while the device was opening")
+	}
+	<-opening
+	select {
+	case <-sink.plays:
+		t.Fatal("a voice played before the device was ready")
+	case <-time.After(30 * time.Millisecond):
+	}
+	close(release)
+	sink.expect(t, 1) // the queued voice starts once the device lands
+}
+
+// oto allows a single context per process, so the device-backed tests share one
+// sink instead of each opening its own.
+var sharedDevice = sync.OnceValues(openOto)
+
+func deviceSink(t *testing.T) *otoSink {
+	t.Helper()
 	if os.Getenv("CAUTION_AUDIO_DEVICE") == "" {
 		t.Skip("set CAUTION_AUDIO_DEVICE=1 to play through the real output device")
 	}
-	sink, err := openOto()
+	sink, err := sharedDevice()
 	if err != nil {
 		t.Fatal(err)
 	}
+	return sink.(*otoSink)
+}
+
+// A looping player must survive garbage collection: oto closes a player the
+// moment it is unreachable, so the sink has to hold the reference. Runs only
+// with a real device: CAUTION_AUDIO_DEVICE=1 go test ./terminal/audio -run Loop
+func TestOtoSinkKeepsLoopAliveAcrossGC(t *testing.T) {
+	sink := deviceSink(t)
+	clip, err := Decode(tone())
+	if err != nil {
+		t.Fatal(err)
+	}
+	v := &voice{samples: clip.Convert(Rate, Channels), loop: true, fadeLeft: -1, done: func() {}}
+	sink.Play(v)
+	sink.mu.Lock()
+	mine := sink.playing[len(sink.playing)-1]
+	sink.mu.Unlock()
+	for i := 0; i < 5; i++ {
+		runtime.GC()
+		time.Sleep(20 * time.Millisecond)
+	}
+	sink.mu.Lock()
+	held := false
+	for _, p := range sink.playing {
+		if p == mine {
+			held = true
+		}
+	}
+	playing := mine.IsPlaying()
+	sink.mu.Unlock()
+	v.stop.Store(true) // fade it out so it doesn't bleed into the next device test
+	if !held || !playing {
+		t.Fatalf("looping player dropped or stopped after GC (held=%v playing=%v)", held, playing)
+	}
+}
+
+func TestStopWhileDeviceOpensNeverPlays(t *testing.T) {
+	sink := newFakeSink()
+	release := make(chan struct{})
+	st := &Store{
+		Fetch: func(string) ([]byte, error) { return tone(), nil },
+		OpenSink: func() (Sink, error) {
+			<-release
+			return sink, nil
+		},
+	}
+	st.Preload("/a.wav")
+	waitLoaded(t, st, "/a.wav")
+	st.Loop("/a.wav")
+	st.Play("/a.wav")
+	st.Stop("/a.wav")
+	close(release)
+	sink.expect(t, 0)
+	st.mu.Lock()
+	left := len(st.voices["/a.wav"])
+	st.mu.Unlock()
+	if left != 0 {
+		t.Fatalf("%d voices still tracked after a stop during the device open", left)
+	}
+}
+
+// TestOtoSinkDrains plays through the real output device, so it runs only when
+// asked: CAUTION_AUDIO_DEVICE=1 go test ./terminal/audio -run Oto
+func TestOtoSinkDrains(t *testing.T) {
+	sink := deviceSink(t)
 	clip, err := Decode(tone())
 	if err != nil {
 		t.Fatal(err)
@@ -326,7 +447,7 @@ func TestOtoSinkDrains(t *testing.T) {
 	for i, f := range samples {
 		binary.LittleEndian.PutUint32(buf[i*4:], math.Float32bits(f))
 	}
-	p := sink.(*otoSink).ctx.NewPlayer(bytes.NewReader(buf))
+	p := sink.ctx.NewPlayer(bytes.NewReader(buf))
 	p.Play()
 	deadline := time.Now().Add(3 * time.Second)
 	for p.IsPlaying() {
