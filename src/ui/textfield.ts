@@ -243,7 +243,7 @@ export class TextField extends Widget {
   // -- geometry helpers ---------------------------------------------------------
 
   private run(): TextRun {
-      return this.ui!.measure(this.fieldFont(), this.sensitive? '*'.repeat(this.value.length) : this.value);
+    return this.ui!.measure(this.fieldFont(), this.sensitive? '*'.repeat(this.value.length) : this.value);
   }
 
   // X offset (from the text origin) of a UTF-16 boundary
