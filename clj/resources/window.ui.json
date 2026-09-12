@@ -236,6 +236,7 @@
                     "name": "prefix",
                     "p": {
                       "value": "row",
+                      "sensitive": true,
                       "placeholder": "row prefix \u2014 Enter commits (try \"boom\")"
                     }
                   },

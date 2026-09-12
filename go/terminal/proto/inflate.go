@@ -418,6 +418,9 @@ func (ns *NodeStore) Apply(w ui.Widget, id int, p props) {
 		if v, ok := p["mono"]; ok {
 			t.Mono, _ = boolean(v)
 		}
+		if v, ok := p["sensitive"]; ok {
+			t.Sensitive, _ = boolean(v)
+		}
 		// One-shot commands ride as monotonic props so they replay safely on
 		// remount: resetSeq force-clears (even focused), focusSeq takes focus.
 		if v, ok := p["resetSeq"]; ok {

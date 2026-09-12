@@ -103,7 +103,7 @@
                   {
                     "type": "textfield",
                     "name": "prefix",
-                    "p": { "value": "row", "placeholder": "row prefix - Enter commits" }
+                    "p": { "value": "row", "placeholder": "row prefix - Enter commits", "sensitive": true }
                   },
                   { "type": "label", "p": { "text": "Theme", "size": 13, "color": "$inkDim" } },
                   {

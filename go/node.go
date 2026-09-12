@@ -603,6 +603,7 @@ func (n *Node) FontSize(s float64) *Node { return n.set("size", s) }
 func (n *Node) Weight(w int) *Node       { return n.set("weight", w) }
 func (n *Node) Italic() *Node            { return n.set("italic", true) }
 func (n *Node) Mono() *Node              { return n.set("mono", true) }
+func (n *Node) Sensitive() *Node         { return n.set("sensitive", true) }
 func (n *Node) Selectable() *Node        { return n.set("selectable", true) }
 func (n *Node) Primary() *Node           { return n.set("primary", true) }
 

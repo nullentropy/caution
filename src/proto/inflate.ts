@@ -242,6 +242,7 @@ export class NodeStore {
       if ('placeholder' in p) w.placeholder = str(p.placeholder) ?? '';
       if ('size' in p) w.fontSize = num(p.size) ?? 14;
       if ('mono' in p) w.mono = bool(p.mono) ?? false;
+      if ('sensitive' in p) w.sensitive = bool(p.sensitive) ?? false;
       // resetSeq force-clears (even focused)
       if ('resetSeq' in p) {
         const seq = num(p.resetSeq) ?? 0;

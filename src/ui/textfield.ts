@@ -27,6 +27,9 @@ export class TextField extends Widget {
   // text size in logical px (`size` prop) and family (`mono` prop)
   fontSize = 14;
   mono = false;
+
+  sensitive = false;
+
   // fires on every edit (wire-level debouncing happens in the protocol layer)
   onInput: ((v: string) => void) | null = null;
   onCommit: ((v: string) => void) | null = null;
@@ -189,16 +192,14 @@ export class TextField extends Widget {
     const innerW = b.w - metrics.spacePad * 2;
     const textY = b.y + (b.h - (run.ascent + run.descent)) / 2;
     const textH = run.ascent + run.descent;
-
-    // keep the caret inside the viewport by sliding the text
+     // keep the caret inside the viewport by sliding the text
     if (this.focused) {
       const caretX = this.xAtCU(this.selEnd);
       if (caretX - this.scrollX > innerW) this.scrollX = caretX - innerW;
       if (caretX - this.scrollX < 0) this.scrollX = caretX;
     }
     const textX = b.x + metrics.spacePad - this.scrollX;
-
-    dl.pushClip(inset(b, 1.5));
+     dl.pushClip(inset(b, 1.5));
     if (this.value === '' && this.placeholder) {
       dl.text(this.placeholder, b.x + metrics.spacePad, textY, this.fieldFont(), theme.inkFaint);
     }
@@ -210,16 +211,15 @@ export class TextField extends Widget {
         radius: 2,
       });
     }
-    dl.text(this.value, textX, textY, this.fieldFont(), theme.ink);
+    dl.text(this.sensitive ? '*'.repeat(this.value.length) : this.value, textX, textY, this.fieldFont(), theme.ink);
     if (this.focused && this.selStart === this.selEnd && this.caretOn) {
       dl.rect(rect(textX + this.xAtCU(this.selEnd), textY - 1, 1.5, textH + 2), {
         color: theme.accent,
       });
     }
     dl.popClip();
-  }
-
-  override onPointerDown(x: number, _y: number, detail: number): void {
+}
+ override onPointerDown(x: number, _y: number, detail: number): void {
     const cu = this.cuAtX(x - (this.bounds.x + metrics.spacePad) + this.scrollX);
     if (detail >= 3) {
       funnel.setSelection(0, this.value.length);
@@ -243,7 +243,7 @@ export class TextField extends Widget {
   // -- geometry helpers ---------------------------------------------------------
 
   private run(): TextRun {
-    return this.ui!.measure(this.fieldFont(), this.value);
+      return this.ui!.measure(this.fieldFont(), this.sensitive? '*'.repeat(this.value.length) : this.value);
   }
 
   // X offset (from the text origin) of a UTF-16 boundary

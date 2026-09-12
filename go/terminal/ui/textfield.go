@@ -17,8 +17,9 @@ type TextField struct {
 	// token): pill search boxes and other chrome-strip shapes.
 	Radius *float32
 	// FontSize in logical px (`size` prop) and family (`mono` prop).
-	FontSize float32
-	Mono     bool
+	FontSize  float32
+	Mono      bool
+	Sensitive bool
 	// Focused mirrors Ui focus so the protocol layer can honor local echo
 	// (a focused field ignores server value sets).
 	Focused bool
@@ -463,7 +464,7 @@ func runeBoundaryXs(run *text.Run, runeCount int) []float32 {
 // boundaryXs maps every rune boundary of the value to an x offset from the
 // text origin.
 func (t *TextField) boundaryXs() []float32 {
-	run := t.UI.Measure(t.font(), t.Value)
+	run := t.UI.Measure(t.font(), t.displayValue())
 	return runeBoundaryXs(run, len([]rune(t.Value)))
 }
 
@@ -484,6 +485,14 @@ func (t *TextField) runeAtX(xs []float32, x float32) int {
 
 // -- painting -----------------------------------------------------------------------
 
+func (t *TextField) displayValue() string {
+	if t.Sensitive {
+		return strings.Repeat("*", len(t.Value))
+	}
+
+	return t.Value
+}
+
 func (t *TextField) PaintSelf(dl *gfx.DisplayList) {
 	b := t.Bounds
 	if t.UI.ShowFocusRing(t) {
@@ -499,7 +508,8 @@ func (t *TextField) PaintSelf(dl *gfx.DisplayList) {
 		Radius: gfx.CornerRadius(radiusOr(t.Radius, Metrics.RadiusControl)), BorderWidth: bw, BorderColor: border,
 	})
 
-	run := t.UI.Measure(t.font(), t.Value)
+	val := t.displayValue()
+	run := t.UI.Measure(t.font(), val)
 	xs := t.boundaryXs()
 	innerW := b.W - tfPadX()*2
 	textH := run.Ascent + run.Descent
@@ -528,7 +538,8 @@ func (t *TextField) PaintSelf(dl *gfx.DisplayList) {
 		dl.Fill(gfx.R(textX+x0-1, textY-1, x1-x0+2, textH+2),
 			gfx.WithAlpha(*Theme["accent"], 0.35), gfx.CornerRadius(2))
 	}
-	dl.Text(t.Value, textX, textY, t.font(), *Theme["ink"])
+
+	dl.Text(val, textX, textY, t.font(), *Theme["ink"])
 	if t.Focused && s == e && t.blinkOn() {
 		dl.Fill(gfx.R(textX+t.xAt(xs, t.selEnd), textY-1, 1.5, textH+2),
 			*Theme["accent"], gfx.Corners{})
