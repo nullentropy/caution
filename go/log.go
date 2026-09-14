@@ -10,6 +10,8 @@ import (
 func init() {
 	ev := os.Getenv("CLOG_VERBOSE")
 
+	zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
+
 	if strings.EqualFold(ev, "v") {
 		zerolog.SetGlobalLevel(zerolog.DebugLevel)
 	} else if strings.EqualFold(ev, "vv") {
