@@ -1,7 +1,6 @@
 package ui
 
 import (
-	"log"
 	"math"
 	"runtime/debug"
 	"strings"
@@ -9,6 +8,8 @@ import (
 
 	"github.com/nullentropy/caution/go/terminal/gfx"
 	"github.com/nullentropy/caution/go/terminal/text"
+
+	"github.com/rs/zerolog/log"
 )
 
 // TextSelection is a drag selection over a Label's glyph boundaries. Start
@@ -469,7 +470,7 @@ func (u *Ui) dismissOverlay() {
 func guardInput(what string, fn func()) {
 	defer func() {
 		if r := recover(); r != nil {
-			log.Printf("caution terminal: panic in %s input: %v\n%s", what, r, debug.Stack())
+			log.Error().Msgf("caution terminal: panic in %s input: %v\n%s", what, r, debug.Stack())
 		}
 	}()
 	fn()

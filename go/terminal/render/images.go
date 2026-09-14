@@ -8,13 +8,14 @@ import (
 	_ "image/gif"
 	_ "image/jpeg"
 	_ "image/png"
-	"log"
 	"strings"
 	"sync"
 
 	"github.com/nullentropy/caution/go/terminal/gfx"
 
 	"github.com/nullentropy/caution/go/terminal/glx"
+
+	"github.com/rs/zerolog/log"
 )
 
 type imgState int
@@ -82,7 +83,7 @@ func (s *ImageStore) load(src string) {
 	pix, w, h, err := s.fetchAndDecode(src)
 	d := decodedImage{src: src, pix: pix, w: w, h: h, err: err != nil}
 	if err != nil {
-		log.Printf("caution: image %q failed: %v", src, err)
+		log.Warn().Msgf("caution: image %q failed: %v", src, err)
 	}
 	s.mu.Lock()
 	s.done = append(s.done, d)

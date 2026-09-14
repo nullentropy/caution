@@ -5,12 +5,13 @@ import (
 	"encoding/binary"
 	"errors"
 	"io"
-	"log"
 	"math"
 	"net/url"
 	"strings"
 	"sync"
 	"sync/atomic"
+
+	"github.com/rs/zerolog/log"
 )
 
 const (
@@ -163,7 +164,7 @@ func (s *Store) fetch(src string, e *clipEntry) {
 		}
 	}
 	if err != nil {
-		log.Printf("caution: sound %s: %v", src, err)
+		log.Trace().Msgf("caution: sound %s: %v", src, err)
 	}
 	s.mu.Lock()
 	e.samples, e.err, e.loading = samples, err, false
@@ -250,7 +251,7 @@ func (s *Store) start(src string, samples []float32, loop bool) {
 		sink, err := open()
 		s.mu.Lock()
 		if err != nil {
-			log.Printf("caution: audio output unavailable: %v", err)
+			log.Warn().Msgf("caution: audio output unavailable: %v", err)
 			s.deaf = true
 			dropped := s.pending
 			s.pending = nil

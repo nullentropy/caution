@@ -1,11 +1,12 @@
 package proto
 
 import (
-	"log"
 	"time"
 
 	"github.com/nullentropy/caution/go/terminal/gfx"
 	"github.com/nullentropy/caution/go/terminal/ui"
+
+	"github.com/rs/zerolog/log"
 )
 
 type props = map[string]any
@@ -922,7 +923,7 @@ func construct(typ string) ui.Widget {
 	case "glass":
 		return ui.NewGlass()
 	default:
-		log.Printf("caution: unknown node type %q, using panel", typ)
+		log.Error().Msgf("caution: unknown node type %q, using panel", typ)
 		return ui.NewPanel()
 	}
 }
