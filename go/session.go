@@ -5,7 +5,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"log"
 	"math"
 	"net"
 	"net/http"
@@ -20,6 +19,7 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/rs/zerolog/log"
 )
 
 // MountFunc builds a session's initial tree. It runs once per session, not
@@ -174,10 +174,10 @@ func ServeOpts(addr string, mount MountFunc, opts Options) error {
 		if err != nil {
 			return err
 		}
-		log.Printf("caution: listening on unix socket %s", path)
+		log.Info().Msgf("caution: listening on unix socket %s", path)
 		return http.Serve(l, nil)
 	}
-	log.Printf("caution: listening on %s", addr)
+	log.Info().Msgf("caution: listening on %s", addr)
 	if opts.TLSCert != "" && opts.TLSKey != "" {
 		return http.ListenAndServeTLS(addr, opts.TLSCert, opts.TLSKey, nil)
 	}
@@ -191,7 +191,7 @@ func wsHandler(mount MountFunc, opts Options) http.HandlerFunc {
 		if opts.Authorize != nil {
 			id, err := opts.Authorize(r)
 			if err != nil {
-				log.Printf("caution: connection rejected (%s): %v", r.RemoteAddr, err)
+				log.Info().Msgf("caution: connection rejected (%s): %v", r.RemoteAddr, err)
 				http.Error(w, "forbidden", http.StatusForbidden)
 				return
 			}
@@ -199,7 +199,7 @@ func wsHandler(mount MountFunc, opts Options) http.HandlerFunc {
 		}
 		conn, err := up.Upgrade(w, r, nil)
 		if err != nil {
-			log.Printf("caution: upgrade failed: %v", err)
+			log.Info().Msgf("caution: upgrade failed: %v", err)
 			return
 		}
 		vw := queryFloat(r, "vw")
@@ -210,7 +210,7 @@ func wsHandler(mount MountFunc, opts Options) http.HandlerFunc {
 				if !reflect.DeepEqual(s.identity, identity) {
 					// A resume token is not a credential: it only re-adopts a
 					// session minted for the same identity.
-					log.Printf("caution: session %d resume denied - identity mismatch", s.sid)
+					log.Info().Msgf("caution: session %d resume denied - identity mismatch", s.sid)
 				} else {
 					clientSeq := -1
 					if q := r.URL.Query().Get("seq"); q != "" {
@@ -240,7 +240,7 @@ func wsHandler(mount MountFunc, opts Options) http.HandlerFunc {
 			req:      r,
 		}
 		registry.Store(s.token, s)
-		log.Printf("caution: session %d connected (%s)", s.sid, r.RemoteAddr)
+		log.Info().Msgf("caution: session %d connected (%s)", s.sid, r.RemoteAddr)
 		go s.run(mount, conn)
 	}
 }
@@ -470,7 +470,7 @@ func normalizeCombo(combo string) string {
 func (s *Session) run(mount MountFunc, first *websocket.Conn) {
 	defer close(s.done)
 	defer registry.Delete(s.token)
-	defer log.Printf("caution: session %d closed", s.sid)
+	defer log.Info().Msgf("caution: session %d closed", s.sid)
 
 	s.safely("mount", func() { s.root = mount(s) })
 	if s.root == nil {
@@ -507,7 +507,7 @@ func (s *Session) run(mount MountFunc, first *websocket.Conn) {
 		s.conn = c
 		if resumeSeq >= 0 && resumeSeq == s.seq {
 			if err := c.WriteJSON(map[string]any{"t": "resume", "seq": s.seq}); err != nil {
-				log.Printf("caution: session %d resume ack failed: %v", s.sid, err)
+				log.Info().Msgf("caution: session %d resume ack failed: %v", s.sid, err)
 			}
 		} else {
 			s.sendMount()
@@ -527,7 +527,7 @@ func (s *Session) run(mount MountFunc, first *websocket.Conn) {
 			s.flush()
 		case a := <-s.conns:
 			expire = nil
-			log.Printf("caution: session %d resumed", s.sid)
+			log.Info().Msgf("caution: session %d resumed", s.sid)
 			adopt(a.conn, a.seq)
 			// The window may have changed size while the client was away.
 			if a.vw > 0 && (a.vw != s.vw || a.vh != s.vh) {
@@ -544,7 +544,7 @@ func (s *Session) run(mount MountFunc, first *websocket.Conn) {
 			_ = s.conn.Close()
 			s.conn = nil
 			expire = time.After(resumeGrace)
-			log.Printf("caution: session %d disconnected - resumable for %s", s.sid, resumeGrace)
+			log.Info().Msgf("caution: session %d disconnected - resumable for %s", s.sid, resumeGrace)
 		case <-expire:
 			return
 		}
@@ -557,7 +557,7 @@ func (s *Session) run(mount MountFunc, first *websocket.Conn) {
 func (s *Session) safely(what string, fn func()) {
 	defer func() {
 		if r := recover(); r != nil {
-			log.Printf("caution: session %d panic in %s: %v\n%s", s.sid, what, r, debug.Stack())
+			log.Warn().Msgf("caution: session %d panic in %s: %v\n%s", s.sid, what, r, debug.Stack())
 			s.showCrash(fmt.Sprint(r))
 		}
 	}()
@@ -633,7 +633,7 @@ func (s *Session) sendMount() {
 		msg["resources"] = res
 	}
 	if err := s.conn.WriteJSON(msg); err != nil {
-		log.Printf("caution: session %d mount write failed: %v", s.sid, err)
+		log.Info().Msgf("caution: session %d mount write failed: %v", s.sid, err)
 	}
 }
 
@@ -675,7 +675,7 @@ func (s *Session) dispatch(m clientMsg) {
 		return
 	}
 	if !s.allowEvent() {
-		log.Printf("caution: session %d event flood - dropping %s", s.sid, m.Ev)
+		log.Debug().Msgf("caution: session %d event flood - dropping %s", s.sid, m.Ev)
 		return
 	}
 	// Session-level events carry node id 0 because no widget owns them.
@@ -693,19 +693,19 @@ func (s *Session) dispatch(m clientMsg) {
 			}
 		case "menu":
 			id, _ := m.Value.(float64)
-			log.Printf("caution: session %d <- menu pick %d", s.sid, int(id))
+			log.Trace().Msgf("caution: session %d <- menu pick %d", s.sid, int(id))
 			if fn := s.menuHandlers[int(id)]; fn != nil {
 				fn()
 			}
 		case "key":
 			id, _ := m.Value.(float64)
-			log.Printf("caution: session %d <- key combo %d", s.sid, int(id))
+			log.Trace().Msgf("caution: session %d <- key combo %d", s.sid, int(id))
 			if fn := s.keyHandlers[int(id)]; fn != nil {
 				fn()
 			}
 		case "aux":
 			b, _ := m.Value.(float64)
-			log.Printf("caution: session %d <- mouse button %d", s.sid, int(b))
+			log.Trace().Msgf("caution: session %d <- mouse button %d", s.sid, int(b))
 			if s.onAux != nil {
 				s.onAux(int(b))
 			}
@@ -719,7 +719,7 @@ func (s *Session) dispatch(m clientMsg) {
 		return
 	}
 	n := s.nodes[m.ID]
-	log.Printf("caution: session %d <- %s node=%d value=%v", s.sid, m.Ev, m.ID, m.Value)
+	log.Trace().Msgf("caution: session %d <- %s node=%d value=%v", s.sid, m.Ev, m.ID, m.Value)
 	if n == nil {
 		return // stale event for a node removed by an in-flight patch
 	}
@@ -728,7 +728,7 @@ func (s *Session) dispatch(m clientMsg) {
 		// recycled by a remount (SetRoot resets the id space), and the event
 		// belongs to whatever wore the id in the previous tree. Delivering it
 		// would click a widget the user never touched.
-		log.Printf("caution: session %d dropped stale %s for node %d (event seq %d < node birth %d)",
+		log.Debug().Msgf("caution: session %d dropped stale %s for node %d (event seq %d < node birth %d)",
 			s.sid, m.Ev, m.ID, m.Seq, n.born)
 		return
 	}
@@ -933,7 +933,7 @@ func (s *Session) flush() {
 	msg := map[string]any{"t": "patch", "seq": s.seq, "ops": s.ops}
 	s.ops = nil
 	if err := s.conn.WriteJSON(msg); err != nil {
-		log.Printf("caution: session %d write failed: %v", s.sid, err)
+		log.Info().Msgf("caution: session %d write failed: %v", s.sid, err)
 	}
 }
 
