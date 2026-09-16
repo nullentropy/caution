@@ -1000,7 +1000,7 @@ func (u *Ui) moveFocus(dir int) {
 }
 
 // RevealWidget scrolls the enclosing scrollers to make a widget visible
-// (Tab focus, and the server's revealSeq command).
+// (Tab focus, and the server's reveal command).
 func (u *Ui) RevealWidget(w Widget) {
 	for p := w.Base().Parent; p != nil; p = p.Base().Parent {
 		st, ok := p.(ScrollTarget)

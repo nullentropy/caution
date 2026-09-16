@@ -87,40 +87,34 @@
   redefining helpers."
   session/rerender-all!)
 
-(defn- bump-cmd [state k prop]
-  (update-in state [::cmd k prop] (fnil inc 0)))
+(defn- queue-cmd [state k cmd]
+  (update state ::cmds (fnil conj []) {:k k :cmd cmd}))
 
 (defn focus
-  "Ask the client to focus (and reveal) the node that splices
-  `(one-shots state k)`. Pure - compose into any handler:
-      (fn [s] (-> s (assoc :panel :compose) (focus :composer)))"
+  "Ask the client to focus (and reveal) the node keyed k: its :key, or its
+  \"name\" in a ui document. Compose into any handler:
+      (fn [s] (-> s (assoc :panel :compose) (focus :composer)))
+  The commands queue in state and go out with the next render."
   [state k]
-  (bump-cmd state k :focus-seq))
+  (queue-cmd state k "focus"))
 
 (defn reveal
-  "Scroll the node into view without taking focus."
+  "Scroll the node keyed k into view without taking focus."
   [state k]
-  (bump-cmd state k :reveal-seq))
+  (queue-cmd state k "reveal"))
 
 (defn clear-value
   "Force-clear a text field even while the user is editing it.
       (-> state (assoc :note \"\") (clear-value :composer))"
   [state k]
-  (bump-cmd state k :reset-seq))
+  (queue-cmd state k "clear"))
 
 (defn override-value
-  "Make the client accept the value this same render carries even while the
-  user is editing
+  "Make the client take the value this render gives the node keyed k, even
+  while the user is editing
       (-> state (assoc :prefix v') (override-value :prefix))"
   [state k]
-  (bump-cmd state k :override-seq))
-
-(defn one-shots
-  "The pending command props for k. Merge into the target node's props:
-      [:textfield (merge {:value (:prefix s) :on-commit f}
-                         (one-shots s :prefix))]"
-  [state k]
-  (get-in state [::cmd k] {}))
+  (queue-cmd state k "value"))
 
 ;; -- trees -----------------------------------------------------------------------
 ;;

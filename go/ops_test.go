@@ -2,6 +2,7 @@ package caution
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 )
 
@@ -92,16 +93,16 @@ func TestClearStreamsRemovePerChild(t *testing.T) {
 	}
 }
 
-func TestSetValueNowShipsValueAndMarkerTogether(t *testing.T) {
-	// The override must be one op: a value op and a marker op arriving as
-	// separate patches could apply the value under local echo (dropped) and
-	// then force nothing.
+func TestSetValueNowIsOneCommandCarryingTheValue(t *testing.T) {
 	f := TextField("a")
 	s := liveSession(Panel().Kids(f))
 	f.SetValueNow("$1,000")
-	want := `[{"id":2,"op":"set","p":{"overrideSeq":1,"value":"$1,000"}}]`
+	want := `[{"cmd":"value","id":2,"op":"cmd","value":"$1,000"}]`
 	if got := opsJSON(t, s); got != want {
 		t.Fatalf("ops = %s; want %s", got, want)
+	}
+	if f.Prop("value") != "$1,000" {
+		t.Fatalf("server copy of the value = %v", f.Prop("value"))
 	}
 }
 
@@ -260,13 +261,30 @@ func TestEventFloodTripsTheBucket(t *testing.T) {
 	}
 }
 
-func TestFocusAndRevealQueueOneShotOps(t *testing.T) {
+func TestFocusAndRevealAreCommandsNotProps(t *testing.T) {
 	b := Button("x")
 	s := liveSession(Panel().Kids(b))
 	b.Reveal()
 	b.Focus()
-	want := `[{"id":2,"op":"set","p":{"revealSeq":1}},{"id":2,"op":"set","p":{"focusSeq":1}}]`
+	s.queuePendingFocus()
+	want := `[{"cmd":"reveal","id":2,"op":"cmd"},{"cmd":"focus","id":2,"op":"cmd"}]`
 	if got := opsJSON(t, s); got != want {
 		t.Fatalf("ops = %s; want %s", got, want)
+	}
+	if _, ok := b.props["focusSeq"]; ok {
+		t.Fatal("focus leaked into the props")
+	}
+}
+
+func TestFocusFollowsTheInsertOfANodeAddedInTheSameHandler(t *testing.T) {
+	root := Panel()
+	s := liveSession(root)
+	f := TextField("")
+	f.Focus() // before it has a session
+	root.Add(f)
+	s.queuePendingFocus() // what flush does first
+	got := opsJSON(t, s)
+	if !strings.HasPrefix(got, `[{"index":0,"node":`) || !strings.HasSuffix(got, `{"cmd":"focus","id":2,"op":"cmd"}]`) {
+		t.Fatalf("ops = %s; want the insert first and the focus last", got)
 	}
 }

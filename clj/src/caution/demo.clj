@@ -146,10 +146,9 @@ vec4 effect(vec2 uv) {
            "mirror"    {:text mirror}
            "auto"      {:checked auto
                         :on-toggle (fn [s v] (-> s (assoc :auto v) (update :events inc)))}
-           "prefix"    (merge {:value prefix
-                               :on-input  (fn [s v] (assoc s :mirror (format "server sees: %s (input)" (pr-str v))))
-                               :on-commit commit-prefix}
-                              (c/one-shots state :prefix))
+           "prefix"    {:value prefix
+                        :on-input  (fn [s v] (assoc s :mirror (format "server sees: %s (input)" (pr-str v))))
+                        :on-commit commit-prefix}
            "theme"     {:selected (:theme-idx state)
                         :on-select (fn [s i] ((apply-theme session i) s))}
            "dec"       {:on-click (bump -1)}

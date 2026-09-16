@@ -80,7 +80,8 @@ what data they show, and what happens on semantic actions.
 
 The wire between them is a WebSocket carrying JSON. The server sends a full
 `mount`, then `patch` ops (`insert`, `set`, `move`, `remove`, plus `rows`
-for table data). The client sends events the server subscribed to. 
+for table data and `cmd` for things like focus). The client sends events
+the server subscribed to. 
 
 Sessions survive reconnects: the server keeps the tree for a grace
 period and a reload reattaches to the same session.

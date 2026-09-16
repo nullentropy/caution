@@ -163,12 +163,10 @@ type Core struct {
 	laidOut     bool
 	laidOutAt   gfx.Rect
 
-	// FocusSeq/RevealSeq are the last-seen values of the server's universal
-	// one-shot command props. The requests park until the next paint (a
-	// widget built by the same patch that commands it has no UI yet).
-	FocusSeq, RevealSeq float32
-	wantsFocus          bool
-	wantsReveal         bool
+	// Server-driven focus and reveal park until the next paint (a widget
+	// built by the same patch that commands it has no UI yet).
+	wantsFocus  bool
+	wantsReveal bool
 
 	// semID identifies this widget in the semantics tree, assigned on first visit.
 	semID int

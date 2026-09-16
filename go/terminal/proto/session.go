@@ -20,6 +20,7 @@ type serverMsg struct {
 	Seq       int                `json:"seq"`
 	Root      *nodeJSON          `json:"root"`
 	SID       string             `json:"sid"`
+	Focus     int                `json:"focus"`
 	Theme     map[string]string  `json:"theme"`
 	Sounds    map[string]string  `json:"sounds"`
 	Loops     []string           `json:"loops"`
@@ -81,6 +82,8 @@ type patchOp struct {
 	Src     string             `json:"src"`
 	Loop    bool               `json:"loop"`
 	Meta    []metaSpec         `json:"meta"`
+	Cmd     string             `json:"cmd"`
+	Value   string             `json:"value"`
 }
 
 // metaSpec is one tree row's wire meta, parallel to its cells in a rows op.
@@ -386,6 +389,9 @@ func (s *Session) handle(msg *serverMsg) {
 			s.mounted = true
 			s.everMounted = true
 			s.ui.SetRoot(root)
+			if w, ok := s.store.ByID[msg.Focus]; ok {
+				w.Base().RequestFocus()
+			}
 			s.hideBanner()
 			if s.onMount != nil {
 				s.onMount(msg.SID)
@@ -432,6 +438,10 @@ func (s *Session) applyOp(op *patchOp) bool {
 			// The protocol layer knows which node a set op touched,
 			// so hand the paint layer a targeted invalidation.
 			s.ui.Damage(w)
+		}
+	case "cmd":
+		if w, ok := s.store.ByID[op.ID]; ok {
+			s.command(w, op.Cmd, op.Value)
 		}
 	case "insert":
 		parent, ok := s.store.ByID[op.Parent]
@@ -507,6 +517,29 @@ func (s *Session) applyOp(op *patchOp) bool {
 		return true
 	}
 	return false
+}
+
+func (s *Session) command(w ui.Widget, cmd, value string) {
+	switch cmd {
+	case "focus":
+		w.Base().RequestFocus()
+	case "reveal":
+		w.Base().RequestReveal()
+	case "clear":
+		switch t := w.(type) {
+		case *ui.TextField:
+			t.ForceClear()
+		case *ui.TextArea:
+			t.ForceClear()
+		}
+	case "value":
+		switch t := w.(type) {
+		case *ui.TextField:
+			t.ForceValue(value)
+		case *ui.TextArea:
+			t.ForceValue(value)
+		}
+	}
 }
 
 // applyKeys installs the session's registered shortcuts on the Ui (main

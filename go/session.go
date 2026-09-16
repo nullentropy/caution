@@ -60,6 +60,12 @@ type Session struct {
 	sounds        map[string]string
 	loops         []string
 
+	// focus is the node the app last asked to focus; a mount names it so a
+	// reconnect that remounts puts focus back. focusPending queues the cmd
+	// at the next flush.
+	focus        *Node
+	focusPending bool
+
 	vw, vh   float64
 	onResize func(w, h float64)
 
@@ -592,6 +598,9 @@ func (s *Session) sendMount() {
 		return
 	}
 	msg := map[string]any{"t": "mount", "seq": s.seq, "sid": s.token, "root": s.root.toJSON()}
+	if s.focus != nil && s.focus.sess == s {
+		msg["focus"] = s.focus.id
+	}
 	if s.theme != nil {
 		msg["theme"] = s.theme
 	}
@@ -909,6 +918,7 @@ func (s *Session) dispatch(m clientMsg) {
 }
 
 func (s *Session) flush() {
+	s.queuePendingFocus()
 	if len(s.ops) == 0 {
 		return
 	}
@@ -939,6 +949,11 @@ func (s *Session) attach(n *Node) {
 	n.born = s.seq + 1
 	n.sess = s
 	s.nodes[n.id] = n
+	if n.wantsFocus {
+		n.wantsFocus = false
+		s.focus = n
+		s.focusPending = true
+	}
 	for _, k := range n.kids {
 		s.attach(k)
 	}
@@ -947,6 +962,9 @@ func (s *Session) attach(n *Node) {
 func (s *Session) detach(n *Node) {
 	delete(s.nodes, n.id)
 	n.sess = nil
+	if s.focus == n {
+		s.focus = nil
+	}
 	for _, k := range n.kids {
 		s.detach(k)
 	}
@@ -956,15 +974,24 @@ func (s *Session) queueSet(id int, k string, v any) {
 	s.ops = append(s.ops, map[string]any{"op": "set", "id": id, "p": map[string]any{k: v}})
 }
 
-func (s *Session) queueSetMulti(id int, p map[string]any) {
-	s.ops = append(s.ops, map[string]any{"op": "set", "id": id, "p": p})
+func (s *Session) queuePendingFocus() {
+	if !s.focusPending {
+		return
+	}
+	s.focusPending = false
+	if s.focus != nil && s.focus.sess == s {
+		s.queueCmd(s.focus.id, "focus", nil)
+	}
 }
 
-// queueInsert queues the subtree for the next flush. The op references the
-// live node rather than a snapshot, so it serializes at flush time with the
-// newest props and any sets queued after it in the same handler are just
-// idempotent re-assertions. All mutation happens on the session goroutine, so
-// nothing races the flush.
+func (s *Session) queueCmd(id int, cmd string, value any) {
+	op := map[string]any{"op": "cmd", "id": id, "cmd": cmd}
+	if value != nil {
+		op["value"] = value
+	}
+	s.ops = append(s.ops, op)
+}
+
 func (s *Session) queueInsert(parent, index int, n *Node) {
 	s.ops = append(s.ops, map[string]any{"op": "insert", "parent": parent, "index": index, "node": n.toJSON()})
 }

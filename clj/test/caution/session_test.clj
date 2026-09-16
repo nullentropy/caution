@@ -126,20 +126,24 @@
     (is (= #{"a"} (c/toggle-member #{} "a")))
     (is (= #{} (c/toggle-member #{"a"} "a")))))
 
-(deftest one-shot-helpers-bump-and-splice
+(deftest command-helpers-queue-in-state
   (let [s (-> {} (c/focus :email) (c/clear-value :note) (c/focus :email))]
-    (is (= {:focus-seq 2} (c/one-shots s :email)))
-    (is (= {:reset-seq 1} (c/one-shots s :note)))
-    (is (= {} (c/one-shots s :other)))))
+    (is (= [{:k :email :cmd "focus"} {:k :note :cmd "clear"} {:k :email :cmd "focus"}]
+           (:caution.core/cmds s)))))
 
-(deftest override-value-rides-one-set-op-with-its-value
-  (let [view (fn [s] [:textfield (merge {:value (:v s)} (c/one-shots s :f))])
+(deftest commands-resolve-keys-and-names-to-cmd-ops
+  (let [cmd-ops #'caution.session/cmd-ops
+        view (fn [s] [:panel {}
+                      [:textfield {:key :f :value (:v s)}]
+                      [:textfield {:name "note" :value "n"}]])
         r1 (d/reconcile nil (w/normalize (view {:v "a"})) 1)
-        s2 (-> {:v "b"} (c/override-value :f))
+        s2 (-> {:v "b"} (c/override-value :f) (c/clear-value "note") (c/focus :missing))
         r2 (d/reconcile (:tree r1) (w/normalize (view s2)) (:next-id r1))
-        sets (filter #(= "set" (get % "op")) (:ops r2))]
-    (is (= 1 (count sets)))
-    (is (= {"value" "b" "overrideSeq" 1} (get (first sets) "p")))))
+        ops (vec (cmd-ops (:tree r2) (w/index-tree (:tree r2)) (:caution.core/cmds s2)))]
+    (is (= [{"op" "cmd" "id" 2 "cmd" "value" "value" "b"}
+            {"op" "cmd" "id" 3 "cmd" "clear"}]
+           ops)
+        "the value command carries the rendered value; unknown keys drop")))
 
 (deftest keyed-row-select-echoes-the-key
   (let [!state (atom {:picked nil})

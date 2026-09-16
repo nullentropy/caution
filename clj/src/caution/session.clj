@@ -36,11 +36,31 @@
   (when-let [ch (:channel @sess)]
     (hk/send! ch (json/write-str msg))))
 
+(defn- kname [k]
+  (if (or (keyword? k) (symbol? k)) (name k) (str k)))
+
+;; a node is addressed by its :key, or by its "name" from a ui document
+(defn- key-id [node k]
+  (if (or (= (:key node) k)
+          (and (some? (:key node)) (= (kname (:key node)) (kname k)))
+          (= (get-in node [:props "name"]) (kname k)))
+    (:id node)
+    (some #(key-id % k) (:kids node))))
+
+(defn- cmd-ops [tree index cmds]
+  (keep (fn [{:keys [k cmd]}]
+          (when-let [id (key-id tree k)]
+            (cond-> {"op" "cmd" "id" id "cmd" cmd}
+              (= cmd "value") (assoc "value" (get-in (index id) [:props "value"])))))
+        cmds))
+
 (defn- send-mount! [sess]
-  (let [m (swap! sess update :seq inc)]
+  (let [m (swap! sess update :seq inc)
+        focus (some->> (:focus-key m) (key-id (:tree m)))]
     (when debug? (log (format "session %d -> mount" (:sid m))))
     (send-json! sess (cond-> {"t" "mount" "seq" (:seq m) "sid" (:token m)
                               "root" (w/->wire (:tree m))}
+                       focus         (assoc "focus" focus)
                        (:theme m)    (assoc "theme" (:theme m))
                        (:metrics m)  (assoc "metrics" (:metrics m))
                        (:sounds m)   (assoc "sounds" (:sounds m))
@@ -103,15 +123,21 @@
 
 (defn- render! [sess]
   (let [{:keys [view !state tree next-id overlays]} @sess
-        app (w/normalize (view @!state sess))
+        [state] (swap-vals! !state dissoc :caution.core/cmds)
+        cmds (:caution.core/cmds state)
+        app (w/normalize (view state sess))
         ;; Session-managed overlays (crash dialogs) ride along as extra root
         ;; children so the diff treats them like any other node.
         new (update app :kids into overlays)
-        {:keys [tree ops next-id remount?]} (d/reconcile tree new next-id)]
-    (swap! sess assoc :tree tree :next-id next-id :index (w/index-tree tree))
+        {:keys [tree ops next-id remount?]} (d/reconcile tree new next-id)
+        index (w/index-tree tree)
+        cmd-ops (cmd-ops tree index cmds)]
+    (swap! sess assoc :tree tree :next-id next-id :index index)
+    (when-let [k (:k (last (filter #(= "focus" (:cmd %)) cmds)))]
+      (swap! sess assoc :focus-key k))
     (if remount?
-      (send-mount! sess)
-      (send-ops! sess ops))
+      (do (send-mount! sess) (send-ops! sess cmd-ops))
+      (send-ops! sess (into (vec ops) cmd-ops)))
     (refresh-rows! sess)))
 
 (defn- guard

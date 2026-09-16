@@ -291,20 +291,6 @@ func (ns *NodeStore) Apply(w ui.Widget, id int, p props) {
 	if subscribed(p, "context") {
 		w.Base().OnContextPick = func(cid int) { ns.sink.Event(id, "context", cid) }
 	}
-	// Universal one-shot commands, monotonic so they replay safely on
-	// remount; the requests park until the next paint.
-	if v, ok := p["focusSeq"]; ok {
-		if f, _ := num(v); f != w.Base().FocusSeq {
-			w.Base().FocusSeq = f
-			w.Base().RequestFocus()
-		}
-	}
-	if v, ok := p["revealSeq"]; ok {
-		if f, _ := num(v); f != w.Base().RevealSeq {
-			w.Base().RevealSeq = f
-			w.Base().RequestReveal()
-		}
-	}
 	switch t := w.(type) {
 	case *ui.Panel:
 		if v, ok := p["bg"]; ok {
@@ -393,17 +379,8 @@ func (ns *NodeStore) Apply(w ui.Widget, id int, p props) {
 		}
 		// Local echo: while the user is typing, the client's value is
 		// authoritative - a focused field ignores server sets.
-		forced := false
-		if v, ok := p["overrideSeq"]; ok {
-			if f, _ := num(v); f != t.OverrideSeq {
-				t.OverrideSeq = f
-				forced = true
-			}
-		}
 		if v, ok := p["value"]; ok {
-			if s, _ := str(v); forced {
-				t.ForceValue(s)
-			} else if !t.Focused {
+			if s, _ := str(v); !t.Focused {
 				t.Value = s
 			}
 		}
@@ -422,14 +399,6 @@ func (ns *NodeStore) Apply(w ui.Widget, id int, p props) {
 		if v, ok := p["sensitive"]; ok {
 			t.Sensitive, _ = boolean(v)
 		}
-		// One-shot commands ride as monotonic props so they replay safely on
-		// remount: resetSeq force-clears (even focused), focusSeq takes focus.
-		if v, ok := p["resetSeq"]; ok {
-			if f, _ := num(v); f != t.ResetSeq {
-				t.ResetSeq = f
-				t.ForceClear()
-			}
-		}
 		if subscribed(p, "input") {
 			t.OnInput = debounceString(150*time.Millisecond, func(v string) {
 				ns.sink.Event(id, "input", v)
@@ -440,17 +409,8 @@ func (ns *NodeStore) Apply(w ui.Widget, id int, p props) {
 		}
 	case *ui.TextArea:
 		// Same contract as TextField (it embeds the editing core), plus rows.
-		forced := false
-		if v, ok := p["overrideSeq"]; ok {
-			if f, _ := num(v); f != t.OverrideSeq {
-				t.OverrideSeq = f
-				forced = true
-			}
-		}
 		if v, ok := p["value"]; ok {
-			if s, _ := str(v); forced {
-				t.ForceValue(s)
-			} else if !t.Focused {
+			if s, _ := str(v); !t.Focused {
 				t.Value = s
 			}
 		}
@@ -470,12 +430,6 @@ func (ns *NodeStore) Apply(w ui.Widget, id int, p props) {
 			t.Rows = 4
 			if f, ok := num(v); ok {
 				t.Rows = int(f)
-			}
-		}
-		if v, ok := p["resetSeq"]; ok {
-			if f, _ := num(v); f != t.ResetSeq {
-				t.ResetSeq = f
-				t.ForceClear()
 			}
 		}
 		if subscribed(p, "input") {

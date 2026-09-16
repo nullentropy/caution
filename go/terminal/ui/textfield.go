@@ -29,11 +29,6 @@ type TextField struct {
 	OnInput  func(v string)
 	OnCommit func(v string)
 
-	// Last-seen values of the server's one-shot command props (FocusSeq
-	// lives on Core, since it's universal).
-	ResetSeq    float32
-	OverrideSeq float32
-
 	// selEnd is the caret, and selStart pins the other end of the selection.
 	selStart, selEnd int
 	anchor           int

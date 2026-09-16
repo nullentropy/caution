@@ -61,11 +61,8 @@ type Node struct {
 	lastEnd     int
 	hasRange    bool
 
-	// monotonic counters for one-shot client commands carried as props
-	focusSeq    int
-	resetSeq    int
-	overrideSeq int
-	revealSeq   int
+	// wantsFocus holds a Focus() asked for before the node joined a session
+	wantsFocus bool
 
 	contextHandlers map[int]func()
 }
@@ -412,19 +409,6 @@ func (n *Node) set(k string, v any) *Node {
 	return n
 }
 
-// setMulti records several props and streams them as ONE set op, for
-// commands whose meaning depends on the props arriving together
-// (SetValueNow's value + overrideSeq).
-func (n *Node) setMulti(props map[string]any) *Node {
-	for k, v := range props {
-		n.props[k] = v
-	}
-	if n.sess != nil {
-		n.sess.queueSetMulti(n.id, props)
-	}
-	return n
-}
-
 // -- reflection ---------------------------------------------------------------
 
 // Type returns the node's widget type ("panel", "label", ...).
@@ -673,36 +657,47 @@ func (n *Node) Alt(s string) *Node { return n.set("alt", s) }
 func (n *Node) SetSrc(s string) *Node { return n.set("src", s) }
 
 // Focus asks the client to give this widget keyboard focus. Any focusable
-// widget, not just text fields (which additionally rebind their input
-// funnel). Carried as a monotonic prop so repeated calls each take effect.
+// widget, not just text fields. The session remembers the last node focused
+// this way and a remount focuses it again.
 func (n *Node) Focus() *Node {
-	n.focusSeq++
-	return n.set("focusSeq", n.focusSeq)
+	if n.sess == nil {
+		n.wantsFocus = true
+		return n
+	}
+	n.sess.focus = n
+	n.sess.focusPending = true
+	return n
 }
 
 // Reveal scrolls the client's enclosing scrollers to bring this widget into
 // view. Focus does not change.
 func (n *Node) Reveal() *Node {
-	n.revealSeq++
-	return n.set("revealSeq", n.revealSeq)
+	if n.sess != nil {
+		n.sess.queueCmd(n.id, "reveal", nil)
+	}
+	return n
 }
 
 // ClearValue empties a text field even while it is focused, unlike SetValue,
 // for submit-and-keep-typing flows like a terminal or a chat input.
 func (n *Node) ClearValue() *Node {
 	n.props["value"] = ""
-	n.resetSeq++
-	return n.set("resetSeq", n.resetSeq)
+	if n.sess != nil {
+		n.sess.queueCmd(n.id, "clear", nil)
+	}
+	return n
 }
 
 // SetValueNow pushes a value into a text field even while the user is editing
 // it, for validation and formatting. The pushed value becomes the field's new
 // baseline: Escape reverts to it, and no commit fires unless the user changes
-// it again. The value and the override marker travel in one op, so they can
-// never apply separately.
+// it again.
 func (n *Node) SetValueNow(v string) *Node {
-	n.overrideSeq++
-	return n.setMulti(map[string]any{"value": v, "overrideSeq": n.overrideSeq})
+	n.props["value"] = v
+	if n.sess != nil {
+		n.sess.queueCmd(n.id, "value", v)
+	}
+	return n
 }
 
 // -- table --------------------------------------------------------------------
