@@ -1,12 +1,10 @@
-import '../../vendor/wasm_exec.js';
-
 import { Font, MONO } from '../font';
 import { ATLAS_SIZE, AtlasGlyph } from './atlas';
 import type { TextEngine } from './engine';
 import { clusterSlices, ShapedGlyph, TextRun } from './shaper';
 
-/** the exports cmd/shaperwasm hangs on globalThis (all synchronous) */
-interface WasmText {
+/** the text exports cmd/termwasm hangs on globalThis.__cautionText (all synchronous) */
+export interface WasmText {
   shape(size: number, weight: number, italic: boolean, mono: boolean, dpr: number, text: string): number[];
   glyph(
     size: number, weight: number, italic: boolean, mono: boolean,
@@ -16,43 +14,7 @@ interface WasmText {
   reset(): void;
 }
 
-/**
- * Load the shared text engine: the native terminal's shaper + atlas
- * rasterizer compiled to WebAssembly. null means "use the Canvas2D
- * fallback" because of a failed fetch, an old cached page, or a blocked wasm.
- */
-export async function loadWasmEngine(url: string, timeoutMs = 4000): Promise<TextEngine | null> {
-  try {
-    const load = (async () => {
-      const go = new Go();
-      const resp = await fetch(url);
-      if (!resp.ok) throw new Error(`${url}: ${resp.status}`);
-      let inst: WebAssembly.Instance;
-      try {
-        ({ instance: inst } = await WebAssembly.instantiateStreaming(resp, go.importObject));
-      } catch {
-        // Streaming needs the right MIME type; buffer as the fallback.
-        const buf = await (await fetch(url)).arrayBuffer();
-        ({ instance: inst } = await WebAssembly.instantiate(buf, go.importObject));
-      }
-      void go.run(inst); // runs for the page's lifetime; exports appear at start
-      for (let i = 0; i < 200 && !(globalThis as any).__cautionText; i++) {
-        await new Promise((r) => setTimeout(r, 5));
-      }
-      const api = (globalThis as any).__cautionText as WasmText | undefined;
-      return api ? new WasmEngine(api) : null;
-    })();
-    const timeout = new Promise<null>((res) => setTimeout(() => res(null), timeoutMs));
-    const engine = await Promise.race([load, timeout]);
-    if (!engine) console.warn('caution: text engine unavailable. Canvas2D shaping fallback');
-    return engine;
-  } catch (e) {
-    console.warn('caution: text engine failed to load. Canvas2D shaping fallback:', e);
-    return null;
-  }
-}
-
-class WasmEngine implements TextEngine {
+export class WasmEngine implements TextEngine {
   private runs = new Map<string, TextRun>();
   private glyphs = new Map<string, AtlasGlyph | null>();
   private pix = new Uint8Array(ATLAS_SIZE * ATLAS_SIZE * 4);

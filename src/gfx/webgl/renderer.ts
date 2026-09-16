@@ -4,8 +4,7 @@ import type { Font } from '../font';
 import { overlaps, rect, type Rect, type Corners } from '../geom';
 import type { Cmd, DisplayList, ImageCmd, LayerEndCmd, RectCmd, ShadowCmd, ShaderQuadCmd, TextCmd } from '../painter';
 import { ATLAS_SIZE, PHASES } from '../text/atlas';
-import { CanvasEngine, TextEngine } from '../text/engine';
-import type { TextRun } from '../text/shaper';
+import type { TextEngine } from '../text/engine';
 import { ImageStore } from './images';
 import { FRAG, PASSTHROUGH_FRAG, QUAD_VERT, VERT, wrapUserFrag } from './shaders';
 
@@ -109,7 +108,6 @@ const IMG_PLACEHOLDER = rgba(0.5, 0.55, 0.6, 0.08);
 const IMG_ERROR = rgba(0.9, 0.3, 0.3, 0.12);
 
 export class GlRenderer {
-  /** the text engine: Canvas2D fallback, or the shared wasm engine (see terminal.ts) */
   readonly engine: TextEngine;
   readonly images: ImageStore;
 
@@ -161,9 +159,9 @@ export class GlRenderer {
 
   constructor(
     private canvas: HTMLCanvasElement,
-    engine?: TextEngine,
+    engine: TextEngine,
   ) {
-    this.engine = engine ?? new CanvasEngine();
+    this.engine = engine;
     const gl = canvas.getContext('webgl2', {
       alpha: false,
       antialias: false, // we do our own analytic AA
@@ -240,10 +238,6 @@ export class GlRenderer {
 
     gl.useProgram(prog);
     gl.uniform1i(gl.getUniformLocation(prog, 'u_tex'), 0);
-  }
-
-  measure(f: Font, text: string): TextRun {
-    return this.engine.shape(f, window.devicePixelRatio || 1, text);
   }
 
   /**

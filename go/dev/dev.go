@@ -1,8 +1,9 @@
-// Package dev is the framework-development mode of the client: the terminal
-// is bundled fresh per request from TypeScript source via esbuild's Go API.
+// Package dev is the framework-development mode of the client: the page
+// script is bundled fresh per request from TypeScript source via esbuild's
+// Go API, around the embedded terminal wasm (rebuild that with cmd/bundle).
 // It is a separate package so that only in-repo tools link esbuild - apps
 // built with the framework call caution.ServeClient and get the embedded
-// terminal with no bundler in the binary.
+// artifacts with no bundler in the binary.
 package dev
 
 import (
@@ -33,7 +34,7 @@ func ServeClient(entry string) {
 		log.Printf("caution dev: bundling %s", resolved)
 	}
 	caution.ServeHostPage()
-	caution.ServeShaperWasm() // the embedded engine; refresh via cmd/bundle
+	caution.ServeWasm() // the embedded terminal; refresh via cmd/bundle
 	http.HandleFunc("/app.js", func(w http.ResponseWriter, _ *http.Request) {
 		if resolved == "" {
 			http.Error(w, "caution dev: no caution checkout found - cannot bundle the client from source", http.StatusInternalServerError)

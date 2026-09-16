@@ -305,7 +305,7 @@ func (t *TextField) wordRangeAt(i int) (int, int) {
 // OnChar inserts printable input (the shell routes GLFW's char callback
 // here). Control runes are dropped, and shortcuts arrive via OnKey instead.
 func (t *TextField) OnChar(r rune) bool {
-	if r < 0x20 || r == 0x7f {
+	if r < 0x20 || r == 0x7f || t.hostEdited() {
 		return false
 	}
 	t.sound("type")
@@ -314,7 +314,42 @@ func (t *TextField) OnChar(r rune) bool {
 	return true
 }
 
+func (t *TextField) hostEdited() bool { return t.UI != nil && t.UI.HostText }
+
+// SyncFromHost takes the value and rune selection from the host's funnel
+func (t *TextField) SyncFromHost(value string, selStart, selEnd int, typed bool) {
+	n := len([]rune(value))
+	selStart, selEnd = clampInt(selStart, 0, n), clampInt(selEnd, 0, n)
+	changed := value != t.Value
+	t.Value = value
+	if changed || selStart != t.selStart || selEnd != t.selEnd {
+		t.selStart, t.selEnd, t.anchor = selStart, selEnd, selStart
+		t.touch()
+	}
+	if typed {
+		t.sound("type")
+	}
+	if changed && t.OnInput != nil {
+		t.OnInput(value)
+	}
+	t.Invalidate()
+}
+
+func (t *TextField) hostKey(k Key) bool {
+	switch k.Name {
+	case "Enter":
+		t.Commit()
+		return true
+	case "Escape":
+		return t.revert()
+	}
+	return false
+}
+
 func (t *TextField) OnKey(k Key) bool {
+	if t.hostEdited() {
+		return t.hostKey(k)
+	}
 	n := len([]rune(t.Value))
 	s, e := t.selRange()
 	cmdish := k.Meta || k.Ctrl

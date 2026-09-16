@@ -224,27 +224,6 @@ func parseKeyChord(spec string) ui.Key {
 	return k
 }
 
-// menubarSpec converts the wire's menu spec into the ui package's local
-// type (ui cannot import proto, because proto imports ui).
-func menubarSpec(menus []proto.MenuSpec) []ui.MenuSpec {
-	var conv func(items []proto.MenuItem) []ui.MenuItemSpec
-	conv = func(items []proto.MenuItem) []ui.MenuItemSpec {
-		out := make([]ui.MenuItemSpec, 0, len(items))
-		for _, it := range items {
-			out = append(out, ui.MenuItemSpec{
-				ID: it.ID, Title: it.Title, Key: it.Key, Sep: it.Sep,
-				Items: conv(it.Items),
-			})
-		}
-		return out
-	}
-	out := make([]ui.MenuSpec, 0, len(menus))
-	for _, m := range menus {
-		out = append(out, ui.MenuSpec{Title: m.Title, Items: conv(m.Items)})
-	}
-	return out
-}
-
 // transport resolves Options into the pieces the session and image store
 // need: a WebSocket URL + dialer, and an HTTP client + base for image srcs.
 func transport(o Options) (wsURL string, dialer *websocket.Dialer, fetch func(string) ([]byte, error), err error) {
@@ -492,7 +471,7 @@ func Run(o Options) error {
 			// macOS gets real NSMenus. Everywhere else (and under
 			// -menubar) the in-window bar widget realizes the same spec.
 			if o.InWindowMenu || runtime.GOOS != "darwin" {
-				u.SetMenubar(menubarSpec(menus), pick)
+				u.SetMenubar(proto.MenubarSpec(menus), pick)
 				return
 			}
 			installMenu(menus, func(id int) { u.Sound("select"); pick(id) })

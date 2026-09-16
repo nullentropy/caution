@@ -1,11 +1,18 @@
 //go:build js && wasm
 
-// caution shaperwasm: the native terminal's text stack and outline atlas
-// rasterization over the embedded Go fonts compiled to WebAssembly. The browser
-// terminal loads this at boot and from then on operates on text with
-// the same code as the native one.
-//
-// Exports (on globalThis.__cautionText, all synchronous):
+package main
+
+import (
+	"syscall/js"
+
+	"github.com/nullentropy/caution/go/terminal/gfx"
+
+	"github.com/go-text/typesetting/font"
+)
+
+// The text exports, on globalThis.__cautionText. The renderer shapes and
+// rasterizes through the same shaper and atlas the widgets measure with, so
+// glyph positions agree with layout down to the pixel.
 //
 //	shape(size, weight, italic, mono, dpr, text) -> [width, ascent, descent,
 //	    gid0, x0, cluster0, emoji0, ...]  (cluster = rune index into text;
@@ -14,21 +21,6 @@
 //	    or [x0, y0, x1, y1, w, h, bx, by]  (atlas region, device px)
 //	atlasTake(dst Uint8Array) -> bool   (copy the atlas when dirty)
 //	reset()                             (DPR change: drop every glyph)
-package main
-
-import (
-	"syscall/js"
-
-	"github.com/nullentropy/caution/go/terminal/gfx"
-	"github.com/nullentropy/caution/go/terminal/text"
-
-	"github.com/go-text/typesetting/font"
-)
-
-var (
-	shaper = text.NewShaper()
-	atlas  = text.NewAtlas()
-)
 
 func fontOf(args []js.Value) gfx.Font {
 	return gfx.NewFont(float32(args[0].Float()), gfx.FontOpts{
@@ -76,14 +68,4 @@ func atlasTake(_ js.Value, args []js.Value) any {
 func reset(_ js.Value, _ []js.Value) any {
 	atlas.Reset()
 	return nil
-}
-
-func main() {
-	js.Global().Set("__cautionText", map[string]any{
-		"shape":     js.FuncOf(shape),
-		"glyph":     js.FuncOf(glyph),
-		"atlasTake": js.FuncOf(atlasTake),
-		"reset":     js.FuncOf(reset),
-	})
-	select {} // exports stay alive for the page's lifetime
 }

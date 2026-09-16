@@ -11,7 +11,7 @@ goldens-out/
 /go/design
 /go/goldens
 /go/preview
-/go/shaperwasm
+/go/termwasm
 /go/term
 /go/tstest
 /examples/hello/hello

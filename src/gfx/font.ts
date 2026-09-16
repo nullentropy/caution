@@ -21,7 +21,3 @@ export function font(
   const italic = opts.italic ?? false;
   return { family, size, weight, italic, key: `${weight}${italic ? 'i' : ''}:${size}:${family}` };
 }
-
-/** CSS font string at device-pixel size, so rasterization and measurement match the backing store */
-export const cssFont = (f: Font, dpr: number): string =>
-  `${f.italic ? 'italic ' : ''}${f.weight} ${(f.size * dpr).toFixed(2)}px ${f.family}`;

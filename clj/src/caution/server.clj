@@ -43,26 +43,26 @@
 (def ^:private embedded-bundle
   (delay (some-> (io/resource "caution/app.js") slurp)))
 
-(def ^:private embedded-shaper-gz
-  (delay (when-let [r (io/resource "caution/shaper.wasm.gz")]
+(def ^:private embedded-wasm-gz
+  (delay (when-let [r (io/resource "caution/term.wasm.gz")]
            (with-open [in (io/input-stream r)
                        out (java.io.ByteArrayOutputStream.)]
              (io/copy in out)
              (.toByteArray out)))))
 
-(def ^:private embedded-shaper-raw
-  (delay (when-let [gz @embedded-shaper-gz]
+(def ^:private embedded-wasm-raw
+  (delay (when-let [gz @embedded-wasm-gz]
            (with-open [in (java.util.zip.GZIPInputStream.
                            (java.io.ByteArrayInputStream. gz))
                        out (java.io.ByteArrayOutputStream.)]
              (io/copy in out)
              (.toByteArray out)))))
 
-(defn shaper-handler [req]
+(defn wasm-handler [req]
   (let [gzip? (some-> (get-in req [:headers "accept-encoding"])
                       str/lower-case
                       (str/includes? "gzip"))
-        b (if gzip? @embedded-shaper-gz @embedded-shaper-raw)]
+        b (if gzip? @embedded-wasm-gz @embedded-wasm-raw)]
     (if b
       {:status 200
        :headers (cond-> {"Content-Type" "application/wasm"
@@ -71,7 +71,7 @@
                   gzip? (assoc "Content-Encoding" "gzip"))
        :body (java.io.ByteArrayInputStream. b)}
       {:status 404 :headers {"Content-Type" "text/plain"}
-       :body "caution: shaper.wasm.gz not on the classpath - the client falls back to Canvas2D shaping\n"})))
+       :body "caution: term.wasm.gz not on the classpath\n"})))
 
 (defn- bundle-handler [{:keys [app-js]}]
   (let [cache (atom nil)]
@@ -155,7 +155,7 @@
                          :headers {"Content-Type" "text/html; charset=utf-8"}
                          :body host-page}
               "/app.js" (bundle req)
-              "/shaper.wasm" (shaper-handler req)
+              "/term.wasm" (wasm-handler req)
               "/ws"     (ws-handler opts req)
               {:status 404 :headers {"Content-Type" "text/plain"} :body "not found"}))))))
 

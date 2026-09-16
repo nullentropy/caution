@@ -41,7 +41,7 @@ export class Surface {
 
   constructor(
     readonly canvas: HTMLCanvasElement,
-    engine?: TextEngine,
+    engine: TextEngine,
   ) {
     this.renderer = new GlRenderer(canvas, engine);
     this.renderer.images.onLoad = () => this.invalidate();

@@ -10,10 +10,7 @@ import (
 
 const taPadY = 8
 
-// TextArea is the multi-line editor: TextField's editing core (rune-boundary
-// selection, word ops, clipboard, blink) under wrapped-line geometry. Enter
-// inserts a newline - commit fires on blur (or Cmd+Enter). Up/Down move by
-// visual lines with a goal column; the wheel scrolls it like any Scroller.
+// TextArea is the multi-line editor
 type TextArea struct {
 	TextField
 	// Rows is the visible line count for the intrinsic height (`rows` prop).
@@ -184,7 +181,35 @@ func (a *TextArea) verticalMove(dir int, extend bool) {
 	a.moveCaret(to, extend)
 }
 
+func (a *TextArea) SyncFromHost(value string, selStart, selEnd int, typed bool) {
+	if selStart != a.selStart || selEnd != a.selEnd {
+		a.goalX = nil
+	}
+	a.TextField.SyncFromHost(value, selStart, selEnd, typed)
+}
+
+func (a *TextArea) hostKey(k Key) bool {
+	plain := !k.Meta && !k.Ctrl && !k.Alt
+	switch {
+	case k.Name == "Up" && plain:
+		a.verticalMove(-1, k.Shift)
+		return true
+	case k.Name == "Down" && plain:
+		a.verticalMove(1, k.Shift)
+		return true
+	case k.Name == "Enter" && (k.Meta || k.Ctrl):
+		a.Commit()
+		return true
+	case k.Name == "Escape":
+		return a.revert()
+	}
+	return false
+}
+
 func (a *TextArea) OnKey(k Key) bool {
+	if a.hostEdited() {
+		return a.hostKey(k)
+	}
 	n := len([]rune(a.Value))
 	s, e := a.selRange()
 	cmdish := k.Meta || k.Ctrl

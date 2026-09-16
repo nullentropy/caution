@@ -150,8 +150,9 @@ func main() {
 	clicks := flag.String("clicks", "", `native mode: synthetic clicks for -shot, "x,y@ms;..."`)
 	flag.Parse()
 
-	// The server serves its own terminal: host page + client runtime bundled
-	// from TypeScript via esbuild's Go API. One process, no Node anywhere.
+	// The server serves its own terminal: host page, the embedded wasm, and
+	// the page script bundled from TypeScript via esbuild's Go API. One
+	// process, no Node anywhere.
 	dev.ServeClient("../src/terminal.ts")
 
 	// A generated avatar, served like any asset and displayed by Image().

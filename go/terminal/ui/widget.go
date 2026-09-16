@@ -64,6 +64,8 @@ type Widget interface {
 	OnChar(r rune) bool
 	OnFocusChange(focused bool)
 	Activate()
+	// Semantics is what assistive technology should hear
+	Semantics() *Semantic
 	Cursor() string
 	HitTest(x, y float32) Widget
 	OnPointerDown(x, y float32, detail int)
@@ -167,6 +169,9 @@ type Core struct {
 	FocusSeq, RevealSeq float32
 	wantsFocus          bool
 	wantsReveal         bool
+
+	// semID identifies this widget in the semantics tree, assigned on first visit.
+	semID int
 }
 
 // RequestFocus is the server-driven focus command (`Focus()` in the SDK);
@@ -394,6 +399,7 @@ func (b *Core) OnKey(_ Key) bool                  { return false }
 func (b *Core) OnChar(_ rune) bool                { return false }
 func (b *Core) OnFocusChange(_ bool)              {}
 func (b *Core) Activate()                         {}
+func (b *Core) Semantics() *Semantic              { return nil }
 func (b *Core) Cursor() string                    { return "" }
 func (b *Core) OnPointerDown(_, _ float32, _ int) {}
 func (b *Core) OnPointerDrag(_, _ float32)        {}

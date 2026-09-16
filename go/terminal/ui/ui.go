@@ -47,6 +47,8 @@ type Ui struct {
 	// WriteClipboard copies text and ReadClipboard pastes (set by the shell).
 	WriteClipboard func(s string)
 	ReadClipboard  func() string
+	// HostText hands text editing to the shell
+	HostText bool
 
 	hovered   Widget
 	active    Widget
@@ -121,6 +123,47 @@ type Ui struct {
 	// DPR, because advances are computed in device pixels.
 	dpr          float32
 	measureEpoch int
+
+	semSeq int
+}
+
+// TextState is the focused text editor the way the host's input funnel needs it
+type TextState struct {
+	Value, Placeholder string
+	SelStart, SelEnd   int
+	Multiline          bool
+	Bounds             gfx.Rect
+}
+
+// FocusedText reports the text editor holding focus, if any
+func (u *Ui) FocusedText() (TextState, bool) {
+	var t *TextField
+	multiline := false
+	switch f := u.focused.(type) {
+	case *TextField:
+		t = f
+	case *TextArea:
+		t = &f.TextField
+		multiline = true
+	default:
+		return TextState{}, false
+	}
+	return TextState{
+		Value: t.Value, Placeholder: t.Placeholder,
+		SelStart: t.selStart, SelEnd: t.selEnd,
+		Multiline: multiline, Bounds: u.focused.Base().Bounds,
+	}, true
+}
+
+// SyncText is the host reporting the funnel's value and selection after an
+// edit or a caret move
+func (u *Ui) SyncText(value string, selStart, selEnd int, typed bool) {
+	switch f := u.focused.(type) {
+	case *TextField:
+		f.SyncFromHost(value, selStart, selEnd, typed)
+	case *TextArea:
+		f.SyncFromHost(value, selStart, selEnd, typed)
+	}
 }
 
 // MeasureEpoch changes whenever text starts measuring differently under the

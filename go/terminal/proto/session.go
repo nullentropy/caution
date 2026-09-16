@@ -110,12 +110,27 @@ type clientEvent struct {
 	Seq   int    `json:"seq"`
 }
 
+// Conn is one connection to the server
+type Conn interface {
+	ReadMessage() ([]byte, error)
+	WriteMessage(data []byte) error
+	Close() error
+}
+
 // Config wires a Session to its transport and shell.
 type Config struct {
 	URL string
 	// Dialer overrides websocket.DefaultDialer, for unix sockets and in-process
 	// pipes route here via NetDial.
 	Dialer *websocket.Dialer
+	// Dial replaces gorilla altogether. The browser terminal dials through
+	// the page's WebSocket.
+	Dial func(url string) (Conn, error)
+	// SID resumes a session from a previous page load. The browser keeps it
+	// in sessionStorage across reloads.
+	SID string
+	// OnMount reports every mount with the session id the server handed out.
+	OnMount func(sid string)
 	// Wake pokes the event loop (glfw.PostEmptyEvent).
 	Wake func()
 	// ViewSize reports the current logical window size (for the connect URL).
@@ -136,20 +151,19 @@ type Config struct {
 	Stop         func(src string)
 }
 
-// Session is the native terminal's protocol client: connects, applies
-// mount/patch to the widget tree, ships subscribed events back, reconnects
-// with backoff, resumes within the process lifetime via the sid the server
-// hands out (the browser keeps it in sessionStorage, here it lives in
-// memory).
+// Session is the terminal's protocol client: connects, applies mount/patch
+// to the widget tree, ships subscribed events back, reconnects with backoff,
+// resumes via the sid the server hands out (in memory natively; the browser
+// page keeps it in sessionStorage and passes it back in through Config.SID).
 //
 // Network I/O runs on goroutines, and everything that touches widgets is queued
 // as a closure and drained by Pump() on the main (GL) thread. Wake pokes the
 // event loop so a blocked WaitEvents notices.
 type Session struct {
-	ui     *ui.Ui
-	url    string
-	dialer *websocket.Dialer
-	Wake   func()
+	ui   *ui.Ui
+	url  string
+	dial func(url string) (Conn, error)
+	Wake func()
 	// ViewSize reports the current logical window size (for the connect URL).
 	ViewSize     func() (int, int)
 	setMenu      func(menus []MenuSpec)
@@ -158,11 +172,12 @@ type Session struct {
 	preloadSound func(src string)
 	play         func(src string, loop bool)
 	stop         func(src string)
+	onMount      func(sid string)
 
 	queue chan func()
 
 	mu      sync.Mutex
-	conn    *websocket.Conn
+	conn    Conn
 	lastSeq int
 	sid     string
 
@@ -184,14 +199,24 @@ type Session struct {
 }
 
 func NewSession(u *ui.Ui, cfg Config) *Session {
-	dialer := cfg.Dialer
-	if dialer == nil {
-		dialer = websocket.DefaultDialer
+	dial := cfg.Dial
+	if dial == nil {
+		dialer := cfg.Dialer
+		if dialer == nil {
+			dialer = websocket.DefaultDialer
+		}
+		dial = func(url string) (Conn, error) {
+			c, _, err := dialer.Dial(url, nil)
+			if err != nil {
+				return nil, err
+			}
+			return gorillaConn{c}, nil
+		}
 	}
 	s := &Session{
 		ui:           u,
 		url:          cfg.URL,
-		dialer:       dialer,
+		dial:         dial,
 		Wake:         cfg.Wake,
 		ViewSize:     cfg.ViewSize,
 		setMenu:      cfg.SetMenu,
@@ -200,6 +225,8 @@ func NewSession(u *ui.Ui, cfg Config) *Session {
 		preloadSound: cfg.PreloadSound,
 		play:         cfg.Play,
 		stop:         cfg.Stop,
+		onMount:      cfg.OnMount,
+		sid:          cfg.SID,
 		queue:        make(chan func(), 256),
 		retry:        500 * time.Millisecond,
 	}
@@ -257,7 +284,7 @@ func (s *Session) connect() {
 	s.mu.Unlock()
 	u.RawQuery = q.Encode()
 
-	conn, _, err := s.dialer.Dial(u.String(), nil)
+	conn, err := s.dial(u.String())
 	if err != nil {
 		s.scheduleRetry()
 		return
@@ -289,9 +316,9 @@ func (s *Session) scheduleRetry() {
 	time.AfterFunc(d, s.connect)
 }
 
-func (s *Session) readLoop(conn *websocket.Conn) {
+func (s *Session) readLoop(conn Conn) {
 	for {
-		_, data, err := conn.ReadMessage()
+		data, err := conn.ReadMessage()
 		if err != nil {
 			s.mu.Lock()
 			current := s.conn == conn
@@ -360,6 +387,9 @@ func (s *Session) handle(msg *serverMsg) {
 			s.everMounted = true
 			s.ui.SetRoot(root)
 			s.hideBanner()
+			if s.onMount != nil {
+				s.onMount(msg.SID)
+			}
 		}
 		s.mu.Lock()
 		fs := s.fullscreen
@@ -524,9 +554,44 @@ func (s *Session) Event(id int, ev string, value any) {
 		return
 	}
 	msg := clientEvent{T: "ev", ID: id, Ev: ev, Value: value, Seq: s.lastSeq}
-	if err := s.conn.WriteJSON(msg); err != nil {
+	data, err := json.Marshal(msg)
+	if err == nil {
+		err = s.conn.WriteMessage(data)
+	}
+	if err != nil {
 		log.Println("caution: event send failed:", err)
 	}
+}
+
+type gorillaConn struct{ *websocket.Conn }
+
+func (c gorillaConn) ReadMessage() ([]byte, error) {
+	_, data, err := c.Conn.ReadMessage()
+	return data, err
+}
+
+func (c gorillaConn) WriteMessage(data []byte) error {
+	return c.Conn.WriteMessage(websocket.TextMessage, data)
+}
+
+// MenubarSpec converts the wire's menu spec into the ui package's local type
+func MenubarSpec(menus []MenuSpec) []ui.MenuSpec {
+	var conv func(items []MenuItem) []ui.MenuItemSpec
+	conv = func(items []MenuItem) []ui.MenuItemSpec {
+		out := make([]ui.MenuItemSpec, 0, len(items))
+		for _, it := range items {
+			out = append(out, ui.MenuItemSpec{
+				ID: it.ID, Title: it.Title, Key: it.Key, Sep: it.Sep,
+				Items: conv(it.Items),
+			})
+		}
+		return out
+	}
+	out := make([]ui.MenuSpec, 0, len(menus))
+	for _, m := range menus {
+		out = append(out, ui.MenuSpec{Title: m.Title, Items: conv(m.Items)})
+	}
+	return out
 }
 
 // NoteFullscreen reports the window entering or leaving the system's fullscreen.

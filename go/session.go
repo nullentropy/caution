@@ -22,12 +22,6 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-// MountFunc builds a session's initial tree. It runs once per session, not
-// once per connection: a session survives disconnects for resumeGrace and is
-// re-adopted when the client reconnects with its session id. Captured
-// variables are the app's per-session state. Handlers and Session.Update
-// closures all run on the session's single goroutine, so that state needs no
-// locking.
 type MountFunc func(s *Session) *Node
 
 const resumeGrace = 60 * time.Second
@@ -69,8 +63,7 @@ type Session struct {
 	vw, vh   float64
 	onResize func(w, h float64)
 
-	// Event rate limiting: a token bucket sized well above any human rate, so
-	// only floods trip it. See allowEvent.
+	// event rate limiting so we can drop event floods
 	evTokens float64
 	evLast   time.Time
 
@@ -82,9 +75,7 @@ type Session struct {
 // original connection, or nil when no Authorize hook is configured.
 func (s *Session) Identity() any { return s.identity }
 
-// Request returns the HTTP request that opened the session, for cookies,
-// headers, and the remote address. Read-only, and its response writer is
-// already gone.
+// Request returns the HTTP request that opened the session
 func (s *Session) Request() *http.Request { return s.req }
 
 // Options harden Serve for real deployments. The zero value keeps safe

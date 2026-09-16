@@ -154,13 +154,13 @@
     (is (= {"row" 3 "key" "E00004"} (:picked @!state)))
     (is (= "E00004" (get-in @sess [:index tbl-id :props "selectedKey"])))))
 
-(deftest shaper-wasm-negotiates-content-encoding
+(deftest wasm-negotiates-content-encoding
   (let [magic (fn [resp n]
                 (let [b (byte-array n)]
                   (.read ^java.io.InputStream (:body resp) b)
                   (mapv #(bit-and % 0xff) b)))
-        gz (server/shaper-handler {:headers {"accept-encoding" "gzip, br"}})
-        plain (server/shaper-handler {:headers {}})]
+        gz (server/wasm-handler {:headers {"accept-encoding" "gzip, br"}})
+        plain (server/wasm-handler {:headers {}})]
     (is (= 200 (:status gz)))
     (is (= "gzip" (get-in gz [:headers "Content-Encoding"])))
     (is (= "application/wasm" (get-in gz [:headers "Content-Type"])))

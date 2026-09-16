@@ -9,13 +9,15 @@ There's no HTML, CSS, or JavaScript anywhere in your app.
 
 There are two terminals, and every app works in both without changes:
 
-- the **browser terminal**: a fixed TypeScript runtime rendering into a
-  WebGL2 canvas, bundled in your app
+- the **browser terminal**: the same Go terminal compiled to WebAssembly,
+  drawing into a WebGL2 canvas through a small TypeScript page, bundled in
+  your app
 - the **native terminal**: a Go program (GLFW + OpenGL) that opens the same
   app as a desktop window, with no browser engine in the process
 
-The two render identically. The test harness (`cmd/goldens`) renders the
-same scenes through both and compares the frames.
+Widgets, layout, protocol and text are one codebase in both. The test
+harness (`cmd/goldens`) renders the same scenes through both and compares
+the frames.
 
 ## Quick start
 
@@ -441,7 +443,8 @@ picks, key combos, and the mouse's extra buttons.
 ## Developing in this repo
 
 ```
-go run -C go ./cmd/demo              # demo, serving the client live from src/
+go run -C go ./cmd/demo              # demo, serving the page script live from src/
+go run -C go ./cmd/bundle            # rebuild term.wasm and app.js after terminal changes
 cd go && go tool tsgo --noEmit -p .. # typecheck the TypeScript
 go test ./...                        # Go suites (run from go/)
 go run -C go ./cmd/tstest            # TypeScript unit suite

@@ -66,7 +66,7 @@ before it opens.
   an outage. the 403 on the upgrade reaches the terminals as a connection
   error they retry forever, so a signed-out user sees a network failure.
   and gating the host page means owning "/", which ServeClient registers
-  along with /app.js and /shaper.wasm, so it needs splitting up before an
+  along with /app.js and /term.wasm, so it needs splitting up before an
   app can put its own check in front.
 
 shipping

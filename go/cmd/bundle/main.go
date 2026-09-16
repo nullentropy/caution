@@ -7,16 +7,14 @@
 // they are the SDKs' shipping artifacts. Paths resolve from the enclosing
 // caution checkout, so it runs from any directory.
 //
-// Two artifacts per run: app.js (esbuild over src/terminal.ts) and
-// shaper.wasm (cmd/shaperwasm - the native text stack compiled to wasm, so
-// the browser shapes and rasterizes text with the same engine and fonts as
-// the native terminal). The SDK-embedded and classpath copies of the wasm
-// are gzip-compressed (~7.4MB -> ~2MB): both servers negotiate
-// Content-Encoding and decompress in-process for identity clients, so the
-// wire and the embedding binary both pay the small size. dist/ keeps the
-// raw wasm for out-of-module consumers. The Go toolchain's wasm_exec.js is
-// refreshed into src/vendor/ first, so the bundled loader always matches
-// the toolchain that built the wasm.
+// Two artifacts per run: app.js (esbuild over src/terminal.ts, the page
+// around the terminal) and term.wasm (cmd/termwasm, the terminal itself).
+// The SDK-embedded and classpath copies of the wasm are gzip-compressed:
+// both servers negotiate Content-Encoding and decompress in-process for
+// identity clients, so the wire and the embedding binary both pay the small
+// size. dist/ keeps the raw wasm for out-of-module consumers. The Go
+// toolchain's wasm_exec.js is refreshed into src/vendor/ first, so the
+// bundled loader always matches the toolchain that built the wasm.
 //
 //	go run ./cmd/bundle [-o path/app.js] [-pretty]
 package main
@@ -58,7 +56,7 @@ func main() {
 	if err := vendorWasmExec(root); err != nil {
 		log.Fatal(err)
 	}
-	wasm, err := buildShaperWasm(modDir)
+	wasm, err := buildWasm(modDir)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -87,7 +85,7 @@ func main() {
 	} {
 		writeArtifact(path, res.OutputFiles[0].Contents)
 	}
-	writeArtifact(filepath.Join(filepath.Dir(*out), "shaper.wasm"), wasm)
+	writeArtifact(filepath.Join(filepath.Dir(*out), "term.wasm"), wasm)
 	var gz bytes.Buffer
 	zw, _ := gzip.NewWriterLevel(&gz, gzip.BestCompression)
 	if _, err := zw.Write(wasm); err != nil {
@@ -97,8 +95,8 @@ func main() {
 		log.Fatal(err)
 	}
 	for _, path := range []string{
-		filepath.Join(modDir, "embedded", "shaper.wasm.gz"),
-		filepath.Join(root, "clj", "resources", "caution", "shaper.wasm.gz"),
+		filepath.Join(modDir, "embedded", "term.wasm.gz"),
+		filepath.Join(root, "clj", "resources", "caution", "term.wasm.gz"),
 	} {
 		writeArtifact(path, gz.Bytes())
 	}
@@ -137,11 +135,11 @@ func vendorWasmExec(root string) error {
 	return os.WriteFile(filepath.Join(root, "src", "vendor", "wasm_exec.js"), src, 0o644)
 }
 
-// buildShaperWasm compiles cmd/shaperwasm for js/wasm and returns the
-// binary, shrunk through binaryen's wasm-opt when it's installed (a soft
-// dependency: the wasm is correct either way, wasm-opt just makes it
-// smaller - committed artifacts should be built on a machine that has it).
-func buildShaperWasm(modDir string) ([]byte, error) {
+// buildWasm compiles cmd/termwasm for js/wasm and returns the binary, shrunk
+// through binaryen's wasm-opt when it's installed (a soft dependency: the
+// wasm is correct either way, wasm-opt just makes it smaller, so committed
+// artifacts should be built on a machine that has it).
+func buildWasm(modDir string) ([]byte, error) {
 	tmp, err := os.CreateTemp("", "caution-shaper-*.wasm")
 	if err != nil {
 		return nil, err
@@ -153,11 +151,11 @@ func buildShaperWasm(modDir string) ([]byte, error) {
 	// without it the file churns and every browser downloads ~100 bytes of
 	// repository trivia. With it, identical source produces identical bytes.
 	cmd := exec.Command("go", "build", "-ldflags=-s -w", "-trimpath", "-buildvcs=false",
-		"-o", tmp.Name(), "./cmd/shaperwasm")
+		"-o", tmp.Name(), "./cmd/termwasm")
 	cmd.Dir = modDir // the module, not our cwd
 	cmd.Env = append(os.Environ(), "GOOS=js", "GOARCH=wasm")
 	if out, err := cmd.CombinedOutput(); err != nil {
-		return nil, fmt.Errorf("shaperwasm build: %v\n%s", err, out)
+		return nil, fmt.Errorf("termwasm build: %v\n%s", err, out)
 	}
 	if _, err := exec.LookPath("wasm-opt"); err != nil {
 		log.Printf("caution: wasm-opt not found - shipping unoptimized wasm (brew install binaryen)")
