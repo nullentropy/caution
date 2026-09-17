@@ -6,13 +6,14 @@ import (
 	"testing"
 
 	"github.com/nullentropy/caution/go/terminal/ui"
+	"github.com/nullentropy/caution/go/wire"
 )
 
 func TestSoundsOpInstallsTableAndDecodesEverySource(t *testing.T) {
 	u := ui.New()
 	var preloaded []string
 	s := &Session{ui: u, preloadSound: func(src string) { preloaded = append(preloaded, src) }}
-	s.applyOp(&patchOp{Op: "sounds", Tokens: map[string]string{"press": "/a.wav", "toggle": "/b.wav"}})
+	s.applyOp(&patchOp{Op: wire.OpSounds, Tokens: map[string]string{"press": "/a.wav", "toggle": "/b.wav"}})
 	if u.Sounds["press"] != "/a.wav" || u.Sounds["toggle"] != "/b.wav" {
 		t.Fatalf("table = %v", u.Sounds)
 	}
@@ -21,7 +22,7 @@ func TestSoundsOpInstallsTableAndDecodesEverySource(t *testing.T) {
 	}
 
 	quiet := &Session{ui: ui.New()}
-	quiet.applyOp(&patchOp{Op: "sounds", Tokens: map[string]string{"press": "/a.wav"}})
+	quiet.applyOp(&patchOp{Op: wire.OpSounds, Tokens: map[string]string{"press": "/a.wav"}})
 	if quiet.ui.Sounds["press"] != "/a.wav" {
 		t.Fatal("table not installed without an audio hook")
 	}
@@ -35,11 +36,11 @@ func TestPlayStopAndResourceOpsReachTheAudioHooks(t *testing.T) {
 		stop:         func(src string) { log = append(log, "stop "+src) },
 		preloadSound: func(src string) { preloaded = append(preloaded, src) },
 	}
-	s.applyOp(&patchOp{Op: "play", Src: "/ding.wav"})
-	s.applyOp(&patchOp{Op: "play", Src: "/alarm.wav", Loop: true})
-	s.applyOp(&patchOp{Op: "stop", Src: "/alarm.wav"})
-	s.applyOp(&patchOp{Op: "stop"})
-	s.applyOp(&patchOp{Op: "resource", Sounds: []string{"/c.wav", "/d.wav"}})
+	s.applyOp(&patchOp{Op: wire.OpPlay, Src: "/ding.wav"})
+	s.applyOp(&patchOp{Op: wire.OpPlay, Src: "/alarm.wav", Loop: true})
+	s.applyOp(&patchOp{Op: wire.OpStop, Src: "/alarm.wav"})
+	s.applyOp(&patchOp{Op: wire.OpStop})
+	s.applyOp(&patchOp{Op: wire.OpResource, Sounds: []string{"/c.wav", "/d.wav"}})
 	want := []string{"play /ding.wav loop=false", "play /alarm.wav loop=true", "stop /alarm.wav", "stop "}
 	if !reflect.DeepEqual(log, want) {
 		t.Fatalf("hooks saw %v; want %v", log, want)
@@ -57,7 +58,7 @@ func TestMountStopsEverythingThenStartsItsLoops(t *testing.T) {
 		stop: func(src string) { log = append(log, "stop "+src) },
 	}
 	s.store = NewNodeStore(s)
-	s.handle(&serverMsg{T: "mount", Loops: []string{"/alarm.wav", "/hum.wav"}})
+	s.handle(&serverMsg{T: wire.MsgMount, Loops: []string{"/alarm.wav", "/hum.wav"}})
 	want := []string{"stop ", "play /alarm.wav loop=true", "play /hum.wav loop=true"}
 	if !reflect.DeepEqual(log, want) {
 		t.Fatalf("mount drove %v; want %v", log, want)

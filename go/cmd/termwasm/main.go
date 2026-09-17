@@ -20,6 +20,7 @@ import (
 	"github.com/nullentropy/caution/go/terminal/proto"
 	"github.com/nullentropy/caution/go/terminal/text"
 	"github.com/nullentropy/caution/go/terminal/ui"
+	"github.com/nullentropy/caution/go/wire"
 )
 
 var (
@@ -65,7 +66,7 @@ func main() {
 			return int(lastW), int(lastH)
 		},
 		SetMenu: func(menus []proto.MenuSpec) {
-			u.SetMenubar(proto.MenubarSpec(menus), func(id int) { sess.Event(0, "menu", id) })
+			u.SetMenubar(proto.MenubarSpec(menus), func(id int) { sess.Event(0, wire.EvMenu, id) })
 		},
 		SetTitle:     func(title string) { call("setTitle", title) },
 		Preload:      func(src string) { call("preloadImage", src) },

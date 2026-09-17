@@ -3,11 +3,13 @@ package caution
 import (
 	"encoding/json"
 	"fmt"
+
+	"github.com/nullentropy/caution/go/wire"
 )
 
 // A UI document ("nib") is a widget tree as data
 type nibNode struct {
-	Type string         `json:"type"`
+	Type wire.Type      `json:"type"`
 	Name string         `json:"name,omitempty"`
 	P    map[string]any `json:"p,omitempty"`
 	Kids []nibNode      `json:"kids,omitempty"`

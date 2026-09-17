@@ -18,6 +18,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/nullentropy/caution/go/wire"
+
 	"github.com/gorilla/websocket"
 	"github.com/rs/zerolog/log"
 )
@@ -109,11 +111,11 @@ type adoptedConn struct {
 }
 
 type clientMsg struct {
-	T     string `json:"t"`
-	ID    int    `json:"id"`
-	Ev    string `json:"ev"`
-	Value any    `json:"value"`
-	Seq   int    `json:"seq"`
+	T     wire.Msg   `json:"t"`
+	ID    int        `json:"id"`
+	Ev    wire.Event `json:"ev"`
+	Value any        `json:"value"`
+	Seq   int        `json:"seq"`
 }
 
 var (
@@ -295,7 +297,7 @@ func queryFloat(r *http.Request, key string) float64 {
 func (s *Session) SetTheme(tokens map[string]string) {
 	s.theme = tokens
 	if s.mounted {
-		s.ops = append(s.ops, map[string]any{"op": "theme", "tokens": tokens})
+		s.ops = append(s.ops, map[string]any{"op": wire.OpTheme, "tokens": tokens})
 	}
 }
 
@@ -307,7 +309,7 @@ func (s *Session) SetTheme(tokens map[string]string) {
 func (s *Session) SetMetrics(tokens map[string]float64) {
 	s.metrics = tokens
 	if s.mounted {
-		s.ops = append(s.ops, map[string]any{"op": "metrics", "metrics": tokens})
+		s.ops = append(s.ops, map[string]any{"op": wire.OpMetrics, "metrics": tokens})
 	}
 }
 
@@ -316,7 +318,7 @@ func (s *Session) SetMetrics(tokens map[string]float64) {
 func (s *Session) SetTitle(title string) {
 	s.title = title
 	if s.mounted {
-		s.ops = append(s.ops, map[string]any{"op": "title", "title": title})
+		s.ops = append(s.ops, map[string]any{"op": wire.OpTitle, "title": title})
 	}
 }
 
@@ -335,7 +337,7 @@ func (s *Session) Preload(srcs ...string) {
 		}
 	}
 	if s.mounted && len(fresh) > 0 {
-		s.ops = append(s.ops, map[string]any{"op": "resource", "images": fresh})
+		s.ops = append(s.ops, map[string]any{"op": wire.OpResource, "images": fresh})
 	}
 }
 
@@ -345,7 +347,7 @@ func (s *Session) Preload(srcs ...string) {
 func (s *Session) SetSounds(tokens map[string]string) {
 	s.sounds = tokens
 	if s.mounted {
-		s.ops = append(s.ops, map[string]any{"op": "sounds", "tokens": tokens})
+		s.ops = append(s.ops, map[string]any{"op": wire.OpSounds, "tokens": tokens})
 	}
 }
 
@@ -359,14 +361,14 @@ func (s *Session) PreloadSounds(srcs ...string) {
 		}
 	}
 	if s.mounted && len(fresh) > 0 {
-		s.ops = append(s.ops, map[string]any{"op": "resource", "sounds": fresh})
+		s.ops = append(s.ops, map[string]any{"op": wire.OpResource, "sounds": fresh})
 	}
 }
 
 // Play plays a WAV once on the client. src is a URL or data: URI
 func (s *Session) Play(src string) {
 	if s.mounted {
-		s.ops = append(s.ops, map[string]any{"op": "play", "src": src})
+		s.ops = append(s.ops, map[string]any{"op": wire.OpPlay, "src": src})
 	}
 }
 
@@ -377,7 +379,7 @@ func (s *Session) Loop(src string) {
 	}
 	s.loops = append(s.loops, src)
 	if s.mounted {
-		s.ops = append(s.ops, map[string]any{"op": "play", "src": src, "loop": true})
+		s.ops = append(s.ops, map[string]any{"op": wire.OpPlay, "src": src, "loop": true})
 	}
 }
 
@@ -385,7 +387,7 @@ func (s *Session) Loop(src string) {
 func (s *Session) Stop(src string) {
 	s.loops = slices.DeleteFunc(s.loops, func(l string) bool { return l == src })
 	if s.mounted {
-		s.ops = append(s.ops, map[string]any{"op": "stop", "src": src})
+		s.ops = append(s.ops, map[string]any{"op": wire.OpStop, "src": src})
 	}
 }
 
@@ -393,7 +395,7 @@ func (s *Session) Stop(src string) {
 func (s *Session) StopAll() {
 	s.loops = nil
 	if s.mounted {
-		s.ops = append(s.ops, map[string]any{"op": "stop"})
+		s.ops = append(s.ops, map[string]any{"op": wire.OpStop})
 	}
 }
 
@@ -411,7 +413,7 @@ func (s *Session) OnKey(combo string, fn func()) {
 	s.keys = append(s.keys, map[string]any{"id": id, "key": normalizeCombo(combo)})
 	s.keyHandlers[id] = fn
 	if s.mounted {
-		s.ops = append(s.ops, map[string]any{"op": "keys", "keys": s.keys})
+		s.ops = append(s.ops, map[string]any{"op": wire.OpKeys, "keys": s.keys})
 	}
 }
 
@@ -503,7 +505,7 @@ func (s *Session) run(mount MountFunc, first *websocket.Conn) {
 		c.SetReadLimit(1 << 20)
 		s.conn = c
 		if resumeSeq >= 0 && resumeSeq == s.seq {
-			if err := c.WriteJSON(map[string]any{"t": "resume", "seq": s.seq}); err != nil {
+			if err := c.WriteJSON(map[string]any{"t": wire.MsgResume, "seq": s.seq}); err != nil {
 				log.Info().Msgf("caution: session %d resume ack failed: %v", s.sid, err)
 			}
 		} else {
@@ -597,7 +599,7 @@ func (s *Session) sendMount() {
 	if s.conn == nil {
 		return
 	}
-	msg := map[string]any{"t": "mount", "seq": s.seq, "sid": s.token, "root": s.root.toJSON()}
+	msg := map[string]any{"t": wire.MsgMount, "seq": s.seq, "sid": s.token, "root": s.root.toJSON()}
 	if s.focus != nil && s.focus.sess == s {
 		msg["focus"] = s.focus.id
 	}
@@ -671,7 +673,7 @@ func (s *Session) allowEvent() bool {
 }
 
 func (s *Session) dispatch(m clientMsg) {
-	if m.T != "ev" {
+	if m.T != wire.MsgEvent {
 		return
 	}
 	if !s.allowEvent() {
@@ -681,7 +683,7 @@ func (s *Session) dispatch(m clientMsg) {
 	// Session-level events carry node id 0 because no widget owns them.
 	if m.ID == 0 {
 		switch m.Ev {
-		case "resize":
+		case wire.EvResize:
 			v, _ := m.Value.(map[string]any)
 			w, _ := v["w"].(float64)
 			h, _ := v["h"].(float64)
@@ -691,25 +693,25 @@ func (s *Session) dispatch(m clientMsg) {
 					s.onResize(w, h)
 				}
 			}
-		case "menu":
+		case wire.EvMenu:
 			id, _ := m.Value.(float64)
 			log.Trace().Msgf("caution: session %d <- menu pick %d", s.sid, int(id))
 			if fn := s.menuHandlers[int(id)]; fn != nil {
 				fn()
 			}
-		case "key":
+		case wire.EvKey:
 			id, _ := m.Value.(float64)
 			log.Trace().Msgf("caution: session %d <- key combo %d", s.sid, int(id))
 			if fn := s.keyHandlers[int(id)]; fn != nil {
 				fn()
 			}
-		case "aux":
+		case wire.EvAux:
 			b, _ := m.Value.(float64)
 			log.Trace().Msgf("caution: session %d <- mouse button %d", s.sid, int(b))
 			if s.onAux != nil {
 				s.onAux(int(b))
 			}
-		case "fullscreen":
+		case wire.EvFullscreen:
 			on, _ := m.Value.(bool)
 			s.fullscreen = on
 			if s.onFullscreen != nil {
@@ -733,15 +735,15 @@ func (s *Session) dispatch(m clientMsg) {
 		return
 	}
 	switch m.Ev {
-	case "click":
+	case wire.EvClick:
 		if n.onClick != nil {
 			n.onClick()
 		}
-	case "toggle":
+	case wire.EvToggle:
 		if v, ok := m.Value.(map[string]any); ok {
 			// Tree disclosure: {row, key}. The node owns expansion: flip,
 			// reflatten, refresh the client's window, then tell the app.
-			if key, _ := v["key"].(string); key != "" && n.typ == "tree" {
+			if key, _ := v["key"].(string); key != "" && n.typ == wire.Tree {
 				n.toggleTreeRow(key)
 			}
 			break
@@ -753,11 +755,11 @@ func (s *Session) dispatch(m clientMsg) {
 		if n.onToggle != nil {
 			n.onToggle(checked)
 		}
-	case "input", "commit":
+	case wire.EvInput, wire.EvCommit:
 		if f, ok := m.Value.(float64); ok {
 			// Numeric input/commit: a slider. Same events, same echo rule.
 			n.props["value"] = f
-			if m.Ev == "input" {
+			if m.Ev == wire.EvInput {
 				if n.onSlide != nil {
 					n.onSlide(f)
 				}
@@ -768,14 +770,14 @@ func (s *Session) dispatch(m clientMsg) {
 		}
 		v, _ := m.Value.(string)
 		n.props["value"] = v // silent local-echo sync
-		if m.Ev == "input" {
+		if m.Ev == wire.EvInput {
 			if n.onInput != nil {
 				n.onInput(v)
 			}
 		} else if n.onCommit != nil {
 			n.onCommit(v)
 		}
-	case "visible-range":
+	case wire.EvVisibleRange:
 		v, _ := m.Value.(map[string]any)
 		start, end := toInt(v["start"]), toInt(v["end"])
 		n.lastStart, n.lastEnd, n.hasRange = start, end, true
@@ -784,7 +786,7 @@ func (s *Session) dispatch(m clientMsg) {
 				s.queueRows(n.id, start, rows, meta, false)
 			}
 		}
-	case "sort":
+	case wire.EvSort:
 		v, _ := m.Value.(map[string]any)
 		key, _ := v["key"].(string)
 		asc, _ := v["asc"].(bool)
@@ -797,7 +799,7 @@ func (s *Session) dispatch(m clientMsg) {
 		if n.onSort != nil {
 			n.onSort(key, asc)
 		}
-	case "cell-activate":
+	case wire.EvCellActivate:
 		v, _ := m.Value.(map[string]any)
 		if n.onCellActivate != nil {
 			key, _ := v["key"].(string)
@@ -805,7 +807,7 @@ func (s *Session) dispatch(m clientMsg) {
 			val, _ := v["value"].(string)
 			n.onCellActivate(toInt(v["row"]), key, col, val)
 		}
-	case "row-select":
+	case wire.EvRowSelect:
 		if v, ok := m.Value.(map[string]any); ok {
 			// Keyed table: selection identity is the key, and the index is just
 			// where the row sat at click time.
@@ -825,7 +827,7 @@ func (s *Session) dispatch(m clientMsg) {
 		if n.onRowSelect != nil {
 			n.onRowSelect(idx)
 		}
-	case "row-activate":
+	case wire.EvRowActivate:
 		// No prop sync here: the row-select that preceded it already did.
 		if v, ok := m.Value.(map[string]any); ok {
 			idx := toInt(v["row"])
@@ -841,33 +843,33 @@ func (s *Session) dispatch(m clientMsg) {
 		if n.onRowActivate != nil {
 			n.onRowActivate(toInt(m.Value))
 		}
-	case "select":
+	case wire.EvSelect:
 		idx := toInt(m.Value)
 		n.props["selected"] = idx // silent local-echo sync
 		if n.onSelect != nil {
 			n.onSelect(idx)
 		}
-	case "dismiss":
+	case wire.EvDismiss:
 		if n.onDismiss != nil {
 			n.onDismiss()
 		}
-	case "context":
+	case wire.EvContext:
 		if fn := n.contextHandlers[toInt(m.Value)]; fn != nil {
 			fn()
 		}
-	case "col-resize":
+	case wire.EvColResize:
 		if v, ok := m.Value.(map[string]any); ok && n.onColResize != nil {
 			key, _ := v["key"].(string)
 			width, _ := v["width"].(float64)
 			n.onColResize(key, width)
 		}
-	case "split-resize":
+	case wire.EvSplitResize:
 		pos, _ := m.Value.(float64)
 		n.props["pos"] = pos // silent local-echo sync
 		if n.onSplitResize != nil {
 			n.onSplitResize(pos)
 		}
-	case "pick":
+	case wire.EvPick:
 		if v, ok := m.Value.(map[string]any); ok && n.onPick != nil {
 			x, _ := v["x"].(float64)
 			y, _ := v["y"].(float64)
@@ -876,19 +878,19 @@ func (s *Session) dispatch(m clientMsg) {
 			// 0 or already gone).
 			n.onPick(x, y, s.nodes[toInt(v["target"])])
 		}
-	case "drag":
+	case wire.EvDrag:
 		if v, ok := m.Value.(map[string]any); ok && n.onDragTo != nil {
 			x, _ := v["x"].(float64)
 			y, _ := v["y"].(float64)
 			n.onDragTo(x, y)
 		}
-	case "drop":
+	case wire.EvDrop:
 		if v, ok := m.Value.(map[string]any); ok && n.onDrop != nil {
 			x, _ := v["x"].(float64)
 			y, _ := v["y"].(float64)
 			n.onDrop(x, y)
 		}
-	case "wheel":
+	case wire.EvWheel:
 		if v, ok := m.Value.(map[string]any); ok && n.onWheel != nil {
 			x, _ := v["x"].(float64)
 			y, _ := v["y"].(float64)
@@ -896,19 +898,19 @@ func (s *Session) dispatch(m clientMsg) {
 			dy, _ := v["dy"].(float64)
 			n.onWheel(x, y, dx, dy)
 		}
-	case "rpick":
+	case wire.EvRPick:
 		if v, ok := m.Value.(map[string]any); ok && n.onRPick != nil {
 			x, _ := v["x"].(float64)
 			y, _ := v["y"].(float64)
 			n.onRPick(x, y)
 		}
-	case "rdrag":
+	case wire.EvRDrag:
 		if v, ok := m.Value.(map[string]any); ok && n.onRDrag != nil {
 			x, _ := v["x"].(float64)
 			y, _ := v["y"].(float64)
 			n.onRDrag(x, y)
 		}
-	case "rdrop":
+	case wire.EvRDrop:
 		if v, ok := m.Value.(map[string]any); ok && n.onRDrop != nil {
 			x, _ := v["x"].(float64)
 			y, _ := v["y"].(float64)
@@ -931,7 +933,7 @@ func (s *Session) flush() {
 		return
 	}
 	s.seq++
-	msg := map[string]any{"t": "patch", "seq": s.seq, "ops": s.ops}
+	msg := map[string]any{"t": wire.MsgPatch, "seq": s.seq, "ops": s.ops}
 	s.ops = nil
 	if err := s.conn.WriteJSON(msg); err != nil {
 		log.Info().Msgf("caution: session %d write failed: %v", s.sid, err)
@@ -971,7 +973,7 @@ func (s *Session) detach(n *Node) {
 }
 
 func (s *Session) queueSet(id int, k string, v any) {
-	s.ops = append(s.ops, map[string]any{"op": "set", "id": id, "p": map[string]any{k: v}})
+	s.ops = append(s.ops, map[string]any{"op": wire.OpSet, "id": id, "p": map[string]any{k: v}})
 }
 
 func (s *Session) queuePendingFocus() {
@@ -980,12 +982,12 @@ func (s *Session) queuePendingFocus() {
 	}
 	s.focusPending = false
 	if s.focus != nil && s.focus.sess == s {
-		s.queueCmd(s.focus.id, "focus", nil)
+		s.queueCmd(s.focus.id, wire.CmdFocus, nil)
 	}
 }
 
-func (s *Session) queueCmd(id int, cmd string, value any) {
-	op := map[string]any{"op": "cmd", "id": id, "cmd": cmd}
+func (s *Session) queueCmd(id int, cmd wire.Cmd, value any) {
+	op := map[string]any{"op": wire.OpCmd, "id": id, "cmd": cmd}
 	if value != nil {
 		op["value"] = value
 	}
@@ -993,15 +995,15 @@ func (s *Session) queueCmd(id int, cmd string, value any) {
 }
 
 func (s *Session) queueInsert(parent, index int, n *Node) {
-	s.ops = append(s.ops, map[string]any{"op": "insert", "parent": parent, "index": index, "node": n.toJSON()})
+	s.ops = append(s.ops, map[string]any{"op": wire.OpInsert, "parent": parent, "index": index, "node": n.toJSON()})
 }
 
 func (s *Session) queueRemove(id int) {
-	s.ops = append(s.ops, map[string]any{"op": "remove", "id": id})
+	s.ops = append(s.ops, map[string]any{"op": wire.OpRemove, "id": id})
 }
 
 func (s *Session) queueRows(id, start int, rows [][]string, meta []map[string]any, reset bool) {
-	op := map[string]any{"op": "rows", "id": id, "start": start, "reset": reset, "rows": rows}
+	op := map[string]any{"op": wire.OpRows, "id": id, "start": start, "reset": reset, "rows": rows}
 	if meta != nil {
 		op["meta"] = meta // trees only: {key, d(epth), k(ids), x(panded)} per row
 	}

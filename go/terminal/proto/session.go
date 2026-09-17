@@ -11,12 +11,13 @@ import (
 
 	"github.com/nullentropy/caution/go/terminal/gfx"
 	"github.com/nullentropy/caution/go/terminal/ui"
+	"github.com/nullentropy/caution/go/wire"
 
 	"github.com/gorilla/websocket"
 )
 
 type serverMsg struct {
-	T         string             `json:"t"`
+	T         wire.Msg           `json:"t"`
 	Seq       int                `json:"seq"`
 	Root      *nodeJSON          `json:"root"`
 	SID       string             `json:"sid"`
@@ -61,7 +62,7 @@ type MenuItem struct {
 
 // patchOp is the union of every op shape. Absent fields stay zero.
 type patchOp struct {
-	Op     string            `json:"op"`
+	Op     wire.Op           `json:"op"`
 	Parent int               `json:"parent"`
 	Index  int               `json:"index"`
 	Node   *nodeJSON         `json:"node"`
@@ -82,7 +83,7 @@ type patchOp struct {
 	Src     string             `json:"src"`
 	Loop    bool               `json:"loop"`
 	Meta    []metaSpec         `json:"meta"`
-	Cmd     string             `json:"cmd"`
+	Cmd     wire.Cmd           `json:"cmd"`
 	Value   string             `json:"value"`
 }
 
@@ -106,11 +107,11 @@ func rowMeta(in []metaSpec) []ui.RowMeta {
 }
 
 type clientEvent struct {
-	T     string `json:"t"`
-	ID    int    `json:"id"`
-	Ev    string `json:"ev"`
-	Value any    `json:"value,omitempty"`
-	Seq   int    `json:"seq"`
+	T     wire.Msg   `json:"t"`
+	ID    int        `json:"id"`
+	Ev    wire.Event `json:"ev"`
+	Value any        `json:"value,omitempty"`
+	Seq   int        `json:"seq"`
 }
 
 // Conn is one connection to the server
@@ -234,7 +235,7 @@ func NewSession(u *ui.Ui, cfg Config) *Session {
 		retry:        500 * time.Millisecond,
 	}
 	s.store = NewNodeStore(s)
-	u.OnAux = func(button int) { s.Event(0, "aux", button) }
+	u.OnAux = func(button int) { s.Event(0, wire.EvAux, button) }
 	if cfg.Play != nil {
 		u.PlaySound = func(src string) { cfg.Play(src, false) }
 	}
@@ -350,7 +351,7 @@ func (s *Session) handle(msg *serverMsg) {
 	s.lastSeq = msg.Seq
 	s.mu.Unlock()
 	switch msg.T {
-	case "mount":
+	case wire.MsgMount:
 		if msg.SID != "" {
 			s.mu.Lock()
 			s.sid = msg.SID
@@ -401,15 +402,15 @@ func (s *Session) handle(msg *serverMsg) {
 		fs := s.fullscreen
 		s.mu.Unlock()
 		if fs {
-			s.Event(0, "fullscreen", true)
+			s.Event(0, wire.EvFullscreen, true)
 		}
-	case "resume":
+	case wire.MsgResume:
 		// Nothing changed while we were away: the tree we're showing is
 		// still right, keep everything.
 		s.mounted = true
 		s.everMounted = true
 		s.hideBanner()
-	case "patch":
+	case wire.MsgPatch:
 		if !s.mounted {
 			return
 		}
@@ -432,18 +433,18 @@ func (s *Session) handle(msg *serverMsg) {
 // rebuilt whole.
 func (s *Session) applyOp(op *patchOp) bool {
 	switch op.Op {
-	case "set":
+	case wire.OpSet:
 		if w, ok := s.store.ByID[op.ID]; ok {
 			s.store.Apply(w, op.ID, op.P)
 			// The protocol layer knows which node a set op touched,
 			// so hand the paint layer a targeted invalidation.
 			s.ui.Damage(w)
 		}
-	case "cmd":
+	case wire.OpCmd:
 		if w, ok := s.store.ByID[op.ID]; ok {
 			s.command(w, op.Cmd, op.Value)
 		}
-	case "insert":
+	case wire.OpInsert:
 		parent, ok := s.store.ByID[op.Parent]
 		if !ok || op.Node == nil {
 			return true
@@ -455,46 +456,46 @@ func (s *Session) applyOp(op *patchOp) bool {
 		idx := min(op.Index, len(pk.Kids))
 		pk.Kids = append(pk.Kids[:idx], append([]ui.Widget{w}, pk.Kids[idx:]...)...)
 		return true
-	case "remove":
+	case wire.OpRemove:
 		s.ui.NoteStructural()
 		s.store.Remove(op.ID)
 		return true
-	case "rows":
+	case wire.OpRows:
 		if w, ok := s.store.ByID[op.ID].(*ui.TableView); ok {
 			w.ApplyRows(op.Start, op.Rows, rowMeta(op.Meta), op.Reset) // marks itself
 		}
-	case "theme":
+	case wire.OpTheme:
 		// a patched theme is a switch the user watched happen, so fade it. the
 		// mount's theme still snaps, since first paint has no before
 		s.ui.AnimateTheme(op.Tokens) // every widget's colors: whole frame
-	case "metrics":
+	case wire.OpMetrics:
 		// Geometry snaps (no tween) and invalidates measurement caches along
 		// with the frame. See Ui.ApplyMetrics.
 		s.ui.ApplyMetrics(op.Metrics)
-	case "menu":
+	case wire.OpMenu:
 		if s.setMenu != nil {
 			s.setMenu(op.Menu)
 		}
 		return true
-	case "title":
+	case wire.OpTitle:
 		if s.setTitle != nil {
 			s.setTitle(op.Title)
 		}
-	case "keys":
+	case wire.OpKeys:
 		s.applyKeys(op.Keys)
-	case "resource":
+	case wire.OpResource:
 		s.applyResources(op.Images, op.Sounds)
-	case "play":
+	case wire.OpPlay:
 		if s.play != nil {
 			s.play(op.Src, op.Loop)
 		}
-	case "stop":
+	case wire.OpStop:
 		if s.stop != nil {
 			s.stop(op.Src)
 		}
-	case "sounds":
+	case wire.OpSounds:
 		s.applySounds(op.Tokens)
-	case "move":
+	case wire.OpMove:
 		w, okW := s.store.ByID[op.ID]
 		parent, okP := s.store.ByID[op.Parent]
 		if !okW || !okP {
@@ -519,20 +520,20 @@ func (s *Session) applyOp(op *patchOp) bool {
 	return false
 }
 
-func (s *Session) command(w ui.Widget, cmd, value string) {
+func (s *Session) command(w ui.Widget, cmd wire.Cmd, value string) {
 	switch cmd {
-	case "focus":
+	case wire.CmdFocus:
 		w.Base().RequestFocus()
-	case "reveal":
+	case wire.CmdReveal:
 		w.Base().RequestReveal()
-	case "clear":
+	case wire.CmdClear:
 		switch t := w.(type) {
 		case *ui.TextField:
 			t.ForceClear()
 		case *ui.TextArea:
 			t.ForceClear()
 		}
-	case "value":
+	case wire.CmdValue:
 		switch t := w.(type) {
 		case *ui.TextField:
 			t.ForceValue(value)
@@ -550,7 +551,7 @@ func (s *Session) applyKeys(keys []keySpec) {
 		m[k.Key] = k.ID
 	}
 	s.ui.KeyCombos = m
-	s.ui.OnKeyCombo = func(id int) { s.Event(0, "key", id) }
+	s.ui.OnKeyCombo = func(id int) { s.Event(0, wire.EvKey, id) }
 }
 
 // applySounds installs the gesture table and decodes every source now
@@ -580,13 +581,13 @@ func (s *Session) applyResources(images, sounds []string) {
 
 // Event implements EventSink. Safe from any goroutine (input debounce timers
 // fire off-thread).
-func (s *Session) Event(id int, ev string, value any) {
+func (s *Session) Event(id int, ev wire.Event, value any) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.conn == nil {
 		return
 	}
-	msg := clientEvent{T: "ev", ID: id, Ev: ev, Value: value, Seq: s.lastSeq}
+	msg := clientEvent{T: wire.MsgEvent, ID: id, Ev: ev, Value: value, Seq: s.lastSeq}
 	data, err := json.Marshal(msg)
 	if err == nil {
 		err = s.conn.WriteMessage(data)
@@ -634,7 +635,7 @@ func (s *Session) NoteFullscreen(on bool) {
 	s.mu.Lock()
 	s.fullscreen = on
 	s.mu.Unlock()
-	s.Event(0, "fullscreen", on)
+	s.Event(0, wire.EvFullscreen, on)
 }
 
 // NoteResize debounces window resizes into the session-level resize event
@@ -648,7 +649,7 @@ func (s *Session) NoteResize(w, h int) {
 func (s *Session) flushResize() {
 	if s.hasResize && time.Now().After(s.resizeAt) {
 		s.hasResize = false
-		s.Event(0, "resize", map[string]any{"w": s.resizeW, "h": s.resizeH})
+		s.Event(0, wire.EvResize, map[string]any{"w": s.resizeW, "h": s.resizeH})
 	}
 }
 

@@ -25,6 +25,7 @@ import (
 	"github.com/nullentropy/caution/go/terminal/render"
 	"github.com/nullentropy/caution/go/terminal/text"
 	"github.com/nullentropy/caution/go/terminal/ui"
+	"github.com/nullentropy/caution/go/wire"
 
 	"github.com/go-gl/glfw/v3.3/glfw"
 	"github.com/gorilla/websocket"
@@ -467,7 +468,7 @@ func Run(o Options) error {
 		Wake:     gate.wake,
 		ViewSize: func() (int, int) { return win.GetSize() },
 		SetMenu: func(menus []proto.MenuSpec) {
-			pick := func(id int) { sess.Event(0, "menu", id) }
+			pick := func(id int) { sess.Event(0, wire.EvMenu, id) }
 			// macOS gets real NSMenus. Everywhere else (and under
 			// -menubar) the in-window bar widget realizes the same spec.
 			if o.InWindowMenu || runtime.GOOS != "darwin" {

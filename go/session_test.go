@@ -419,7 +419,7 @@ func TestGlassPickRoundTrip(t *testing.T) {
 				if target == inner {
 					name = "inner"
 				} else if target != nil {
-					name = target.Type()
+					name = string(target.Type())
 				}
 				got <- fmt.Sprintf("pick %g,%g %s", x, y, name)
 			}).
@@ -450,7 +450,7 @@ func TestGlassPickUnknownTargetIsNil(t *testing.T) {
 			if target == nil {
 				got <- "nil"
 			} else {
-				got <- target.Type()
+				got <- string(target.Type())
 			}
 		}))
 	})

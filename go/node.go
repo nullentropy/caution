@@ -1,12 +1,16 @@
 package caution
 
-import "sort"
+import (
+	"sort"
+
+	"github.com/nullentropy/caution/go/wire"
+)
 
 // Node is one widget in the tree. The zero id means "not yet attached";
 // ids are assigned when a subtree joins a session.
 type Node struct {
 	id     int
-	typ    string
+	typ    wire.Type
 	props  map[string]any
 	kids   []*Node
 	parent *Node
@@ -67,58 +71,58 @@ type Node struct {
 	contextHandlers map[int]func()
 }
 
-func newNode(typ string) *Node {
+func newNode(typ wire.Type) *Node {
 	return &Node{typ: typ, props: map[string]any{}}
 }
 
 // -- constructors -------------------------------------------------------------
 
-func Panel() *Node              { return newNode("panel") }
-func Label(text string) *Node   { return newNode("label").set("text", text) }
-func Button(label string) *Node { return newNode("button").set("label", label) }
-func VStack() *Node             { return newNode("vstack") }
-func HStack() *Node             { return newNode("hstack") }
-func DockPanel() *Node          { return newNode("dock") }
-func Scroll() *Node             { return newNode("scroll") }
+func Panel() *Node              { return newNode(wire.Panel) }
+func Label(text string) *Node   { return newNode(wire.Label).set("text", text) }
+func Button(label string) *Node { return newNode(wire.Button).set("label", label) }
+func VStack() *Node             { return newNode(wire.VStack) }
+func HStack() *Node             { return newNode(wire.HStack) }
+func DockPanel() *Node          { return newNode(wire.Dock) }
+func Scroll() *Node             { return newNode(wire.Scroll) }
 func Checkbox(label string, checked bool) *Node {
-	return newNode("checkbox").set("label", label).set("checked", checked)
+	return newNode(wire.Checkbox).set("label", label).set("checked", checked)
 }
-func TextField(value string) *Node { return newNode("textfield").set("value", value) }
+func TextField(value string) *Node { return newNode(wire.TextField).set("value", value) }
 
 // Textarea is the multi-line text editor. Enter inserts a newline and never
 // commits. Commit fires on blur, and natively on Cmd+Enter.
 // Rows sets its visible height.
-func Textarea(value string) *Node { return newNode("textarea").set("value", value) }
+func Textarea(value string) *Node { return newNode(wire.TextArea).set("value", value) }
 
 // Image displays a bitmap from a URL or data: URI. The client loads the
 // texture asynchronously (placeholder until ready). Size it with W/H or
 // anchors. Fit controls aspect handling, Radius rounds corners, Alt is what
 // screen readers hear.
-func Image(src string) *Node { return newNode("image").set("src", src) }
+func Image(src string) *Node { return newNode(wire.Image).set("src", src) }
 
 // Select is a dropdown. The open list is client-local and picking emits `select`.
 func Select(options []string, selected int) *Node {
-	return newNode("select").set("options", options).set("selected", selected)
+	return newNode(wire.Select).set("options", options).set("selected", selected)
 }
 
 // Progress is a determinate progress bar. The value is 0..1. Display-only.
-func Progress(value float64) *Node { return newNode("progress").set("value", value) }
+func Progress(value float64) *Node { return newNode(wire.Progress).set("value", value) }
 
 // Slider is a horizontal slider over [min, max]. Dragging emits `input`
 // (debounced). Release or a key press emits `commit`. Step(0) means continuous.
 func Slider(min, max, value float64) *Node {
-	return newNode("slider").set("min", min).set("max", max).set("value", value)
+	return newNode(wire.Slider).set("min", min).set("max", max).set("value", value)
 }
 
 // Radio is a vertical radio group. Picking emits `select` with the index.
 func Radio(options []string, selected int) *Node {
-	return newNode("radio").set("options", options).set("selected", selected)
+	return newNode(wire.Radio).set("options", options).set("selected", selected)
 }
 
 // TabBar is a row of tabs. Picking emits `select` with the index. What the
 // tabs switch is app policy (swap a panel's children in the handler).
 func TabBar(options []string, selected int) *Node {
-	return newNode("tabs").set("options", options).set("selected", selected)
+	return newNode(wire.Tabs).set("options", options).set("selected", selected)
 }
 
 // Step quantizes a slider (0 = continuous).
@@ -130,28 +134,28 @@ func (n *Node) SetProgress(v float64) *Node { return n.set("value", v) }
 // OnSlide fires as a slider drags (client-debounced ~100ms).
 func (n *Node) OnSlide(fn func(v float64)) *Node {
 	n.onSlide = fn
-	return n.subscribe("input")
+	return n.subscribe(wire.EvInput)
 }
 
 // OnSlideEnd fires when a slider drag releases (or a key press adjusts it).
 func (n *Node) OnSlideEnd(fn func(v float64)) *Node {
 	n.onSlideEnd = fn
-	return n.subscribe("commit")
+	return n.subscribe(wire.EvCommit)
 }
 
 // Dialog is a modal: a full-viewport scrim and a centered card whose children lay
 // out inside the card's content area. Append it last so it paints on top.
 // Scrim clicks and Escape emit `dismiss`. Removing the node is app policy.
 func Dialog(title string) *Node {
-	return newNode("dialog").set("title", title).
+	return newNode(wire.Dialog).set("title", title).
 		Anchor(A{Left: Px(0), Right: Px(0), Top: Px(0), Bottom: Px(0)})
 }
 
 // HSplit / VSplit are two-pane resizable splits (nest them for more panes).
 // The first two children are the panes. The divider drags client-side and
 // commits `split-resize` on release.
-func HSplit() *Node { return newNode("split").set("axis", "h") }
-func VSplit() *Node { return newNode("split").set("axis", "v") }
+func HSplit() *Node { return newNode(wire.Split).set("axis", "h") }
+func VSplit() *Node { return newNode(wire.Split).set("axis", "v") }
 
 // FX is an app-supplied fragment shader. Frag must define
 // `vec4 effect(vec2 uv)` (uv origin top-left) and may use u_time (seconds),
@@ -184,7 +188,7 @@ func (n *Node) Effect(fx FX) *Node { return n.set("effect", fxProps(fx)) }
 // Shader is a pane painted entirely by the fragment shader: procedural
 // backdrops, visualizations, raymarched scenes.
 func Shader(fx FX) *Node {
-	sh := newNode("shader").set("frag", fx.Frag)
+	sh := newNode(wire.Shader).set("frag", fx.Frag)
 	if fx.Animate {
 		sh.set("animate", true)
 	}
@@ -199,20 +203,20 @@ func Shader(fx FX) *Node {
 // bounds and reports them with the position (glass-relative, logical px) and
 // the deepest node under the point. Widgets underneath keep animating and
 // patching, but receive no input.
-func Glass() *Node { return newNode("glass") }
+func Glass() *Node { return newNode(wire.Glass) }
 
 // OnPick fires on press. target is the deepest session node under the
 // point (resolved client-side, where layout lives), or nil over dead space.
 func (n *Node) OnPick(fn func(x, y float64, target *Node)) *Node {
 	n.onPick = fn
-	return n.subscribe("pick")
+	return n.subscribe(wire.EvPick)
 }
 
 // OnDragTo fires while dragging after a pick, coalesced client-side
 // (~30/s); the final position always arrives via OnDrop.
 func (n *Node) OnDragTo(fn func(x, y float64)) *Node {
 	n.onDragTo = fn
-	return n.subscribe("drag")
+	return n.subscribe(wire.EvDrag)
 }
 
 // OnWheel fires for scroll-wheel input over the glass: glass-relative
@@ -221,7 +225,7 @@ func (n *Node) OnDragTo(fn func(x, y float64)) *Node {
 // the wheel over its bounds, so nothing beneath it scrolls.
 func (n *Node) OnWheel(fn func(x, y, dx, dy float64)) *Node {
 	n.onWheel = fn
-	return n.subscribe("wheel")
+	return n.subscribe(wire.EvWheel)
 }
 
 // OnRightPick fires on a right-button press over the glass. Subscribing
@@ -230,27 +234,27 @@ func (n *Node) OnWheel(fn func(x, y, dx, dy float64)) *Node {
 // menu. Positions are glass-relative, like every glass report.
 func (n *Node) OnRightPick(fn func(x, y float64)) *Node {
 	n.onRPick = fn
-	return n.subscribe("rpick")
+	return n.subscribe(wire.EvRPick)
 }
 
 // OnRightDragTo fires while right-dragging after a right pick, coalesced
 // client-side (~30/s); the final position always arrives via OnRightDrop.
 func (n *Node) OnRightDragTo(fn func(x, y float64)) *Node {
 	n.onRDrag = fn
-	return n.subscribe("rdrag")
+	return n.subscribe(wire.EvRDrag)
 }
 
 // OnRightDrop fires on right release after a right pick. It is always the true
 // endpoint, since a quick gesture can coalesce down to rpick+rdrop alone.
 func (n *Node) OnRightDrop(fn func(x, y float64)) *Node {
 	n.onRDrop = fn
-	return n.subscribe("rdrop")
+	return n.subscribe(wire.EvRDrop)
 }
 
 // OnDrop fires on release after a pick.
 func (n *Node) OnDrop(fn func(x, y float64)) *Node {
 	n.onDrop = fn
-	return n.subscribe("drop")
+	return n.subscribe(wire.EvDrop)
 }
 
 // SetUniforms live-updates a Shader pane's custom uniforms. Uniform maps are
@@ -314,7 +318,7 @@ func Grid(cols []GridCol) *Node {
 		}
 		arr = append(arr, m)
 	}
-	return newNode("grid").set("columns", arr)
+	return newNode(wire.Grid).set("columns", arr)
 }
 
 // Col describes a table column. Width pins it in px, otherwise Weight shares
@@ -339,8 +343,8 @@ type Col struct {
 // nodes. Provide them on demand with RowsFunc, and the client requests windows as
 // the user scrolls.
 func Table(cols []Col, rowCount int) *Node {
-	n := newNode("table").set("columns", colSpecs(cols)).set("rowCount", rowCount)
-	return n.subscribe("visible-range")
+	n := newNode(wire.Table).set("columns", colSpecs(cols)).set("rowCount", rowCount)
+	return n.subscribe(wire.EvVisibleRange)
 }
 
 func colSpecs(cols []Col) []map[string]any {
@@ -411,8 +415,8 @@ func (n *Node) set(k string, v any) *Node {
 
 // -- reflection ---------------------------------------------------------------
 
-// Type returns the node's widget type ("panel", "label", ...).
-func (n *Node) Type() string { return n.typ }
+// Type returns the node's widget type.
+func (n *Node) Type() wire.Type { return n.typ }
 
 // Parent returns the node's parent, or nil for a root.
 func (n *Node) Parent() *Node { return n.parent }
@@ -447,34 +451,34 @@ func (n *Node) Clear() *Node {
 
 // -- events -------------------------------------------------------------------
 
-func (n *Node) OnClick(fn func()) *Node { n.onClick = fn; return n.subscribe("click") }
+func (n *Node) OnClick(fn func()) *Node { n.onClick = fn; return n.subscribe(wire.EvClick) }
 func (n *Node) OnToggle(fn func(bool)) *Node {
 	n.onToggle = fn
-	return n.subscribe("toggle")
+	return n.subscribe(wire.EvToggle)
 }
 
 // OnInput fires as the user types (debounced client-side, ~150ms).
 func (n *Node) OnInput(fn func(string)) *Node {
 	n.onInput = fn
-	return n.subscribe("input")
+	return n.subscribe(wire.EvInput)
 }
 
 // OnCommit fires on Enter or blur.
 func (n *Node) OnCommit(fn func(string)) *Node {
 	n.onCommit = fn
-	return n.subscribe("commit")
+	return n.subscribe(wire.EvCommit)
 }
 
 // OnSelect fires when a dropdown option is picked.
 func (n *Node) OnSelect(fn func(index int)) *Node {
 	n.onSelect = fn
-	return n.subscribe("select")
+	return n.subscribe(wire.EvSelect)
 }
 
 // OnDismiss fires on dialog scrim click / Escape.
 func (n *Node) OnDismiss(fn func()) *Node {
 	n.onDismiss = fn
-	return n.subscribe("dismiss")
+	return n.subscribe(wire.EvDismiss)
 }
 
 // CardSize sets a dialog's card dimensions.
@@ -493,11 +497,11 @@ func (n *Node) SplitMin(first, second float64) *Node {
 // OnSplitResize fires when the user releases the divider.
 func (n *Node) OnSplitResize(fn func(pos float64)) *Node {
 	n.onSplitResize = fn
-	return n.subscribe("split-resize")
+	return n.subscribe(wire.EvSplitResize)
 }
 
-func (n *Node) subscribe(ev string) *Node {
-	on, _ := n.props["on"].([]string)
+func (n *Node) subscribe(ev wire.Event) *Node {
+	on, _ := n.props["on"].([]wire.Event)
 	for _, e := range on {
 		if e == ev {
 			return n
@@ -615,20 +619,20 @@ type ContextItem struct {
 // a pick comes back as one `context` event and runs its OnPick on the
 // session goroutine, like any other handler.
 func (n *Node) Context(items ...ContextItem) *Node {
-	wire := make([]any, 0, len(items))
+	specs := make([]any, 0, len(items))
 	n.contextHandlers = map[int]func(){}
 	id := 0
 	for _, it := range items {
 		if it.Sep {
-			wire = append(wire, map[string]any{"sep": true})
+			specs = append(specs, map[string]any{"sep": true})
 			continue
 		}
 		id++
-		wire = append(wire, map[string]any{"id": id, "title": it.Title})
+		specs = append(specs, map[string]any{"id": id, "title": it.Title})
 		n.contextHandlers[id] = it.OnPick
 	}
-	n.set("context", wire)
-	return n.subscribe("context")
+	n.set("context", specs)
+	return n.subscribe(wire.EvContext)
 }
 
 // Rows sets a textarea's visible line count (its intrinsic height).
@@ -673,7 +677,7 @@ func (n *Node) Focus() *Node {
 // view. Focus does not change.
 func (n *Node) Reveal() *Node {
 	if n.sess != nil {
-		n.sess.queueCmd(n.id, "reveal", nil)
+		n.sess.queueCmd(n.id, wire.CmdReveal, nil)
 	}
 	return n
 }
@@ -683,7 +687,7 @@ func (n *Node) Reveal() *Node {
 func (n *Node) ClearValue() *Node {
 	n.props["value"] = ""
 	if n.sess != nil {
-		n.sess.queueCmd(n.id, "clear", nil)
+		n.sess.queueCmd(n.id, wire.CmdClear, nil)
 	}
 	return n
 }
@@ -695,7 +699,7 @@ func (n *Node) ClearValue() *Node {
 func (n *Node) SetValueNow(v string) *Node {
 	n.props["value"] = v
 	if n.sess != nil {
-		n.sess.queueCmd(n.id, "value", v)
+		n.sess.queueCmd(n.id, wire.CmdValue, v)
 	}
 	return n
 }
@@ -712,12 +716,12 @@ func (n *Node) RowsFunc(fn func(start, end int) [][]string) *Node {
 // its data and call RefreshRows.
 func (n *Node) OnSort(fn func(key string, asc bool)) *Node {
 	n.onSort = fn
-	return n.subscribe("sort")
+	return n.subscribe(wire.EvSort)
 }
 
 func (n *Node) OnRowSelect(fn func(row int)) *Node {
 	n.onRowSelect = fn
-	return n.subscribe("row-select")
+	return n.subscribe(wire.EvRowSelect)
 }
 
 // RowKey declares the column whose cells are stable row keys. With keys,
@@ -730,7 +734,7 @@ func (n *Node) RowKey(col int) *Node { return n.set("rowKey", col) }
 // stable key plus the row's index at click time.
 func (n *Node) OnRowSelectKey(fn func(key string, row int)) *Node {
 	n.onRowSelectKey = fn
-	return n.subscribe("row-select")
+	return n.subscribe(wire.EvRowSelect)
 }
 
 // OnRowActivate fires when a row is double-clicked or Enter is pressed on
@@ -738,14 +742,14 @@ func (n *Node) OnRowSelectKey(fn func(key string, row int)) *Node {
 // event (and its local echo) always precedes it.
 func (n *Node) OnRowActivate(fn func(row int)) *Node {
 	n.onRowActivate = fn
-	return n.subscribe("row-activate")
+	return n.subscribe(wire.EvRowActivate)
 }
 
 // OnRowActivateKey is OnRowActivate for keyed tables and trees: the handler
 // gets the stable key plus the row's index at activation time.
 func (n *Node) OnRowActivateKey(fn func(key string, row int)) *Node {
 	n.onRowActivateKey = fn
-	return n.subscribe("row-activate")
+	return n.subscribe(wire.EvRowActivate)
 }
 
 // OnColResize fires when the user drags a column divider. Widths are
@@ -753,7 +757,7 @@ func (n *Node) OnRowActivateKey(fn func(key string, row int)) *Node {
 // survive a remount.
 func (n *Node) OnColResize(fn func(key string, width float64)) *Node {
 	n.onColResize = fn
-	return n.subscribe("col-resize")
+	return n.subscribe(wire.EvColResize)
 }
 
 func (n *Node) RowHeight(h float64) *Node { return n.set("rowHeight", h) }
@@ -782,7 +786,7 @@ func (n *Node) RefreshRows() *Node {
 // rowsWindow produces the [start, end] slice for the rows op: a table's from
 // its RowsFunc (no meta), a tree's from the flattened visible items.
 func (n *Node) rowsWindow(start, end int) ([][]string, []map[string]any) {
-	if n.typ == "tree" {
+	if n.typ == wire.Tree {
 		return n.treeRowsWindow(start, end)
 	}
 	if n.rowsFn == nil {
@@ -818,11 +822,11 @@ type flatRow struct {
 // TreeItem.Key (`selectedKey` / OnRowSelectKey), so it survives expansion
 // changes above it. Everything starts collapsed. See Expand.
 func Tree(cols []Col, items []TreeItem) *Node {
-	n := newNode("tree").set("columns", colSpecs(cols))
+	n := newNode(wire.Tree).set("columns", colSpecs(cols))
 	n.treeOpen = map[string]bool{}
 	n.SetTreeItems(items)
-	n.subscribe("visible-range")
-	return n.subscribe("toggle")
+	n.subscribe(wire.EvVisibleRange)
+	return n.subscribe(wire.EvToggle)
 }
 
 // SetTreeItems replaces the tree's data (expansion state is kept for keys
@@ -848,7 +852,7 @@ func (n *Node) OnRowToggle(fn func(key string, expanded bool)) *Node {
 // is the column key.
 func (n *Node) OnCellActivate(fn func(row int, key, col, value string)) *Node {
 	n.onCellActivate = fn
-	return n.subscribe("cell-activate")
+	return n.subscribe(wire.EvCellActivate)
 }
 
 // Expand opens the given keys (parents are not opened implicitly: a row is
@@ -929,7 +933,7 @@ func (n *Node) treeRowsWindow(start, end int) ([][]string, []map[string]any) {
 
 type nodeJSON struct {
 	ID   int            `json:"id"`
-	Type string         `json:"type"`
+	Type wire.Type      `json:"type"`
 	P    map[string]any `json:"p,omitempty"`
 	Kids []nodeJSON     `json:"kids,omitempty"`
 }

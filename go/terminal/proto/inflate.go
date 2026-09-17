@@ -5,6 +5,7 @@ import (
 
 	"github.com/nullentropy/caution/go/terminal/gfx"
 	"github.com/nullentropy/caution/go/terminal/ui"
+	"github.com/nullentropy/caution/go/wire"
 
 	"github.com/rs/zerolog/log"
 )
@@ -13,14 +14,14 @@ type props = map[string]any
 
 type nodeJSON struct {
 	ID   int        `json:"id"`
-	Type string     `json:"type"`
+	Type wire.Type  `json:"type"`
 	P    props      `json:"p"`
 	Kids []nodeJSON `json:"kids"`
 }
 
 // EventSink receives subscribed semantic events for shipping upstream.
 type EventSink interface {
-	Event(id int, ev string, value any)
+	Event(id int, ev wire.Event, value any)
 }
 
 func num(v any) (float32, bool) {
@@ -265,13 +266,13 @@ func (ns *NodeStore) Build(json nodeJSON) ui.Widget {
 	return w
 }
 
-func subscribed(p props, ev string) bool {
+func subscribed(p props, ev wire.Event) bool {
 	arr, ok := p["on"].([]any)
 	if !ok {
 		return false
 	}
 	for _, v := range arr {
-		if s, _ := str(v); s == ev {
+		if s, _ := str(v); wire.Event(s) == ev {
 			return true
 		}
 	}
@@ -288,8 +289,8 @@ func (ns *NodeStore) Apply(w ui.Widget, id int, p props) {
 	if v, ok := p["context"]; ok {
 		w.Base().ContextItems = contextItems(v)
 	}
-	if subscribed(p, "context") {
-		w.Base().OnContextPick = func(cid int) { ns.sink.Event(id, "context", cid) }
+	if subscribed(p, wire.EvContext) {
+		w.Base().OnContextPick = func(cid int) { ns.sink.Event(id, wire.EvContext, cid) }
 	}
 	switch t := w.(type) {
 	case *ui.Panel:
@@ -356,8 +357,8 @@ func (ns *NodeStore) Apply(w ui.Widget, id int, p props) {
 				t.Radius = &r
 			}
 		}
-		if subscribed(p, "click") {
-			t.OnClick = func() { ns.sink.Event(id, "click", nil) }
+		if subscribed(p, wire.EvClick) {
+			t.OnClick = func() { ns.sink.Event(id, wire.EvClick, nil) }
 		}
 	case *ui.Checkbox:
 		if v, ok := p["label"]; ok {
@@ -366,8 +367,8 @@ func (ns *NodeStore) Apply(w ui.Widget, id int, p props) {
 		if v, ok := p["checked"]; ok {
 			t.Checked, _ = boolean(v)
 		}
-		if subscribed(p, "toggle") {
-			t.OnToggle = func(checked bool) { ns.sink.Event(id, "toggle", checked) }
+		if subscribed(p, wire.EvToggle) {
+			t.OnToggle = func(checked bool) { ns.sink.Event(id, wire.EvToggle, checked) }
 		}
 	case *ui.TextField:
 		if v, ok := p["radius"]; ok {
@@ -399,13 +400,13 @@ func (ns *NodeStore) Apply(w ui.Widget, id int, p props) {
 		if v, ok := p["sensitive"]; ok {
 			t.Sensitive, _ = boolean(v)
 		}
-		if subscribed(p, "input") {
+		if subscribed(p, wire.EvInput) {
 			t.OnInput = debounceString(150*time.Millisecond, func(v string) {
-				ns.sink.Event(id, "input", v)
+				ns.sink.Event(id, wire.EvInput, v)
 			})
 		}
-		if subscribed(p, "commit") {
-			t.OnCommit = func(v string) { ns.sink.Event(id, "commit", v) }
+		if subscribed(p, wire.EvCommit) {
+			t.OnCommit = func(v string) { ns.sink.Event(id, wire.EvCommit, v) }
 		}
 	case *ui.TextArea:
 		// Same contract as TextField (it embeds the editing core), plus rows.
@@ -432,13 +433,13 @@ func (ns *NodeStore) Apply(w ui.Widget, id int, p props) {
 				t.Rows = int(f)
 			}
 		}
-		if subscribed(p, "input") {
+		if subscribed(p, wire.EvInput) {
 			t.OnInput = debounceString(150*time.Millisecond, func(v string) {
-				ns.sink.Event(id, "input", v)
+				ns.sink.Event(id, wire.EvInput, v)
 			})
 		}
-		if subscribed(p, "commit") {
-			t.OnCommit = func(v string) { ns.sink.Event(id, "commit", v) }
+		if subscribed(p, wire.EvCommit) {
+			t.OnCommit = func(v string) { ns.sink.Event(id, wire.EvCommit, v) }
 		}
 	case *ui.Stack:
 		if v, ok := p["padding"]; ok {
@@ -513,48 +514,48 @@ func (ns *NodeStore) Apply(w ui.Widget, id int, p props) {
 		if v, ok := p["selectedKey"]; ok {
 			t.SelectedKey, _ = str(v)
 		}
-		if subscribed(p, "visible-range") {
+		if subscribed(p, wire.EvVisibleRange) {
 			t.OnVisibleRange = func(start, end int) {
-				ns.sink.Event(id, "visible-range", map[string]any{"start": start, "end": end})
+				ns.sink.Event(id, wire.EvVisibleRange, map[string]any{"start": start, "end": end})
 			}
 		}
-		if subscribed(p, "sort") {
+		if subscribed(p, wire.EvSort) {
 			t.OnSort = func(key string, asc bool) {
-				ns.sink.Event(id, "sort", map[string]any{"key": key, "asc": asc})
+				ns.sink.Event(id, wire.EvSort, map[string]any{"key": key, "asc": asc})
 			}
 		}
-		if subscribed(p, "row-select") {
+		if subscribed(p, wire.EvRowSelect) {
 			t.OnRowSelect = func(row int, key string) {
 				if key != "" {
-					ns.sink.Event(id, "row-select", map[string]any{"row": row, "key": key})
+					ns.sink.Event(id, wire.EvRowSelect, map[string]any{"row": row, "key": key})
 				} else {
-					ns.sink.Event(id, "row-select", row)
+					ns.sink.Event(id, wire.EvRowSelect, row)
 				}
 			}
 		}
-		if subscribed(p, "row-activate") {
+		if subscribed(p, wire.EvRowActivate) {
 			t.OnRowActivate = func(row int, key string) {
 				if key != "" {
-					ns.sink.Event(id, "row-activate", map[string]any{"row": row, "key": key})
+					ns.sink.Event(id, wire.EvRowActivate, map[string]any{"row": row, "key": key})
 				} else {
-					ns.sink.Event(id, "row-activate", row)
+					ns.sink.Event(id, wire.EvRowActivate, row)
 				}
 			}
 		}
-		if subscribed(p, "toggle") {
+		if subscribed(p, wire.EvToggle) {
 			t.OnToggle = func(row int, key string) {
-				ns.sink.Event(id, "toggle", map[string]any{"row": row, "key": key})
+				ns.sink.Event(id, wire.EvToggle, map[string]any{"row": row, "key": key})
 			}
 		}
-		if subscribed(p, "cell-activate") {
+		if subscribed(p, wire.EvCellActivate) {
 			t.OnCellActivate = func(row int, key, col, value string) {
-				ns.sink.Event(id, "cell-activate",
+				ns.sink.Event(id, wire.EvCellActivate,
 					map[string]any{"row": row, "key": key, "col": col, "value": value})
 			}
 		}
-		if subscribed(p, "col-resize") {
+		if subscribed(p, wire.EvColResize) {
 			t.OnColResize = func(key string, width float32) {
-				ns.sink.Event(id, "col-resize", map[string]any{"key": key, "width": width})
+				ns.sink.Event(id, wire.EvColResize, map[string]any{"key": key, "width": width})
 			}
 		}
 	case *ui.Progress:
@@ -578,13 +579,13 @@ func (ns *NodeStore) Apply(w ui.Widget, id int, p props) {
 		if v, ok := p["value"]; ok && !t.Dragging {
 			t.Value, _ = num(v)
 		}
-		if subscribed(p, "input") {
+		if subscribed(p, wire.EvInput) {
 			t.OnInput = debounceFloat(100*time.Millisecond, func(v float32) {
-				ns.sink.Event(id, "input", v)
+				ns.sink.Event(id, wire.EvInput, v)
 			})
 		}
-		if subscribed(p, "commit") {
-			t.OnCommit = func(v float32) { ns.sink.Event(id, "commit", v) }
+		if subscribed(p, wire.EvCommit) {
+			t.OnCommit = func(v float32) { ns.sink.Event(id, wire.EvCommit, v) }
 		}
 	case *ui.RadioGroup:
 		if v, ok := p["options"].([]any); ok {
@@ -600,8 +601,8 @@ func (ns *NodeStore) Apply(w ui.Widget, id int, p props) {
 				t.Selected = int(f)
 			}
 		}
-		if subscribed(p, "select") {
-			t.OnSelect = func(i int) { ns.sink.Event(id, "select", i) }
+		if subscribed(p, wire.EvSelect) {
+			t.OnSelect = func(i int) { ns.sink.Event(id, wire.EvSelect, i) }
 		}
 	case *ui.Tabs:
 		if v, ok := p["options"].([]any); ok {
@@ -617,8 +618,8 @@ func (ns *NodeStore) Apply(w ui.Widget, id int, p props) {
 				t.Selected = int(f)
 			}
 		}
-		if subscribed(p, "select") {
-			t.OnSelect = func(i int) { ns.sink.Event(id, "select", i) }
+		if subscribed(p, wire.EvSelect) {
+			t.OnSelect = func(i int) { ns.sink.Event(id, wire.EvSelect, i) }
 		}
 	case *ui.Select:
 		if v, ok := p["options"].([]any); ok {
@@ -634,8 +635,8 @@ func (ns *NodeStore) Apply(w ui.Widget, id int, p props) {
 				t.Selected = int(f)
 			}
 		}
-		if subscribed(p, "select") {
-			t.OnSelect = func(i int) { ns.sink.Event(id, "select", i) }
+		if subscribed(p, wire.EvSelect) {
+			t.OnSelect = func(i int) { ns.sink.Event(id, wire.EvSelect, i) }
 		}
 	case *ui.Dialog:
 		if v, ok := p["title"]; ok {
@@ -653,8 +654,8 @@ func (ns *NodeStore) Apply(w ui.Widget, id int, p props) {
 				t.CardH = f
 			}
 		}
-		if subscribed(p, "dismiss") {
-			t.OnDismiss = func() { ns.sink.Event(id, "dismiss", nil) }
+		if subscribed(p, wire.EvDismiss) {
+			t.OnDismiss = func() { ns.sink.Event(id, wire.EvDismiss, nil) }
 		}
 	case *ui.SplitView:
 		if v, ok := p["axis"]; ok {
@@ -682,8 +683,8 @@ func (ns *NodeStore) Apply(w ui.Widget, id int, p props) {
 				t.MinB = f
 			}
 		}
-		if subscribed(p, "split-resize") {
-			t.OnResize = func(pos float32) { ns.sink.Event(id, "split-resize", pos) }
+		if subscribed(p, wire.EvSplitResize) {
+			t.OnResize = func(pos float32) { ns.sink.Event(id, wire.EvSplitResize, pos) }
 		}
 	case *ui.ImageView:
 		if v, ok := p["src"]; ok {
@@ -730,39 +731,39 @@ func (ns *NodeStore) Apply(w ui.Widget, id int, p props) {
 			}
 			return 0
 		}
-		if subscribed(p, "pick") {
+		if subscribed(p, wire.EvPick) {
 			t.OnPick = func(x, y float32, target int) {
-				ns.sink.Event(id, "pick", map[string]any{"x": x, "y": y, "target": target})
+				ns.sink.Event(id, wire.EvPick, map[string]any{"x": x, "y": y, "target": target})
 			}
 		}
-		if subscribed(p, "drag") {
+		if subscribed(p, wire.EvDrag) {
 			t.OnDragTo = func(x, y float32) {
-				ns.sink.Event(id, "drag", map[string]any{"x": x, "y": y})
+				ns.sink.Event(id, wire.EvDrag, map[string]any{"x": x, "y": y})
 			}
 		}
-		if subscribed(p, "drop") {
+		if subscribed(p, wire.EvDrop) {
 			t.OnDropAt = func(x, y float32) {
-				ns.sink.Event(id, "drop", map[string]any{"x": x, "y": y})
+				ns.sink.Event(id, wire.EvDrop, map[string]any{"x": x, "y": y})
 			}
 		}
-		if subscribed(p, "wheel") {
+		if subscribed(p, wire.EvWheel) {
 			t.OnWheelAt = func(x, y, dx, dy float32) {
-				ns.sink.Event(id, "wheel", map[string]any{"x": x, "y": y, "dx": dx, "dy": dy})
+				ns.sink.Event(id, wire.EvWheel, map[string]any{"x": x, "y": y, "dx": dx, "dy": dy})
 			}
 		}
-		if subscribed(p, "rpick") {
+		if subscribed(p, wire.EvRPick) {
 			t.OnRPick = func(x, y float32) {
-				ns.sink.Event(id, "rpick", map[string]any{"x": x, "y": y})
+				ns.sink.Event(id, wire.EvRPick, map[string]any{"x": x, "y": y})
 			}
 		}
-		if subscribed(p, "rdrag") {
+		if subscribed(p, wire.EvRDrag) {
 			t.OnRDragTo = func(x, y float32) {
-				ns.sink.Event(id, "rdrag", map[string]any{"x": x, "y": y})
+				ns.sink.Event(id, wire.EvRDrag, map[string]any{"x": x, "y": y})
 			}
 		}
-		if subscribed(p, "rdrop") {
+		if subscribed(p, wire.EvRDrop) {
 			t.OnRDropAt = func(x, y float32) {
-				ns.sink.Event(id, "rdrop", map[string]any{"x": x, "y": y})
+				ns.sink.Event(id, wire.EvRDrop, map[string]any{"x": x, "y": y})
 			}
 		}
 	case *ui.Grid:
@@ -824,62 +825,48 @@ func (ns *NodeStore) Remove(id int) {
 	}
 }
 
-func construct(typ string) ui.Widget {
-	switch typ {
-	case "panel":
-		return ui.NewPanel()
-	case "label":
-		return ui.NewLabel("", gfx.NewFont(13, gfx.FontOpts{}), nil)
-	case "button":
-		return ui.NewButton("")
-	case "checkbox":
-		return ui.NewCheckbox("")
-	case "textfield":
-		return ui.NewTextField()
-	case "textarea":
-		return ui.NewTextArea()
-	case "vstack":
-		return ui.NewVStack()
-	case "hstack":
-		return ui.NewHStack()
-	case "dock":
-		return ui.NewDock()
-	case "scroll":
-		return ui.NewScrollView()
-	case "table":
-		return ui.NewTableView()
-	case "tree":
+// widgets is the client's whole widget vocabulary: one constructor per node
+// type the protocol defines.
+var widgets = map[wire.Type]func() ui.Widget{
+	wire.Panel:     func() ui.Widget { return ui.NewPanel() },
+	wire.Label:     func() ui.Widget { return ui.NewLabel("", gfx.NewFont(13, gfx.FontOpts{}), nil) },
+	wire.Button:    func() ui.Widget { return ui.NewButton("") },
+	wire.Checkbox:  func() ui.Widget { return ui.NewCheckbox("") },
+	wire.TextField: func() ui.Widget { return ui.NewTextField() },
+	wire.TextArea:  func() ui.Widget { return ui.NewTextArea() },
+	wire.VStack:    func() ui.Widget { return ui.NewVStack() },
+	wire.HStack:    func() ui.Widget { return ui.NewHStack() },
+	wire.Dock:      func() ui.Widget { return ui.NewDock() },
+	wire.Scroll:    func() ui.Widget { return ui.NewScrollView() },
+	wire.Grid:      func() ui.Widget { return ui.NewGrid() },
+	wire.Split:     func() ui.Widget { return ui.NewSplitView() },
+	wire.Table:     func() ui.Widget { return ui.NewTableView() },
+	wire.Tree: func() ui.Widget {
 		// A tree is the table widget in tree mode: same columns, same rows
 		// protocol, plus per-row hierarchy meta and toggle round-trips.
 		t := ui.NewTableView()
 		t.Tree = true
 		return t
-	case "select":
-		return ui.NewSelect()
-	case "progress":
-		return ui.NewProgress()
-	case "slider":
-		return ui.NewSlider()
-	case "radio":
-		return ui.NewRadioGroup()
-	case "tabs":
-		return ui.NewTabs()
-	case "dialog":
-		return ui.NewDialog()
-	case "split":
-		return ui.NewSplitView()
-	case "grid":
-		return ui.NewGrid()
-	case "shader":
-		return ui.NewShaderPane()
-	case "image":
-		return ui.NewImageView()
-	case "glass":
-		return ui.NewGlass()
-	default:
-		log.Error().Msgf("caution: unknown node type %q, using panel", typ)
-		return ui.NewPanel()
+	},
+	wire.Select:   func() ui.Widget { return ui.NewSelect() },
+	wire.Progress: func() ui.Widget { return ui.NewProgress() },
+	wire.Slider:   func() ui.Widget { return ui.NewSlider() },
+	wire.Radio:    func() ui.Widget { return ui.NewRadioGroup() },
+	wire.Tabs:     func() ui.Widget { return ui.NewTabs() },
+	wire.Dialog:   func() ui.Widget { return ui.NewDialog() },
+	wire.Image:    func() ui.Widget { return ui.NewImageView() },
+	wire.Shader:   func() ui.Widget { return ui.NewShaderPane() },
+	wire.Glass:    func() ui.Widget { return ui.NewGlass() },
+}
+
+func construct(typ wire.Type) ui.Widget {
+	if ctor, ok := widgets[typ]; ok {
+		return ctor()
 	}
+	// A server newer than this terminal: paint the hole rather than drop the
+	// subtree, so the rest of the tree still works.
+	log.Error().Msgf("caution: unknown node type %q, using panel", typ)
+	return ui.NewPanel()
 }
 
 // debounceString trails calls by d; the timer goroutine only fires the last

@@ -1,5 +1,7 @@
 package caution
 
+import "github.com/nullentropy/caution/go/wire"
+
 // Menu is one top-level menu in the menu bar. The terminal supplies the
 // standard app menu (About, Hide, Quit) itself
 type Menu struct {
@@ -47,12 +49,12 @@ func (s *Session) SetMenu(menus ...Menu) {
 		}
 		return out
 	}
-	wire := make([]any, 0, len(menus))
+	specs := make([]any, 0, len(menus))
 	for _, m := range menus {
-		wire = append(wire, map[string]any{"title": m.Title, "items": conv(m.Items)})
+		specs = append(specs, map[string]any{"title": m.Title, "items": conv(m.Items)})
 	}
-	s.menu = wire
+	s.menu = specs
 	if s.mounted {
-		s.ops = append(s.ops, map[string]any{"op": "menu", "menu": wire})
+		s.ops = append(s.ops, map[string]any{"op": wire.OpMenu, "menu": specs})
 	}
 }

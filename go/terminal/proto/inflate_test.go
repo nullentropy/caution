@@ -6,11 +6,12 @@ import (
 	"github.com/nullentropy/caution/go/terminal/gfx"
 	"github.com/nullentropy/caution/go/terminal/text"
 	"github.com/nullentropy/caution/go/terminal/ui"
+	"github.com/nullentropy/caution/go/wire"
 )
 
 type nullSink struct{}
 
-func (nullSink) Event(int, string, any) {}
+func (nullSink) Event(int, wire.Event, any) {}
 
 // The local-echo contract: a focused field ignores plain value sets, and the
 // value command forces one through.
@@ -21,17 +22,17 @@ func TestFocusedFieldValueSetsHonorLocalEchoAndOverride(t *testing.T) {
 	tf := w.(*ui.TextField)
 	tf.Focused = true // the user is editing
 
-	s.applyOp(&patchOp{Op: "set", ID: 1, P: props{"value": "server"}})
+	s.applyOp(&patchOp{Op: wire.OpSet, ID: 1, P: props{"value": "server"}})
 	if tf.Value != "draft" {
 		t.Fatalf("focused field took a plain value set: %q", tf.Value)
 	}
 
-	s.applyOp(&patchOp{Op: "cmd", ID: 1, Cmd: "value", Value: "$1,000"})
+	s.applyOp(&patchOp{Op: wire.OpCmd, ID: 1, Cmd: wire.CmdValue, Value: "$1,000"})
 	if tf.Value != "$1,000" {
 		t.Fatalf("value command did not apply: %q", tf.Value)
 	}
 
-	s.applyOp(&patchOp{Op: "cmd", ID: 1, Cmd: "clear"})
+	s.applyOp(&patchOp{Op: wire.OpCmd, ID: 1, Cmd: wire.CmdClear})
 	if tf.Value != "" {
 		t.Fatalf("clear command did not apply: %q", tf.Value)
 	}
@@ -44,11 +45,11 @@ func TestTextareaSharesTheOverrideContract(t *testing.T) {
 	ta := w.(*ui.TextArea)
 	ta.Focused = true
 
-	s.applyOp(&patchOp{Op: "set", ID: 1, P: props{"value": "x"}})
+	s.applyOp(&patchOp{Op: wire.OpSet, ID: 1, P: props{"value": "x"}})
 	if ta.Value != "a\nb" {
 		t.Fatalf("focused textarea took a plain value set: %q", ta.Value)
 	}
-	s.applyOp(&patchOp{Op: "cmd", ID: 1, Cmd: "value", Value: "x\ny"})
+	s.applyOp(&patchOp{Op: wire.OpCmd, ID: 1, Cmd: wire.CmdValue, Value: "x\ny"})
 	if ta.Value != "x\ny" {
 		t.Fatalf("value command did not apply: %q", ta.Value)
 	}
@@ -59,7 +60,7 @@ func TestMountFocusesTheNodeItNames(t *testing.T) {
 	u.Measure = func(gfx.Font, string) *text.Run { return &text.Run{} }
 	s := &Session{ui: u}
 	s.store = NewNodeStore(nullSink{})
-	s.handle(&serverMsg{T: "mount", Focus: 2, Root: &nodeJSON{
+	s.handle(&serverMsg{T: wire.MsgMount, Focus: 2, Root: &nodeJSON{
 		ID: 1, Type: "panel", Kids: []nodeJSON{{ID: 2, Type: "textfield"}},
 	}})
 	u.BuildFrame(&gfx.DisplayList{}, 400, 300) // focus requests land at paint

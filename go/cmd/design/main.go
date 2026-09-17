@@ -15,11 +15,22 @@ import (
 
 	"github.com/nullentropy/caution/go"
 	"github.com/nullentropy/caution/go/dev"
+	"github.com/nullentropy/caution/go/wire"
 )
 
-var paletteTypes = []string{
-	"panel", "label", "button", "checkbox", "textfield", "select", "image",
-	"hstack", "vstack", "scroll", "grid", "split", "dock", "shader",
+var paletteTypes = []wire.Type{
+	wire.Panel, wire.Label, wire.Button, wire.Checkbox, wire.TextField,
+	wire.Select, wire.Image, wire.HStack, wire.VStack, wire.Scroll,
+	wire.Grid, wire.Split, wire.Dock, wire.Shader,
+}
+
+// paletteNames is paletteTypes as the option strings a Select takes.
+func paletteNames() []string {
+	out := make([]string, len(paletteTypes))
+	for i, t := range paletteTypes {
+		out[i] = string(t)
+	}
+	return out
 }
 
 func main() {
@@ -184,7 +195,7 @@ func (d *designer) canvasPick(x, y float64, target *caution.Node) {
 	if fx, fy, _, _, ok := frameOf(n); ok {
 		d.drag = &dragState{node: n, x: fx, y: fy, pickX: x, pickY: y}
 	} else {
-		d.setStatus(n.Type() + " is placed by its parent - edit anchors/dock in the inspector")
+		d.setStatus(string(n.Type()) + " is placed by its parent - edit anchors/dock in the inspector")
 	}
 }
 
@@ -323,7 +334,7 @@ func (d *designer) refreshTree() {
 }
 
 func (d *designer) walk(n *caution.Node, depth int) {
-	label := strings.Repeat("      ", depth) + n.Type()
+	label := strings.Repeat("      ", depth) + string(n.Type())
 	if name, ok := n.Prop("name").(string); ok && name != "" {
 		label += "  ·  " + name
 	}
@@ -357,7 +368,7 @@ func (d *designer) rebuildInspector() {
 		return
 	}
 
-	d.inspBody.Add(caution.Label(n.Type()).FontSize(16).Weight(600))
+	d.inspBody.Add(caution.Label(string(n.Type())).FontSize(16).Weight(600))
 	d.addTypedEditors(n)
 	d.addFrameEditor(n)
 	d.addJSONGrid(n)
@@ -447,45 +458,45 @@ func (d *designer) addTypedEditors(n *caution.Node) {
 	rows := []*caution.Node{}
 	add := func(ws ...*caution.Node) { rows = append(rows, ws...) }
 	switch n.Type() {
-	case "label":
+	case wire.Label:
 		add(d.field(n, "text", "text"),
 			d.slider(n, "fontSize", "size", 8, 40, 13),
 			d.selectOf(n, "color", "color", []string{"$ink", "$inkDim", "$inkFaint", "$accent"}, "$ink"),
 			d.slider(n, "weight", "weight", 300, 800, 400),
 			d.check(n, "wrap", "wrap"))
-	case "button":
+	case wire.Button:
 		add(d.field(n, "label", "label"), d.check(n, "primary", "primary"))
-	case "panel":
+	case wire.Panel:
 		add(d.field(n, "bg", "bg"),
 			d.slider(n, "radius", "radius", 0, 24, 0),
 			d.field(n, "border", "border"))
-	case "checkbox":
+	case wire.Checkbox:
 		add(d.field(n, "label", "label"), d.check(n, "checked", "checked"))
-	case "textfield":
+	case wire.TextField:
 		add(d.field(n, "value", "value"), d.field(n, "placeholder", "placeholder"))
-	case "image":
+	case wire.Image:
 		add(d.field(n, "src", "src"),
 			d.selectOf(n, "fit", "fit", []string{"contain", "cover", "fill"}, "contain"),
 			d.slider(n, "radius", "radius", 0, 24, 0))
-	case "shader":
+	case wire.Shader:
 		cur, _ := n.Prop("frag").(string)
 		add(caution.Textarea(cur).Rows(6).OnCommit(func(v string) {
 			d.pushUndo()
 			n.SetProp("frag", v)
 			d.setStatus("set shader.frag")
 		}), d.check(n, "animate", "animate"))
-	case "hstack", "vstack":
+	case wire.HStack, wire.VStack:
 		add(d.slider(n, "gap", "gap", 0, 32, 8),
 			d.slider(n, "pad", "pad", 0, 32, 0),
 			d.selectOf(n, "align", "align", []string{"start", "center", "end", "stretch"}, "start"))
-	case "grid":
+	case wire.Grid:
 		add(d.slider(n, "colGap", "col gap", 0, 32, 8),
 			d.slider(n, "rowGap", "row gap", 0, 32, 8))
 	}
 	if len(rows) == 0 {
 		return
 	}
-	d.inspBody.Add(section(n.Type() + " props"))
+	d.inspBody.Add(section(string(n.Type()) + " props"))
 	for _, r := range rows {
 		d.inspBody.Add(r)
 	}
@@ -570,13 +581,13 @@ func (d *designer) addPropAdder(n *caution.Node) {
 func (d *designer) addChildEditors(n *caution.Node) {
 	typeIdx := 0
 	d.inspBody.Add(section("children"))
-	d.inspBody.Add(caution.Select(paletteTypes, 0).OnSelect(func(i int) { typeIdx = i }))
+	d.inspBody.Add(caution.Select(paletteNames(), 0).OnSelect(func(i int) { typeIdx = i }))
 	d.inspBody.Add(caution.Button("Add child").OnClick(func() {
 		d.pushUndo()
 		child := paletteNode(paletteTypes[typeIdx])
 		n.Add(child)
 		d.selectNode(child)
-		d.setStatus("added " + child.Type())
+		d.setStatus("added " + string(child.Type()))
 	}))
 	d.inspBody.Add(caution.Button("Delete node").OnClick(func() {
 		if n == d.design {
@@ -587,7 +598,7 @@ func (d *designer) addChildEditors(n *caution.Node) {
 		parent := n.Parent()
 		n.Remove()
 		d.selectNode(parent)
-		d.setStatus("deleted " + n.Type())
+		d.setStatus("deleted " + string(n.Type()))
 	}))
 }
 
@@ -614,40 +625,36 @@ const imagePlaceholder = "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/
 	"<rect width='4' height='3' fill='%23445'/><circle cx='1.3' cy='.9' r='.4' fill='%23778'/>" +
 	"<path d='M0 3 1.5 1.6l1 .9L3.3 1.7 4 2.5V3z' fill='%23667'/></svg>"
 
-func paletteNode(t string) *caution.Node {
-	switch t {
-	case "label":
-		return caution.Label("Label").Frame(20, 20, 120, 18)
-	case "button":
-		return caution.Button("Button").Frame(20, 20, 100, 32)
-	case "checkbox":
-		return caution.Checkbox("Checkbox", false).Frame(20, 20, 180, 20)
-	case "textfield":
-		return caution.TextField("").Placeholder("text…").Frame(20, 20, 200, 32)
-	case "select":
-		return caution.Select([]string{"One", "Two"}, 0).Frame(20, 20, 140, 32)
-	case "image":
-		return caution.Image(imagePlaceholder).Alt("image").Frame(20, 20, 160, 120)
-	case "hstack":
-		return caution.HStack().Frame(20, 20, 260, 40)
-	case "vstack":
-		return caution.VStack().Frame(20, 20, 180, 140)
-	case "scroll":
-		return caution.Scroll().Frame(20, 20, 220, 160)
-	case "grid":
+// paletteNodes is what dropping each palette entry onto the canvas makes:
+// a node of that type, sized so it is visible and grabbable straight away.
+var paletteNodes = map[wire.Type]func() *caution.Node{
+	wire.Label:     func() *caution.Node { return caution.Label("Label").Frame(20, 20, 120, 18) },
+	wire.Button:    func() *caution.Node { return caution.Button("Button").Frame(20, 20, 100, 32) },
+	wire.Checkbox:  func() *caution.Node { return caution.Checkbox("Checkbox", false).Frame(20, 20, 180, 20) },
+	wire.TextField: func() *caution.Node { return caution.TextField("").Placeholder("text…").Frame(20, 20, 200, 32) },
+	wire.Select:    func() *caution.Node { return caution.Select([]string{"One", "Two"}, 0).Frame(20, 20, 140, 32) },
+	wire.Image:     func() *caution.Node { return caution.Image(imagePlaceholder).Alt("image").Frame(20, 20, 160, 120) },
+	wire.HStack:    func() *caution.Node { return caution.HStack().Frame(20, 20, 260, 40) },
+	wire.VStack:    func() *caution.Node { return caution.VStack().Frame(20, 20, 180, 140) },
+	wire.Scroll:    func() *caution.Node { return caution.Scroll().Frame(20, 20, 220, 160) },
+	wire.Split:     func() *caution.Node { return caution.HSplit().Frame(20, 20, 320, 160) },
+	wire.Dock:      func() *caution.Node { return caution.DockPanel().Frame(20, 20, 320, 200) },
+	wire.Grid: func() *caution.Node {
 		return caution.Grid([]caution.GridCol{{Align: "end"}, {Weight: 1, Align: "stretch"}}).
 			Frame(20, 20, 260, 100)
-	case "split":
-		return caution.HSplit().Frame(20, 20, 320, 160)
-	case "dock":
-		return caution.DockPanel().Frame(20, 20, 320, 200)
-	case "shader":
+	},
+	wire.Shader: func() *caution.Node {
 		return caution.Shader(caution.FX{
 			Frag: "vec4 effect(vec2 uv) { return vec4(uv.x, uv.y, 1.0 - uv.x, 1.0); }",
 		}).Frame(20, 20, 200, 140)
-	default:
-		return caution.Panel().Bg("$panelInset").Radius(8).Frame(20, 20, 220, 140)
+	},
+}
+
+func paletteNode(t wire.Type) *caution.Node {
+	if ctor, ok := paletteNodes[t]; ok {
+		return ctor()
 	}
+	return caution.Panel().Bg("$panelInset").Radius(8).Frame(20, 20, 220, 140)
 }
 
 func (d *designer) save() {
