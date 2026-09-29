@@ -1,4 +1,4 @@
-//go:build !angle && !windows
+//go:build !angle && !windows && !js
 
 // Package glx pins the terminal's GL dialect at build time. The default is
 // desktop OpenGL 4.1 core - macOS's (deprecated, frozen) ceiling. Building

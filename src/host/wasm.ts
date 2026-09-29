@@ -1,10 +1,8 @@
 import '../vendor/wasm_exec.js';
 
-import type { WasmText } from '../gfx/text/wasmengine';
-
 export interface WasmTerm {
-  frame(w: number, h: number, dpr: number): number;
-  take(dst: Uint8Array): void;
+  /** service one frame: logical size, device size, clock in seconds. returns [animating, kind] */
+  paint(w: number, h: number, devW: number, devH: number, time: number): [number, number];
   tickIn(): number;
   tick(): void;
   pointerDown(x: number, y: number): void;
@@ -24,7 +22,12 @@ export interface WasmTerm {
   fullscreen(on: boolean): void;
 }
 
+/** the frame kinds paint reports */
+export const FRAME_DAMAGE = 2;
+export const FRAME_PARTIAL = 3;
+
 export interface HostCallbacks {
+  gl: WebGL2RenderingContext;
   url: string;
   sid: string | null;
   viewSize(): [number, number];
@@ -32,19 +35,13 @@ export interface HostCallbacks {
   setCursor(name: string): void;
   setTitle(title: string): void;
   writeClipboard(text: string): void;
-  preloadImage(src: string): void;
   preloadSound(src: string): void;
   play(src: string, loop: boolean): void;
   stop(src: string): void;
   mounted(sid: string): void;
 }
 
-export interface Terminal {
-  text: WasmText;
-  term: WasmTerm;
-}
-
-export async function loadTerminal(url: string, host: HostCallbacks): Promise<Terminal> {
+export async function loadTerminal(url: string, host: HostCallbacks): Promise<WasmTerm> {
   (globalThis as any).__cautionHost = host;
   const go = new Go();
   const resp = await fetch(url);
@@ -58,9 +55,9 @@ export async function loadTerminal(url: string, host: HostCallbacks): Promise<Te
   }
   void go.run(inst);
   const g = globalThis as any;
-  for (let i = 0; i < 200 && !(g.__cautionTerm && g.__cautionText); i++) {
+  for (let i = 0; i < 200 && !g.__cautionTerm; i++) {
     await new Promise((r) => setTimeout(r, 5));
   }
-  if (!g.__cautionTerm || !g.__cautionText) throw new Error('terminal did not start');
-  return { text: g.__cautionText as WasmText, term: g.__cautionTerm as WasmTerm };
+  if (!g.__cautionTerm) throw new Error('terminal did not start');
+  return g.__cautionTerm as WasmTerm;
 }

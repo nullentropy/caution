@@ -1,14 +1,16 @@
 //go:build js && wasm
 
-// caution termwasm: the terminal compiled to WebAssembly. Everything above
-// the display list runs here: the protocol session, the widget tree, layout,
-// text shaping and rasterization. The page around it (src/terminal.ts) owns
-// the canvas, the WebSocket, input events, the hidden textarea that collects
-// typing, audio, and the accessibility mirror.
+// caution termwasm: the terminal compiled to WebAssembly, built by cmd/bundle
+// and never run on the host. The protocol session, the widget tree, layout,
+// text, and the renderer all run here, drawing straight into the page's
+// WebGL2 context. The page around it (src/terminal.ts) owns the canvas, the
+// WebSocket, input events, the hidden textarea that collects typing, audio,
+// and the accessibility mirror.
 //
 // Exports land on globalThis.__cautionTerm, all synchronous. The page
-// supplies globalThis.__cautionHost before starting the module: the socket
-// url, the session id to resume, and the callbacks the terminal drives.
+// supplies globalThis.__cautionHost before starting the module: the WebGL2
+// context, the socket url, the session id to resume, and the callbacks the
+// terminal drives.
 package main
 
 import (
@@ -17,22 +19,23 @@ import (
 	"time"
 
 	"github.com/nullentropy/caution/go/terminal/gfx"
+	"github.com/nullentropy/caution/go/terminal/glx"
 	"github.com/nullentropy/caution/go/terminal/proto"
+	"github.com/nullentropy/caution/go/terminal/render"
 	"github.com/nullentropy/caution/go/terminal/text"
 	"github.com/nullentropy/caution/go/terminal/ui"
 	"github.com/nullentropy/caution/go/wire"
 )
 
 var (
-	shaper = text.NewShaper()
-	atlas  = text.NewAtlas()
-
 	u    *ui.Ui
+	r    *render.Renderer
 	sess *proto.Session
 
 	dpr          float32 = 1
 	lastW, lastH float32
-	frameBuf     []byte
+	dirty        = true // the tree changed since the last full frame
+	animating    bool   // the last full frame asked for another
 	lastSem      string
 	semNodes     []ui.SemanticNode
 )
@@ -42,12 +45,27 @@ func host() js.Value { return js.Global().Get("__cautionHost") }
 func call(method string, args ...any) js.Value { return host().Call(method, args...) }
 
 func main() {
+	glx.SetContext(host().Get("gl"))
+	if err := glx.Init(); err != nil {
+		println("caution:", err.Error())
+		return
+	}
+	var err error
+	if r, err = render.New(); err != nil {
+		println("caution: renderer:", err.Error())
+		return
+	}
+
 	u = ui.New()
 	u.HostText = true
-	u.Measure = func(f gfx.Font, s string) *text.Run { return shaper.Shape(f, dpr, s) }
-	u.OnInvalidate = func() { call("invalidate") }
+	u.Measure = func(f gfx.Font, s string) *text.Run { return r.Shaper.Shape(f, dpr, s) }
+	u.OnInvalidate = func() {
+		dirty = true
+		call("invalidate")
+	}
 	u.SetCursor = func(name string) { call("setCursor", name) }
 	u.WriteClipboard = func(s string) { call("writeClipboard", s) }
+	r.Images.OnLoad = func() { u.Invalidate() }
 
 	sid := ""
 	if v := host().Get("sid"); v.Type() == js.TypeString {
@@ -69,22 +87,15 @@ func main() {
 			u.SetMenubar(proto.MenubarSpec(menus), func(id int) { sess.Event(0, wire.EvMenu, id) })
 		},
 		SetTitle:     func(title string) { call("setTitle", title) },
-		Preload:      func(src string) { call("preloadImage", src) },
+		Preload:      r.Images.Preload,
 		PreloadSound: func(src string) { call("preloadSound", src) },
 		Play:         func(src string, loop bool) { call("play", src, loop) },
 		Stop:         func(src string) { call("stop", src) },
 		OnMount:      func(sid string) { call("mounted", sid) },
 	})
 
-	js.Global().Set("__cautionText", map[string]any{
-		"shape":     js.FuncOf(shape),
-		"glyph":     js.FuncOf(glyph),
-		"atlasTake": js.FuncOf(atlasTake),
-		"reset":     js.FuncOf(reset),
-	})
 	js.Global().Set("__cautionTerm", map[string]any{
-		"frame":        js.FuncOf(frame),
-		"take":         js.FuncOf(take),
+		"paint":        js.FuncOf(paint),
 		"tickIn":       js.FuncOf(tickIn),
 		"tick":         js.FuncOf(tick),
 		"pointerDown":  js.FuncOf(pointerDown),
@@ -106,11 +117,26 @@ func main() {
 	select {}
 }
 
-// frame builds one frame at the given logical size and returns the encoded
-// byte count. The page sizes a buffer and calls take.
-func frame(_ js.Value, a []js.Value) any {
+// Frame kinds paint reports, for the page's diagnostics counters.
+const (
+	frameSkipped = iota
+	frameFull
+	frameDamage
+	framePartial
+)
+
+// paint services one animation frame the page scheduled: logical size, device
+// size, and the clock in seconds. The page owns scheduling; the choice of a
+// full rebuild against replaying the retained list's animation damage is the
+// same one run.go's loop makes. Returns [animating, kind].
+func paint(_ js.Value, a []js.Value) any {
 	w, h := float32(a[0].Float()), float32(a[1].Float())
-	if d := float32(a[2].Float()); d > 0 && d != dpr {
+	devW, devH := int32(a[2].Int()), int32(a[3].Int())
+	now := float32(a[4].Float())
+	if w == 0 || h == 0 {
+		return []any{0, frameSkipped}
+	}
+	if d := float32(devW) / w; d != dpr {
 		dpr = d
 		u.NoteDPR(d)
 	}
@@ -121,15 +147,34 @@ func frame(_ js.Value, a []js.Value) any {
 		lastW, lastH = w, h
 	}
 	sess.Pump()
-	dl := &gfx.DisplayList{}
-	u.BuildFrame(dl, w, h)
-	frameBuf = gfx.Encode(dl, *ui.Tok("bg"), frameBuf[:0])
-	return len(frameBuf)
-}
-
-func take(_ js.Value, a []js.Value) any {
-	js.CopyBytesToJS(a[0], frameBuf)
-	return nil
+	fr := render.Frame{ViewW: w, ViewH: h, DevW: devW, DevH: devH, Time: now}
+	kind := frameSkipped
+	full := func() {
+		dl := &gfx.DisplayList{}
+		u.BuildFrame(dl, w, h)
+		animating = dl.WantsAnimation()
+		before := r.Frames.Damage
+		r.Render(dl, *ui.Tok("bg"), fr)
+		kind = frameFull
+		if r.Frames.Damage != before {
+			kind = frameDamage
+		}
+	}
+	if dirty {
+		dirty = false
+		full()
+	} else if animating && !r.AnimationIsInvisible() {
+		if r.RenderPartial(*ui.Tok("bg"), fr) {
+			kind = framePartial
+		} else {
+			full()
+		}
+	}
+	on := 0
+	if animating {
+		on = 1
+	}
+	return []any{on, kind}
 }
 
 func tickIn(js.Value, []js.Value) any {
@@ -138,6 +183,7 @@ func tickIn(js.Value, []js.Value) any {
 
 func tick(js.Value, []js.Value) any {
 	u.NoteTick()
+	dirty = true
 	return nil
 }
 

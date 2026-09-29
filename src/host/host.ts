@@ -1,12 +1,8 @@
 import { SoundStore } from '../audio';
-import type { DisplayList } from '../gfx/painter';
-import { FrameEnv, Surface } from '../gfx/surface';
-import { WasmEngine } from '../gfx/text/wasmengine';
-import { decodeFrame } from './frame';
 import { Funnel } from './funnel';
 import { attachInput } from './input';
 import { SemanticsMirror } from './semantics';
-import type { HostCallbacks, Terminal, WasmTerm } from './wasm';
+import { FRAME_DAMAGE, FRAME_PARTIAL, HostCallbacks, WasmTerm } from './wasm';
 
 const CURSORS: Record<string, string> = {
   '': 'default',
@@ -17,38 +13,77 @@ const CURSORS: Record<string, string> = {
 };
 
 export class Host {
-  readonly surface: Surface;
-  private term: WasmTerm;
+  /** caps animation-driven repaints, the browser mirror of the native -fps flag. 0 = display rate */
+  maxFps = 0;
+
   private funnel: Funnel;
   private semantics: SemanticsMirror;
-  private buf = new Uint8Array(1 << 16);
+  private scheduled = false;
+  private frames = 0;
   private tickTimer: ReturnType<typeof setTimeout> | null = null;
+  private animTimer: ReturnType<typeof setTimeout> | null = null;
 
-  constructor(canvas: HTMLCanvasElement, wasm: Terminal) {
-    this.term = wasm.term;
-    this.surface = new Surface(canvas, new WasmEngine(wasm.text));
-    this.funnel = new Funnel(canvas, this.term);
-    this.semantics = new SemanticsMirror(canvas, this.term, () => this.funnel.isActive);
-    this.surface.onBuild = (dl, env) => this.build(dl, env);
-    attachInput(canvas, this.term, {
+  constructor(
+    private canvas: HTMLCanvasElement,
+    private term: WasmTerm,
+  ) {
+    this.funnel = new Funnel(canvas, term);
+    this.semantics = new SemanticsMirror(canvas, term, () => this.funnel.isActive);
+    attachInput(canvas, term, {
       funnelActive: () => this.funnel.isActive,
       afterInput: () => this.funnel.sync(),
     });
-    document.addEventListener('fullscreenchange', () => this.term.fullscreen(document.fullscreenElement != null));
-    // ?fps=N caps animation repaints, the way -fps does for the native terminal
+    document.addEventListener('fullscreenchange', () => term.fullscreen(document.fullscreenElement != null));
+    new ResizeObserver(() => this.invalidate()).observe(canvas);
+    // ResizeObserver misses pure-DPR changes (browser zoom, monitor move)
+    window.addEventListener('resize', () => this.invalidate());
     const fps = Number(new URLSearchParams(location.search).get('fps'));
-    if (Number.isFinite(fps) && fps > 0) this.surface.maxFps = fps;
-    this.surface.invalidate();
+    if (Number.isFinite(fps) && fps > 0) this.maxFps = fps;
+    this.invalidate();
   }
 
-  private build(dl: DisplayList, env: FrameEnv): void {
-    const n = this.term.frame(env.width, env.height, env.dpr);
-    if (n > this.buf.length) this.buf = new Uint8Array(Math.max(n, this.buf.length * 2));
-    this.term.take(this.buf);
-    this.surface.background = decodeFrame(this.buf, n, dl);
+  invalidate(): void {
+    if (this.scheduled) return;
+    this.scheduled = true;
+    requestAnimationFrame(() => this.paint());
+  }
+
+  private paint(): void {
+    this.scheduled = false;
+    const canvas = this.canvas;
+    const dpr = window.devicePixelRatio || 1;
+    const lw = canvas.clientWidth;
+    const lh = canvas.clientHeight;
+    const dw = Math.max(1, Math.round(lw * dpr));
+    const dh = Math.max(1, Math.round(lh * dpr));
+    if (canvas.width !== dw || canvas.height !== dh) {
+      canvas.width = dw;
+      canvas.height = dh;
+    }
+    const t0 = performance.now();
+    const [animating, kind] = this.term.paint(lw, lh, dw, dh, t0 / 1000);
+    // the headless probes (cmd/goldens, cmd/loopprobe) read these
+    const c = ((window as any).__caution ??= { frames: 0, mounted: false });
+    c.frames = ++this.frames;
+    if (kind === FRAME_DAMAGE) c.damaged = (c.damaged ?? 0) + 1;
+    if (kind === FRAME_PARTIAL) c.partials = (c.partials ?? 0) + 1;
     this.scheduleTick();
     this.funnel.sync();
     this.semantics.schedule();
+    if (!animating) return;
+    // animated shaders keep painting while any are on screen. input and
+    // patches still paint immediately, so only the continuation is paced
+    if (this.maxFps > 0) {
+      if (this.animTimer == null) {
+        const wait = Math.max(0, 1000 / this.maxFps - (performance.now() - t0));
+        this.animTimer = setTimeout(() => {
+          this.animTimer = null;
+          this.invalidate();
+        }, wait);
+      }
+    } else {
+      this.invalidate();
+    }
   }
 
   // the terminal's time-driven repaints: caret blink, tooltip delay, theme tween
@@ -62,27 +97,40 @@ export class Host {
     this.tickTimer = setTimeout(() => {
       this.tickTimer = null;
       this.term.tick();
-      this.surface.invalidate();
+      this.invalidate();
     }, ms);
   }
 }
 
+/**
+ * The callbacks the terminal needs from the moment it starts, before the Host
+ * exists. Calls that arrive early are held until bind.
+ */
 export function hostCallbacks(canvas: HTMLCanvasElement): HostCallbacks & { bind(host: Host): void } {
+  const gl = canvas.getContext('webgl2', {
+    alpha: false,
+    antialias: false, // the renderer does its own analytic AA
+    depth: false,
+    stencil: false,
+    premultipliedAlpha: true,
+  });
+  if (!gl) throw new Error('WebGL2 unavailable');
   const proto = location.protocol === 'https:' ? 'wss' : 'ws';
   const sounds = new SoundStore();
   let host: Host | null = null;
   let pendingInvalidate = false;
   let lastCursor = '';
   return {
+    gl,
     url: `${proto}://${location.host}/ws`,
     sid: sessionStorage.getItem('caution:sid'),
     bind(h) {
       host = h;
-      if (pendingInvalidate) h.surface.invalidate();
+      if (pendingInvalidate) h.invalidate();
     },
     viewSize: () => [canvas.clientWidth, canvas.clientHeight],
     invalidate() {
-      if (host) host.surface.invalidate();
+      if (host) host.invalidate();
       else pendingInvalidate = true;
     },
     setCursor(name) {
@@ -95,9 +143,6 @@ export function hostCallbacks(canvas: HTMLCanvasElement): HostCallbacks & { bind
     },
     writeClipboard(text) {
       void navigator.clipboard.writeText(text).catch(() => {});
-    },
-    preloadImage(src) {
-      host?.surface.renderer.images.get(src);
     },
     preloadSound: (src) => sounds.preload(src),
     play: (src, loop) => sounds.play(src, loop),
