@@ -275,7 +275,7 @@ func addDamage(out []Rect, cmds []Cmd, open []int, i int, view Rect) []Rect {
 // walk reaches it.
 func addRange(out []Rect, cmds []Cmd, lo, hi int, view Rect) []Rect {
 	var open []int
-	for i := 0; i < hi; i++ {
+	for i := range hi {
 		if i >= lo {
 			out = addDamage(out, cmds, open, i, view)
 		}

@@ -165,7 +165,6 @@ func main() {
 	})
 	// Generated tones, the same way: no binary assets in the repo.
 	for name, wav := range makeTones() {
-		wav := wav
 		http.HandleFunc("/assets/sfx/"+name+".wav", func(w http.ResponseWriter, _ *http.Request) {
 			w.Header().Set("Content-Type", "audio/wav")
 			w.Header().Set("Cache-Control", "public, max-age=3600")
@@ -178,7 +177,7 @@ func main() {
 	http.HandleFunc("/login", func(w http.ResponseWriter, r *http.Request) {
 		u := r.URL.Query().Get("u")
 		if u == "" {
-			u = "nullentropy"
+			u = "cautiondemo"
 		}
 		http.SetCookie(w, &http.Cookie{Name: "user", Value: u, Path: "/", HttpOnly: true})
 		http.Redirect(w, r, "/", http.StatusFound)

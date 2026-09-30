@@ -1,10 +1,8 @@
-// The caution terminal's page: the fixed client runtime every caution app
-// serves. The terminal itself (widgets, layout, protocol, text) is the Go
-// terminal compiled to WebAssembly; this side owns the canvas, the socket,
-// input, audio, and the DOM bits screen readers and IMEs need. There is no
-// application code on this side of the wire, ever. The server bundles this
-// entrypoint (see caution.ServeClient) and generates the host page.
-
+// the terminal's entry point
+//
+// widgets, layout, protocol, and text are all from the Go terminal and
+// compiled to wasm. here we have the canvas, socket, input, audio,
+// and the "shadow" DOM for assistive tech.
 import { Host, hostCallbacks } from './host/host';
 import { loadTerminal } from './host/wasm';
 

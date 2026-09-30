@@ -1,16 +1,7 @@
 //go:build js && wasm
 
-// caution termwasm: the terminal compiled to WebAssembly, built by cmd/bundle
-// and never run on the host. The protocol session, the widget tree, layout,
-// text, and the renderer all run here, drawing straight into the page's
-// WebGL2 context. The page around it (src/terminal.ts) owns the canvas, the
-// WebSocket, input events, the hidden textarea that collects typing, audio,
-// and the accessibility mirror.
-//
-// Exports land on globalThis.__cautionTerm, all synchronous. The page
-// supplies globalThis.__cautionHost before starting the module: the WebGL2
-// context, the socket url, the session id to resume, and the callbacks the
-// terminal drives.
+// caution termwasm: the terminal compiled to WebAssembly. this is the wasm
+// entrypoint, for compilation with `go run ./cmd/bundle`
 package main
 
 import (
