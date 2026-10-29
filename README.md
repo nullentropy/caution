@@ -1,7 +1,7 @@
 # caution
 
 A server-driven, GPU-rendered UI framework. You write your application as a
-server, in Go or Clojure, against a widget SDK. Your user runs a generic
+server in Go against a widget SDK. Your user runs a generic
 client (the "terminal") that renders the widget tree and sends interaction
 events back. 
 
@@ -21,10 +21,10 @@ same scenes through both and compares the frames.
 ## Quick start
 
 ```
-go run -C go ./cmd/demo            # serve the demo app
-open http://localhost:8787         # ... in a browser
+go run ./cmd/demo            # serve the demo app
+open http://localhost:8787   # ... in a browser
 
-go run -C go ./cmd/demo -native    # the same app as a desktop window
+go run ./cmd/demo -native    # the same app as a desktop window
 ```
 
 A complete app looks like this (see examples):
@@ -36,8 +36,8 @@ import (
     "log"
     "strconv"
 
-    caution "github.com/nullentropy/caution/go"
-    "github.com/nullentropy/caution/go/native"
+    caution "github.com/nullentropy/caution"
+    "github.com/nullentropy/caution/native"
 )
 
 func mount(s *caution.Session) *caution.Node {
@@ -313,20 +313,6 @@ claims scrolling over the glass.
 orbit/measure gestures, otherwise right-click keeps its context-menu
 meaning. 
 
-## UI documents and the designer
-
-A widget tree can be data. A `.ui.json` document in wire format plus `name`
-markers for outlets. 
-
-```go
-//go:embed window.ui.json
-var windowUI []byte
-
-win := caution.MustLoadUI(windowUI)
-counter := win.Node("counter")
-win.Node("inc").OnClick(func() { ... })
-```
-
 ## Native apps
 
 `native.Run(mount, native.Options{...})` runs the server and the native
@@ -334,8 +320,8 @@ terminal in one process over an in-memory pipe; `go build` is the bundler.
 
 Packaging:
 
-- macOS: `go run -C go ./cmd/appbundle -pkg ./cmd/demo -name "My App"`
-- Linux: `go run -C go ./cmd/linuxapp -pkg ./cmd/demo -name "My App" -install`
+- macOS: `go run ./cmd/appbundle -pkg ./cmd/demo -name "My App"`
+- Linux: `go run ./cmd/linuxapp -pkg ./cmd/demo -name "My App" -install`
 
 Window options (`native.Options` / `terminal.Options` / `cmd/term` flags):
 
@@ -372,7 +358,7 @@ the client's caches for screens not yet mounted.
 
 ## Clojure SDK
 
-`clj/` is the clojure implementation of the SDK. See `clj/README.md`.
+The Clojure SDK lives in its own repo, cljaution.
 
 ## The wire protocol
 
@@ -443,20 +429,19 @@ picks, key combos, and the mouse's extra buttons.
 ## Developing in this repo
 
 ```
-go run -C go ./cmd/demo              # demo, serving the page script live from src/
-go run -C go ./cmd/bundle            # rebuild term.wasm and app.js after terminal changes
-cd go && go tool tsgo --noEmit -p .. # typecheck the TypeScript
-go test ./...                        # Go suites (run from go/)
-go run -C go ./cmd/goldens           # browser vs native pixel parity (needs Chrome)
-go run -C go ./cmd/damageprobe       # partial-invalidation pixel identity
-go run -C go ./cmd/loopprobe         # presentation-loop behavior (also -browser, -leaks, -menu)
-go run -C go ./cmd/bundle -minify    # regenerate the embedded terminal bundle
+go run ./cmd/demo              # demo, serving the page script live from web/
+go run ./cmd/bundle            # rebuild term.wasm and app.js after terminal changes
+go tool tsgo --noEmit -p .     # typecheck the TypeScript
+go test ./...                  # Go suites
+go run ./cmd/goldens           # browser vs native pixel parity (needs Chrome)
+go run ./cmd/damageprobe       # partial-invalidation pixel identity
+go run ./cmd/loopprobe         # presentation-loop behavior (also -browser, -leaks, -menu)
 ```
 
 The headless verification mode used throughout:
 
 ```
-go run -C go ./cmd/term -shot out.png -settle 2000 -clicks "120,424@700;key:enter@900"
+go run ./cmd/term -shot out.png -settle 2000 -clicks "120,424@700;key:enter@900"
 ```
 
 renders a live session offscreen to PNG with scripted input (clicks, drags,

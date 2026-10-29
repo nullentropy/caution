@@ -11,7 +11,7 @@ const (
 	gridW = 64
 	gridH = 26
 	scale = 8
-	// Frames is the flipbook length; the demo cycles /nyan/0.png ... /5.png.
+	// flipbook length, the demo cycles /nyan/0.png ... /5.png
 	Frames = 6
 )
 
@@ -36,7 +36,6 @@ var (
 	}
 )
 
-// NyanFrame renders one flipbook frame as PNG bytes.
 func NyanFrame(frame int) []byte {
 	img := image.NewNRGBA(image.Rect(0, 0, gridW*scale, gridH*scale))
 
@@ -58,10 +57,9 @@ func NyanFrame(frame int) []byte {
 		}
 	}
 
-	// Space.
 	fill(0, 0, gridW, gridH, space)
 
-	// Stars: white plus-shapes drifting left one cell per frame, wrapping.
+	// stars: white plus-shapes drifting left one cell per frame, wrapping
 	starSeed := []struct{ x, y int }{
 		{5, 3}, {17, 12}, {29, 20}, {40, 5}, {52, 15}, {60, 9}, {11, 22}, {46, 22}, {57, 2},
 	}
@@ -81,8 +79,8 @@ func NyanFrame(frame int) []byte {
 	bob := frame % 2 // the classic every-other-frame bounce
 	bodyX, bodyY := 36, 7+bob
 
-	// Rainbow trail: six 2-cell stripes in a square wave that scrolls with
-	// the frame - the wave flips every 4 cells.
+	// rainbow trail: six 2-cell stripes in a square wave that scrolls with the
+	// frame, the wave flips every 4 cells
 	for x := 0; x < bodyX-1; x++ {
 		off := 0
 		if ((x+frame*2)/4)%2 == 0 {
@@ -93,7 +91,7 @@ func NyanFrame(frame int) []byte {
 		}
 	}
 
-	// Pop-tart body: tan slab, pink frosting inset, sprinkles.
+	// pop-tart body: tan slab, pink frosting inset, sprinkles
 	fill(bodyX, bodyY, 18, 12, tan)
 	fill(bodyX+1, bodyY+1, 16, 10, frosting)
 	for i, sp := range []struct{ x, y int }{{3, 3}, {7, 2}, {11, 4}, {5, 7}, {9, 8}, {13, 7}, {2, 5}, {14, 2}} {
@@ -102,7 +100,7 @@ func NyanFrame(frame int) []byte {
 		}
 	}
 
-	// Tail: a gray zigzag flapping behind the tart.
+	// tail: gray zigzag flapping behind the tart
 	tailY := bodyY + 5
 	if frame%2 == 0 {
 		fill(bodyX-4, tailY-1, 4, 2, gray)
@@ -112,13 +110,13 @@ func NyanFrame(frame int) []byte {
 		fill(bodyX-6, tailY+2, 3, 2, gray)
 	}
 
-	// Legs: four stubs shuffling with the frame.
+	// legs: four stubs shuffling with the frame
 	legOff := frame % 2
 	for i := 0; i < 4; i++ {
 		fill(bodyX+1+i*5+legOff, bodyY+12, 2, 2, gray)
 	}
 
-	// Head: gray blob overlapping the tart's right edge, ears, face.
+	// head: gray blob over the tart's right edge, ears, face
 	headX, headY := bodyX+12, bodyY+2
 	fill(headX, headY, 10, 8, gray)
 	fill(headX+1, headY-1, 8, 1, gray)
@@ -126,7 +124,7 @@ func NyanFrame(frame int) []byte {
 	cell(headX+1, headY-1, gray)
 	cell(headX+9, headY-2, grayDark) // right ear
 	cell(headX+8, headY-1, gray)
-	// Eyes (with glints), cheeks, mouth.
+	// eyes (with glints), cheeks, mouth
 	cell(headX+2, headY+2, blackish)
 	cell(headX+7, headY+2, blackish)
 	cell(headX+2, headY+1, white)
@@ -139,7 +137,7 @@ func NyanFrame(frame int) []byte {
 
 	var buf bytes.Buffer
 	if err := png.Encode(&buf, img); err != nil {
-		panic(err) // deterministic in-memory encode; cannot fail at runtime
+		panic(err) // deterministic in-memory encode, cannot fail at runtime
 	}
 	return buf.Bytes()
 }

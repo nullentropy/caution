@@ -4,16 +4,13 @@ dist/
 caution-demo
 goldens-out/
 
-/go/appbundle
-/go/bundle
-/go/damageprobe
-/go/demo
-/go/design
-/go/goldens
-/go/preview
-/go/termwasm
-/go/term
-/go/tstest
+/appbundle
+/bundle
+/damageprobe
+/demo
+/goldens
+/termwasm
+/term
 /examples/hello/hello
 /examples/nyan/nyan
 /examples/screensaver/screensaver

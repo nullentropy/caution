@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"log"
 
-	caution "github.com/nullentropy/caution/go"
-	"github.com/nullentropy/caution/go/native"
+	caution "github.com/nullentropy/caution"
+	"github.com/nullentropy/caution/native"
 )
 
 func mount(s *caution.Session) *caution.Node {

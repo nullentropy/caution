@@ -53,7 +53,7 @@ eight hicolor sizes:
     share/icons/hicolor/{16,24,32,48,64,128,256,512}x…/apps/caution-demo.png
 
 It shares the generated app mark with the macOS packager
-(`go/internal/appicon`), validates the entry with `desktop-file-validate`
+(`internal/appicon`), validates the entry with `desktop-file-validate`
 when that tool is present, and runs on any OS - writing files needs no Linux,
 so `GOOS=linux GOARCH=amd64 go run ./cmd/linuxapp …` packages from a Mac.
 
@@ -78,7 +78,7 @@ running on Wayland, and the first thing to check on the desktop pass.
   weakest part of this stack: expect to find things here.
 - **Client-side decorations.** GLFW 3.3 does not draw them, so a window may
   come up undecorated under GNOME. If so, that's a packaging decision
-  (ship a titlebar widget, like the demo's nib, or depend on the compositor).
+  (ship a titlebar widget, like the demo's, or depend on the compositor).
 - **Real GPU drivers.** llvmpipe exercises Mesa's GLSL compiler, but
   proprietary NVIDIA/AMD compilers reject things Mesa accepts. Worth a run on
   each.

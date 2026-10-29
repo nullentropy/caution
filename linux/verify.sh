@@ -23,5 +23,5 @@ fi
 exec docker run --rm \
   -v "$ROOT":/caution \
   -v "$(go env GOMODCACHE)":/go/pkg/mod:ro \
-  -w /caution/go \
+  -w /caution \
   "$IMAGE" bash /caution/linux/inside.sh

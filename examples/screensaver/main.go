@@ -6,12 +6,12 @@ import (
 	"log"
 	"time"
 
-	caution "github.com/nullentropy/caution/go"
-	"github.com/nullentropy/caution/go/native"
+	caution "github.com/nullentropy/caution"
+	"github.com/nullentropy/caution/native"
 )
 
-// The scenes: full-bleed fragment shaders in the shared ES3 subset, dark and
-// slow on purpose. Each gets u_time in seconds and u_res in logical px.
+// full-bleed fragment shaders in the shared ES3 subset, dark and slow on
+// purpose. each gets u_time in seconds and u_res in logical px
 var scenes = []struct {
 	name string
 	frag string
@@ -46,8 +46,8 @@ vec4 effect(vec2 uv) {
       vec2 pos = fract(q) - 0.5;
       float tw = 0.55 + 0.45 * sin(u_time * (1.0 + star * 4.0) + star * 40.0);
       float d = length(pos - (vec2(hash(cell + 1.0), hash(cell + 2.0)) - 0.5) * 0.5);
-      // The glow must hit zero inside the cell, or its tail clips at the
-      // cell boundary and every star sits in a faint square.
+      // the glow must hit zero inside the cell or its tail clips at the cell
+      // boundary and every star sits in a faint square
       float g = max(0.0, 0.02 / (d + 0.014) - 0.075);
       c += tw * vec3(0.9, 0.95, 1.0) * g / fl;
     }
@@ -73,8 +73,7 @@ vec4 effect(vec2 uv) {
 
 const sceneEvery = 30 * time.Second
 
-// startScene is the -scene flag's pick (an index into scenes); cycling
-// continues from it.
+// the -scene flag's pick (index into scenes), cycling continues from it
 var startScene = 0
 
 func mount(s *caution.Session) *caution.Node {
@@ -134,8 +133,8 @@ func main() {
 		caution.ServeClient()
 		go func() {
 			fmt.Printf("browser terminal on %s\n", *serve)
-			// The browser side is a bonus: a taken port must not take the
-			// native saver down with it.
+			// the browser side is a bonus, a taken port must not take the native saver
+			// down with it
 			if err := caution.Serve(*serve, mount); err != nil {
 				log.Println("browser terminal:", err)
 			}

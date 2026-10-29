@@ -2,7 +2,7 @@
 # Runs inside the container (see verify.sh). Each section prints PASS/FAIL and
 # the script keeps going, so one failure doesn't hide the rest.
 set -uo pipefail
-cd /caution/go
+cd /caution
 OUT=/caution/linux/out
 FAILED=0
 step() { printf '\n=== %s\n' "$1"; }
