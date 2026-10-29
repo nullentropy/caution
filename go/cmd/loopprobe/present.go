@@ -15,12 +15,14 @@ import (
 // window the compositor is really presenting, with vsync and a display refresh
 // in the loop.
 //
-// Four scripted phases, each measured with the frame counters reset:
+// Five scripted phases, each measured with the frame counters reset:
 //
 //	idle       a static tree            presents nothing
 //	patch      one label at 10Hz        presents about once per patch
 //	animate    a visible shader pane     presents at the MaxFPS cap
 //	offscreen  the same pane moved off   presents nothing again
+//	caret      a focused text field      presents once per blink, and the
+//	                                     loop wakes about that often too
 //
 // Leave the pointer off the window while it runs. Input wakes the loop, which
 // is fine (a wake that changes no pixel still presents nothing) but hovering
@@ -28,19 +30,21 @@ import (
 
 type presentPhase struct {
 	name string
-	// want is the range of presented frames the phase has to land in.
-	lo, hi int
-	dur    time.Duration
+	// want is the range of presented frames the phase has to land in, and
+	// stepsHi, when set, caps the loop iterations.
+	lo, hi  int
+	stepsHi int
+	dur     time.Duration
 	// drive runs on the session goroutine at the start of the phase, and tick,
 	// when set, runs every 100ms through it.
 	drive func(sc *presentScene)
 	tick  func(sc *presentScene, i int)
 }
 
-// presentScene is the mounted tree plus the two nodes the script drives.
+// presentScene is the mounted tree plus the nodes the script drives.
 type presentScene struct {
-	s           *caution.Session
-	clock, pane *caution.Node
+	s                  *caution.Session
+	clock, pane, field *caution.Node
 }
 
 const presentFPS = 30
@@ -58,6 +62,7 @@ func runPresent(fullscreen bool, seconds float64) error {
 		s.SetTheme(map[string]string{"bg": "#101216"})
 		clock := caution.Label("ticking: 0").
 			Anchor(caution.A{Left: caution.Px(24), Top: caution.Px(52)})
+		field := caution.TextField("").Frame(380, 52, 200, 28)
 		pane := caution.Shader(caution.FX{
 			Frag:    "vec4 effect(vec2 uv) { return vec4(uv.x, uv.y, fract(u_time), 1.0); }",
 			Animate: true,
@@ -65,10 +70,10 @@ func runPresent(fullscreen bool, seconds float64) error {
 		root := caution.Panel().Kids(
 			caution.Label("caution presentation gate").
 				Anchor(caution.A{Left: caution.Px(24), Top: caution.Px(24)}),
-			clock, pane,
+			clock, pane, field,
 		)
 		select {
-		case scenes <- &presentScene{s: s, clock: clock, pane: pane}:
+		case scenes <- &presentScene{s: s, clock: clock, pane: pane, field: field}:
 		default:
 		}
 		return root
@@ -98,6 +103,10 @@ func runPresent(fullscreen bool, seconds float64) error {
 			name: "offscreen", lo: 0, hi: 3, dur: dur,
 			drive: func(sc *presentScene) { paneOffscreen(sc, true) },
 		},
+		{
+			name: "caret", dur: dur,
+			drive: func(sc *presentScene) { sc.field.Focus() },
+		},
 	}
 	// One patch per 100ms, and a presented frame each: the loop must follow the
 	// server, not the display.
@@ -107,6 +116,10 @@ func runPresent(fullscreen bool, seconds float64) error {
 	// the floor is generous and the ceiling is what actually gates.
 	capped := int(dur.Seconds() * presentFPS)
 	phases[2].lo, phases[2].hi = capped/2, capped*5/4
+	// A 530ms blink half period. Each flip is one wake and one frame, so a
+	// loop that wakes itself between flips shows up in the steps.
+	blinks := int(dur / (530 * time.Millisecond))
+	phases[4].lo, phases[4].hi, phases[4].stepsHi = blinks/2, blinks+2, blinks*3+6
 
 	go func() {
 		sc := <-scenes
@@ -130,7 +143,7 @@ func runPresent(fullscreen bool, seconds float64) error {
 			}
 			st := terminal.Stats()
 			verdict := "ok"
-			if st.Presented < p.lo || st.Presented > p.hi {
+			if st.Presented < p.lo || st.Presented > p.hi || (p.stepsHi > 0 && st.Steps > p.stepsHi) {
 				verdict = "FAIL"
 				bad++
 			}

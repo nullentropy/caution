@@ -53,6 +53,11 @@ const tfUndoCap = 200
 
 const tfBlink = 530 * time.Millisecond
 
+// tfBlinkFor is how long the caret blinks after the last edit or move before
+// it holds solid, so an idle focused field stops asking for frames. GTK's
+// cursor-blink-timeout default.
+const tfBlinkFor = 10 * time.Second
+
 // tfPadX is the field's inner text inset: the space.pad token.
 func tfPadX() float32 { return Metrics.SpacePad }
 
@@ -578,13 +583,23 @@ func (t *TextField) PaintSelf(dl *gfx.DisplayList) {
 }
 
 func (t *TextField) blinkOn() bool {
-	return (time.Since(t.lastActivity)/tfBlink)%2 == 0
+	if t.UI != nil && t.UI.windowInactive {
+		return false
+	}
+	since := time.Since(t.lastActivity)
+	return since >= tfBlinkFor || (since/tfBlink)%2 == 0
 }
 
-// blinkTick is how long until the caret phase next flips (the shell's wait
-// timeout while a collapsed-caret field is focused).
+// blinkTick is how long until the caret phase next flips
 func (t *TextField) blinkTick() time.Duration {
-	return tfBlink - time.Since(t.lastActivity)%tfBlink
+	if t.UI != nil && t.UI.windowInactive {
+		return 0
+	}
+	since := time.Since(t.lastActivity)
+	if since >= tfBlinkFor {
+		return 0
+	}
+	return min(tfBlink-since%tfBlink, tfBlinkFor-since)
 }
 
 // -- mouse --------------------------------------------------------------------------

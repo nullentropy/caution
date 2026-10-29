@@ -695,6 +695,9 @@ func Run(o Options) error {
 			liveDraw()
 		}
 	})
+	win.SetFocusCallback(func(_ *glfw.Window, focused bool) {
+		u.SetWindowActive(focused)
+	})
 	win.SetRefreshCallback(func(*glfw.Window) {
 		dirty = true
 		if liveDraw != nil {
@@ -924,10 +927,9 @@ func Run(o Options) error {
 			}
 		} else if tick := u.TickIn(); tick > 0 {
 			// Time-driven repaint without a game loop: sleep until the caret's
-			// next blink phase.
+			// next blink phase. frameStep fires the tick once nextTick is due,
+			// so an early wake (input, a patch) is not mistaken for one.
 			glfw.WaitEventsTimeout(tick.Seconds())
-			u.NoteTick()
-			dirty = true
 		} else {
 			glfw.WaitEvents()
 		}

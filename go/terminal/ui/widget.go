@@ -437,11 +437,17 @@ func (b *Core) selfNeedsPaint() bool {
 // what a widget paints without going through here must use Ui.Invalidate
 // instead, which rebuilds the whole list.
 func (b *Core) Invalidate() {
-	b.dirty = true
-	b.InvalidateLayout()
+	b.markDirty()
 	if b.UI != nil {
 		b.UI.wake()
 	}
+}
+
+// markDirty is Invalidate without the wake, for marks made by the shell's own
+// frame step
+func (b *Core) markDirty() {
+	b.dirty = true
+	b.InvalidateLayout()
 }
 
 // InvalidateLayout marks this subtree's geometry stale, and every ancestor's

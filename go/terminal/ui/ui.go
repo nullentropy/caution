@@ -54,7 +54,10 @@ type Ui struct {
 	active    Widget
 	focused   Widget
 	focusRing bool
-	sel       *TextSelection
+	// windowInactive is set while the window lacks key focus and the focused
+	// editor won't show a caret and won't ask for blink ticks
+	windowInactive bool
+	sel            *TextSelection
 	// rightGlass is the glass that captured the in-flight right-button
 	// gesture. When nil, right-click keeps its context-menu meaning.
 	rightGlass *Glass
@@ -832,15 +835,8 @@ func (u *Ui) FocusWidget(w Widget) {
 // Zero means no tick.
 func (u *Ui) TickIn() time.Duration {
 	var tick time.Duration
-	switch tf := u.focused.(type) {
-	case *TextField:
-		if tf.Focused && tf.selStart == tf.selEnd {
-			tick = tf.blinkTick()
-		}
-	case *TextArea:
-		if tf.Focused && tf.selStart == tf.selEnd {
-			tick = tf.blinkTick()
-		}
+	if tf := u.focusedText(); tf != nil && tf.Focused && tf.selStart == tf.selEnd {
+		tick = tf.blinkTick()
 	}
 	if u.tipW != nil && !u.tipShown() {
 		if d := max(time.Until(u.tipAt), time.Millisecond); tick == 0 || d < tick {
@@ -858,16 +854,34 @@ func (u *Ui) TickIn() time.Duration {
 
 // NoteTick tells the Ui that the time-driven repaint TickIn asked for has come
 // due. The caret's blink phase is the one thing a widget paints from the clock
-// rather than from its own state, so no dirty bit sees it coming and its owner
-// is marked here. The tooltip and the theme tween need nothing: the tip is
-// rebuilt every frame, and a running tween rebuilds the whole list.
+// rather than from its own state. 
 func (u *Ui) NoteTick() {
-	switch tf := u.focused.(type) {
-	case *TextField:
-		tf.Invalidate()
-	case *TextArea:
+	if tf := u.focusedText(); tf != nil {
+		tf.markDirty()
+	}
+}
+
+// SetWindowActive tells Ui that the window is in focus
+func (u *Ui) SetWindowActive(active bool) {
+	if u.windowInactive != active {
+		return
+	}
+	u.windowInactive = !active
+	if tf := u.focusedText(); tf != nil {
+		tf.touch()
 		tf.Invalidate()
 	}
+}
+
+// focusedText is the focused single- or multi-line editor, or nil.
+func (u *Ui) focusedText() *TextField {
+	switch w := u.focused.(type) {
+	case *TextField:
+		return w
+	case *TextArea:
+		return &w.TextField
+	}
+	return nil
 }
 
 // KeyDown routes a key and reports whether it was consumed.
