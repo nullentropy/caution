@@ -60,23 +60,23 @@ func setOr[T propType](p props, key string, dst *T, def T) {
 		return
 	}
 	*dst = def
-	f, isNum := v.(float64) // encoding/json numbers
+	f, isNum := num(v)
 	switch d := any(dst).(type) {
 	case *string:
-		if s, ok := v.(string); ok {
+		if s, ok := str(v); ok {
 			*d = s
 		}
 	case *bool:
-		if b, ok := v.(bool); ok {
+		if b, ok := boolean(v); ok {
 			*d = b
 		}
 	case *float32:
 		if isNum {
-			*d = float32(f)
+			*d = f
 		}
 	case **float32:
 		if isNum {
-			*d = new(float32(f))
+			*d = &f
 		}
 	case *int:
 		if isNum {
@@ -350,7 +350,9 @@ func (ns *NodeStore) Apply(w ui.Widget, id int, p props) {
 			t.DropShadow = nil
 			if o, ok := v.(props); ok {
 				blur := float32(10)
-				setOr(o, "blur", &blur, 10)
+				if f, ok := num(o["blur"]); ok {
+					blur = f
+				}
 				col := gfx.Hex("#00000080")
 				if c := color(o["color"]); c != nil {
 					col = *c
