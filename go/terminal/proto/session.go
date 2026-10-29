@@ -384,7 +384,7 @@ func (s *Session) handle(msg *serverMsg) {
 		if msg.Resources != nil {
 			s.applyResources(msg.Resources.Images, msg.Resources.Sounds)
 		}
-		clear(s.store.ByID)
+		s.store.Reset()
 		if msg.Root != nil {
 			root := s.store.Build(*msg.Root)
 			s.mounted = true

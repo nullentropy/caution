@@ -187,9 +187,9 @@ func (s *Stack) LayoutChildren() {
 		sz := sizeOf(c)
 		// Cross-axis children never exceed the stack's extent (labels
 		// truncate at the boundary instead of overflowing).
-		crossNat := heightAt(c, main, sz.H)
-		if s.Axis == "v" {
-			crossNat = sz.W
+		crossNat := sz.W
+		if s.Axis == "h" {
+			crossNat = heightAt(c, main, sz.H)
 		}
 		cross := min(crossNat, crossAvail)
 		if s.Align == "stretch" {

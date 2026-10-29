@@ -247,16 +247,24 @@ func applyLabelFont(l *ui.Label, p props) {
 // map used by patches.
 type NodeStore struct {
 	ByID map[int]ui.Widget
+	idOf map[ui.Widget]int
 	sink EventSink
 }
 
 func NewNodeStore(sink EventSink) *NodeStore {
-	return &NodeStore{ByID: map[int]ui.Widget{}, sink: sink}
+	return &NodeStore{ByID: map[int]ui.Widget{}, idOf: map[ui.Widget]int{}, sink: sink}
+}
+
+// reset forgets every node for a fresh mount
+func (ns *NodeStore) Reset() {
+	clear(ns.ByID)
+	clear(ns.idOf)
 }
 
 func (ns *NodeStore) Build(json nodeJSON) ui.Widget {
 	w := construct(json.Type)
 	ns.ByID[json.ID] = w
+	ns.idOf[w] = json.ID
 	ns.Apply(w, json.ID, json.P)
 	for _, kid := range json.Kids {
 		c := ns.Build(kid)
@@ -726,14 +734,7 @@ func (ns *NodeStore) Apply(w ui.Widget, id int, p props) {
 	case *ui.Glass:
 		// The store owns the id map; the glass resolves pick targets
 		// through it (deepest widget -> nearest server-known ancestor).
-		t.IdOf = func(w ui.Widget) int {
-			for wid, ww := range ns.ByID {
-				if ww == w {
-					return wid
-				}
-			}
-			return 0
-		}
+		t.IdOf = func(w ui.Widget) int { return ns.idOf[w] }
 		if subscribed(p, wire.EvPick) {
 			t.OnPick = func(x, y float32, target int) {
 				ns.sink.Event(id, wire.EvPick, map[string]any{"x": x, "y": y, "target": target})
@@ -806,10 +807,11 @@ func (ns *NodeStore) Remove(id int) {
 	}
 	var prune func(n ui.Widget)
 	prune = func(n ui.Widget) {
-		for nid, nw := range ns.ByID {
-			if nw == n {
+		if nid, ok := ns.idOf[n]; ok {
+			if ns.ByID[nid] == n {
 				delete(ns.ByID, nid)
 			}
+			delete(ns.idOf, n)
 		}
 		for _, c := range n.Base().Kids {
 			prune(c)

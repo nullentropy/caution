@@ -87,6 +87,7 @@ type Ui struct {
 	structural bool
 	animating  bool
 	frameAt    time.Time
+	inNew      bool // animWalk is inside a subtree first seen this pass
 
 	// Multi-click detection. GLFW reports individual presses only.
 	lastDown struct {
@@ -326,9 +327,11 @@ func (u *Ui) paintRoot(dl *gfx.DisplayList, w Widget) {
 func (u *Ui) animWalk(w Widget, dt float32) {
 	b := w.Base()
 	bb := &b.Bounds
-	if !b.hadFrame {
+	isNew := !b.hadFrame
+	if isNew {
 		b.hadFrame = true
-		if u.structural {
+		// just fade the root
+		if u.structural && !u.inNew {
 			b.fadeR = 1 // introduced by an op - fade in
 		}
 	} else if u.structural && (bb.X != b.prevX || bb.Y != b.prevY) {
@@ -364,12 +367,15 @@ func (u *Ui) animWalk(w Widget, dt float32) {
 	// against.
 	need := b.selfNeedsPaint()
 	b.dirty = false
+	outer := u.inNew
+	u.inNew = outer || isNew
 	for _, c := range b.Kids {
 		u.animWalk(c, dt)
 		if c.Base().needsPaint {
 			need = true
 		}
 	}
+	u.inNew = outer
 	b.needsPaint = need
 }
 

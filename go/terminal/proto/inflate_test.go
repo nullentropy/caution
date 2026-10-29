@@ -68,3 +68,24 @@ func TestMountFocusesTheNodeItNames(t *testing.T) {
 		t.Fatal("mount did not focus node 2")
 	}
 }
+
+func TestRemoveDropsTheSubtreeAndKeepsTheRest(t *testing.T) {
+	ns := NewNodeStore(nullSink{})
+	root := ns.Build(nodeJSON{ID: 1, Type: wire.Panel, Kids: []nodeJSON{
+		{ID: 2, Type: wire.Panel, Kids: []nodeJSON{{ID: 3, Type: wire.Panel}}},
+		{ID: 4, Type: wire.Glass, P: props{}},
+	}})
+	kept := ns.ByID[4]
+	ns.Remove(2)
+	for _, id := range []int{2, 3} {
+		if _, ok := ns.ByID[id]; ok {
+			t.Fatalf("node %d survived its subtree's removal", id)
+		}
+	}
+	if kids := root.Base().Kids; len(kids) != 1 || kids[0] != kept {
+		t.Fatalf("root kids = %v; want only node 4", kids)
+	}
+	if id := kept.(*ui.Glass).IdOf(kept); id != 4 {
+		t.Fatalf("IdOf(node 4) = %d", id)
+	}
+}

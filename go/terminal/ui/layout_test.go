@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"testing"
@@ -186,6 +187,38 @@ func TestWrappedLabelInNestedStacksSizesTheRow(t *testing.T) {
 	wantBounds(t, row, 0, 0, 120, 61)
 	wantBounds(t, l, 20, 0, 100, 61)
 	wantBounds(t, next, 0, 61, 120, 10)
+}
+
+func TestScrollingDoesNotRewrapText(t *testing.T) {
+	u := fakeUi()
+	measure := u.Measure
+	wraps := 0
+	u.Measure = func(f gfx.Font, s string) *text.Run {
+		if strings.HasPrefix(s, "aaaa") {
+			wraps++
+		}
+		return measure(f, s)
+	}
+	sv := NewScrollView()
+	col := NewVStack()
+	col.Align = "stretch"
+	col.Anchors = &Anchors{Left: f32p(0), Right: f32p(0), Top: f32p(0)}
+	sv.Add(col)
+	for range 20 {
+		row := NewHStack()
+		body := NewVStack()
+		body.StackSize = StackSize{Kind: "fill", Weight: 1}
+		body.Add(wrapFixtureLabel())
+		row.Add(body)
+		col.Add(row)
+	}
+	layout(u, sv, 100, 200)
+	wraps = 0
+	sv.ScrollBy(40)
+	layoutSubtree(sv)
+	if wraps != 0 {
+		t.Fatalf("scroll step measured label text %d times; want 0", wraps)
+	}
 }
 
 func TestStickBottomFollowsGrowingContent(t *testing.T) {
@@ -434,6 +467,28 @@ func TestGeometricAnimationFadesStructuralInsertsOnly(t *testing.T) {
 	}
 	if fr := inserted.Base().fadeR; fr != 0 {
 		t.Fatalf("fade never completed: fadeR = %g", fr)
+	}
+}
+
+func TestInsertedSubtreeFadesOnceAtItsRoot(t *testing.T) {
+	u := fakeUi()
+	root := NewPanel()
+	layout(u, root, 200, 100)
+	u.animWalk(root, 0.016)
+
+	row := NewPanel()
+	label := NewLabel("hi", gfx.NewFont(13, gfx.FontOpts{}), nil)
+	row.Add(label)
+	root.Add(row)
+	layout(u, root, 200, 100)
+	u.structural = true
+	u.animWalk(root, 0.016)
+	u.structural = false
+	if fr := row.Base().fadeR; fr <= 0 {
+		t.Fatalf("inserted row fadeR = %g; want fading", fr)
+	}
+	if fr := label.Base().fadeR; fr != 0 {
+		t.Fatalf("label inside the inserted row fadeR = %g; want 0", fr)
 	}
 }
 
