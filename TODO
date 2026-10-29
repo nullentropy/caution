@@ -16,15 +16,6 @@ protocol and platform
   height, so fill-derived sizes are wrong server-side. report the space the
   tree lays out in, and re-report when a later menu op adds or removes the
   bar.
-- video node. trivial in the browser (hidden video element into
-  texImage2D), but a codec dependency natively. options: browser-only and
-  accept the split, take the ffmpeg dependency and keep parity, or stay
-  out and let apps hand frames in as images. decide when an app needs it.
-- color emoji. needs a COLR paint-graph interpreter over go-text's exposed
-  paint data (the color face is 4.8MB vs 1.9MB monochrome). wait for
-  demand.
-- binary wire framing (msgpack or flatbuffers). if ever JSON measurably
-  hurts.
 
 auth
 
@@ -68,11 +59,3 @@ before it opens.
   and gating the host page means owning "/", which ServeClient registers
   along with /app.js and /term.wasm, so it needs splitting up before an
   app can put its own check in front.
-
-shipping
-
-- codesigning and notarization for distributing .apps beyond the local
-  machine.
-- wayland desktop pass on real hardware. checklist in linux/README.md
-  first item is the missing xdg_toplevel app_id (needs GLFW 3.4's
-  GLFW_WAYLAND_APP_ID).
