@@ -152,8 +152,9 @@ func Dialog(title string) *Node {
 }
 
 // HSplit / VSplit are two-pane resizable splits (nest them for more panes).
-// The first two children are the panes. The divider drags client-side and
-// commits `split-resize` on release.
+// the first two children are the panes. a lone child fills the split with no
+// divider until a second one is added. the divider drags client-side and commits
+// `split-resize` on release.
 func HSplit() *Node { return newNode(wire.Split).set("axis", "h") }
 func VSplit() *Node { return newNode(wire.Split).set("axis", "v") }
 
@@ -486,8 +487,13 @@ func (n *Node) CardSize(w, h float64) *Node {
 	return n.set("cardWidth", w).set("cardHeight", h)
 }
 
-// SplitPos sets the first pane's size in px (clamped by SplitMin at layout).
+// SplitPos sets the first pane's size in px, or the second's with
+// SplitPinEnd (clamped by SplitMin at layout)
 func (n *Node) SplitPos(px float64) *Node { return n.set("pos", px) }
+
+// SplitPinEnd makes SplitPos and OnSplitResize measure the second pane, so
+// it keeps its size as the split resizes
+func (n *Node) SplitPinEnd() *Node { return n.set("pinEnd", true) }
 
 // SplitMin sets the minimum size of each pane.
 func (n *Node) SplitMin(first, second float64) *Node {

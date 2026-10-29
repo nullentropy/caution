@@ -247,6 +247,43 @@ func TestStickBottomFollowsGrowingContent(t *testing.T) {
 	}
 }
 
+func TestSplitWithOneChildFillsWithoutDivider(t *testing.T) {
+	u := fakeUi()
+	sp := NewSplitView()
+	a := NewPanel()
+	sp.Add(a)
+	layout(u, sp, 600, 400)
+	wantBounds(t, a, 0, 0, 600, 400)
+	if hit := sp.HitTest(300, 10); hit == sp {
+		t.Fatal("a one-pane split hit-tests a divider")
+	}
+}
+
+func TestPinEndKeepsSecondPaneSize(t *testing.T) {
+	u := fakeUi()
+	sp := NewSplitView()
+	sp.PinEnd, sp.Pos, sp.MinA, sp.MinB = true, 200, 100, 100
+	a, b := NewPanel(), NewPanel()
+	sp.Add(a)
+	sp.Add(b)
+	layout(u, sp, 600, 400)
+	wantBounds(t, a, 0, 0, 600-splitDivider-200, 400)
+	wantBounds(t, b, 600-200, 0, 200, 400)
+	layout(u, sp, 900, 400)
+	wantBounds(t, b, 900-200, 0, 200, 400)
+
+	// A drag moves the divider, and Pos follows the second pane.
+	layout(u, sp, 600, 400)
+	sp.OnPointerDown(394+3, 10, 0)
+	sp.OnPointerDrag(294+3, 10)
+	sp.OnPointerUp(294+3, 10)
+	layout(u, sp, 600, 400)
+	wantBounds(t, b, 300, 0, 300, 400)
+	if sp.Pos != 300 {
+		t.Fatalf("Pos after drag = %g, want the second pane's 300", sp.Pos)
+	}
+}
+
 func TestTabTrapsInsideTopmostDialog(t *testing.T) {
 	u := fakeUi()
 	root := NewPanel()

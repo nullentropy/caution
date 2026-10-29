@@ -682,6 +682,9 @@ func (ns *NodeStore) Apply(w ui.Widget, id int, p props) {
 				t.Pos = f
 			}
 		}
+		if v, ok := p["pinEnd"]; ok {
+			t.PinEnd, _ = boolean(v)
+		}
 		if v, ok := p["minA"]; ok {
 			t.MinA = 80
 			if f, ok := num(v); ok {

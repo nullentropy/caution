@@ -9,17 +9,21 @@ const (
 )
 
 // SplitView is a two-pane split with a draggable divider (nest for more
-// panes). Dragging is client-local; the final position commits upstream as
-// `split-resize` on release. Pos is the first pane's main-axis size in px,
-// clamped by MinA/MinB every layout, so window resizes keep both panes sane.
+// panes). Dragging is client-local and the final position commits upstream as
+// `split-resize` on release. Pos is the first pane's main-axis size in px, or
+// the second's when PinEnd is set, clamped by MinA/MinB every layout, so
+// window resizes keep both panes sane and change the unpinned pane. With one
+// child, that child fills the split and there is no divider.
 type SplitView struct {
 	Core
 	Axis     string // "h" | "v"
 	Pos      float32
+	PinEnd   bool
 	MinA     float32
 	MinB     float32
 	OnResize func(pos float32)
 
+	first        float32 // the first pane's laid-out size
 	hoverDivider bool
 	grab         *float32
 }
@@ -32,35 +36,56 @@ func NewSplitView() *SplitView {
 
 func (s *SplitView) Interactive() bool { return true } // only the divider hits (see HitTest)
 
+func (s *SplitView) mainSize() float32 {
+	if s.Axis == "v" {
+		return s.Bounds.H
+	}
+	return s.Bounds.W
+}
+
+// setFirst sizes the first pane, within MinA/MinB, and keeps Pos in step.
+func (s *SplitView) setFirst(a float32) {
+	main := s.mainSize()
+	s.first = min(max(a, s.MinA), max(s.MinA, main-splitDivider-s.MinB))
+	s.Pos = s.first
+	if s.PinEnd {
+		s.Pos = main - splitDivider - s.first
+	}
+}
+
+func (s *SplitView) split() bool { return len(s.Kids) > 1 }
+
 func (s *SplitView) LayoutChildren() {
 	s.adopt()
 	b := s.Bounds
-	main := b.W
-	if s.Axis == "v" {
-		main = b.H
+	if !s.split() {
+		if len(s.Kids) == 1 {
+			s.Kids[0].Base().Bounds = b
+			layoutSubtree(s.Kids[0])
+		}
+		return
 	}
-	maxPos := max(s.MinA, main-splitDivider-s.MinB)
-	s.Pos = min(max(s.Pos, s.MinA), maxPos)
+	if s.PinEnd {
+		s.setFirst(s.mainSize() - splitDivider - s.Pos)
+	} else {
+		s.setFirst(s.Pos)
+	}
 
-	if len(s.Kids) > 0 {
-		first := s.Kids[0]
-		if s.Axis == "h" {
-			first.Base().Bounds = gfx.R(b.X, b.Y, s.Pos, b.H)
-		} else {
-			first.Base().Bounds = gfx.R(b.X, b.Y, b.W, s.Pos)
-		}
-		layoutSubtree(first)
+	first := s.Kids[0]
+	if s.Axis == "h" {
+		first.Base().Bounds = gfx.R(b.X, b.Y, s.first, b.H)
+	} else {
+		first.Base().Bounds = gfx.R(b.X, b.Y, b.W, s.first)
 	}
-	if len(s.Kids) > 1 {
-		second := s.Kids[1]
-		start := s.Pos + splitDivider
-		if s.Axis == "h" {
-			second.Base().Bounds = gfx.R(b.X+start, b.Y, max(0, b.W-start), b.H)
-		} else {
-			second.Base().Bounds = gfx.R(b.X, b.Y+start, b.W, max(0, b.H-start))
-		}
-		layoutSubtree(second)
+	layoutSubtree(first)
+	second := s.Kids[1]
+	start := s.first + splitDivider
+	if s.Axis == "h" {
+		second.Base().Bounds = gfx.R(b.X+start, b.Y, max(0, b.W-start), b.H)
+	} else {
+		second.Base().Bounds = gfx.R(b.X, b.Y+start, b.W, max(0, b.H-start))
 	}
+	layoutSubtree(second)
 	for _, extra := range s.Kids[min(2, len(s.Kids)):] {
 		extra.Base().Bounds = gfx.Rect{}
 	}
@@ -69,19 +94,19 @@ func (s *SplitView) LayoutChildren() {
 func (s *SplitView) dividerRect() gfx.Rect {
 	b := s.Bounds
 	if s.Axis == "h" {
-		return gfx.R(b.X+s.Pos-splitSlop, b.Y, splitDivider+splitSlop*2, b.H)
+		return gfx.R(b.X+s.first-splitSlop, b.Y, splitDivider+splitSlop*2, b.H)
 	}
-	return gfx.R(b.X, b.Y+s.Pos-splitSlop, b.W, splitDivider+splitSlop*2)
+	return gfx.R(b.X, b.Y+s.first-splitSlop, b.W, splitDivider+splitSlop*2)
 }
 
 func (s *SplitView) PaintOverlay(dl *gfx.DisplayList) {
 	// The divider is invisible at rest - it reveals itself on hover (with the
 	// resize cursor) and stays visible while dragging.
-	if !s.hoverDivider && s.grab == nil {
+	if !s.split() || !s.hoverDivider && s.grab == nil {
 		return
 	}
 	b := s.Bounds
-	c := s.Pos + splitDivider/2
+	c := s.first + splitDivider/2
 	var line gfx.Rect
 	if s.Axis == "h" {
 		line = gfx.R(b.X+c-1.5, b.Y, 3, b.H)
@@ -95,7 +120,7 @@ func (s *SplitView) HitTest(x, y float32) Widget {
 	if !Contains(s.Bounds, x, y) {
 		return nil
 	}
-	if Contains(s.dividerRect(), x, y) {
+	if s.split() && Contains(s.dividerRect(), x, y) {
 		return s // divider beats pane edges
 	}
 	for i := len(s.Kids) - 1; i >= 0; i-- {
@@ -118,7 +143,7 @@ func (s *SplitView) OnPointerDown(x, y float32, _ int) {
 	if s.Axis == "v" {
 		v = y
 	}
-	grab := v - s.Pos
+	grab := v - s.first
 	s.grab = &grab
 	s.Invalidate()
 }
@@ -131,7 +156,7 @@ func (s *SplitView) OnPointerDrag(x, y float32) {
 	if s.Axis == "v" {
 		v = y
 	}
-	s.Pos = v - *s.grab // clamped in layout
+	s.setFirst(v - *s.grab)
 	s.Invalidate()
 }
 
