@@ -24,6 +24,7 @@ import (
 	"golang.org/x/image/font/gofont/goitalic"
 	"golang.org/x/image/font/gofont/gomedium"
 	"golang.org/x/image/font/gofont/gomono"
+	"golang.org/x/image/font/gofont/gomonobold"
 	"golang.org/x/image/font/gofont/goregular"
 	"golang.org/x/image/math/fixed"
 )
@@ -31,7 +32,7 @@ import (
 var (
 	facesOnce sync.Once
 	faces     struct {
-		regular, medium, bold, italic, mono *font.Face
+		regular, medium, bold, italic, mono, monoBold *font.Face
 	}
 )
 
@@ -49,6 +50,7 @@ func loadFaces() {
 	faces.bold = mustParse(gobold.TTF)
 	faces.italic = mustParse(goitalic.TTF)
 	faces.mono = mustParse(gomono.TTF)
+	faces.monoBold = mustParse(gomonobold.TTF)
 }
 
 // FaceFor maps a font spec onto an embedded face. Weights snap to the nearest
@@ -56,6 +58,8 @@ func loadFaces() {
 func FaceFor(f gfx.Font) *font.Face {
 	facesOnce.Do(loadFaces)
 	switch {
+	case f.Mono && f.Weight >= 650:
+		return faces.monoBold
 	case f.Mono:
 		return faces.mono
 	case f.Italic:

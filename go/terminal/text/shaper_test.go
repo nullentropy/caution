@@ -143,3 +143,11 @@ func TestVisualOrderTwoLevel(t *testing.T) {
 		t.Fatalf("rtl base: order = %v, want [3 1 2 0]", got)
 	}
 }
+
+func TestBoldMonoHasItsOwnFace(t *testing.T) {
+	regular := FaceFor(gfx.NewFont(13, gfx.FontOpts{Mono: true}))
+	bold := FaceFor(gfx.NewFont(13, gfx.FontOpts{Mono: true, Weight: 700}))
+	if bold == regular {
+		t.Fatal("bold mono text renders with the regular mono face")
+	}
+}
