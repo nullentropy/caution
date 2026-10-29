@@ -89,3 +89,29 @@ func TestRemoveDropsTheSubtreeAndKeepsTheRest(t *testing.T) {
 		t.Fatalf("IdOf(node 4) = %d", id)
 	}
 }
+
+// a set op names only what changed: a missing prop keeps its value, a sent
+// one replaces it, and null resets it to the prop's default
+func TestSetOpPropsKeepReplaceOrReset(t *testing.T) {
+	ns := NewNodeStore(nullSink{})
+	w := ns.Build(nodeJSON{ID: 1, Type: wire.Split, P: props{"pos": 120.0, "pinEnd": true}})
+	sv := w.(*ui.SplitView)
+
+	ns.Apply(sv, 1, props{"minA": 40.0})
+	if sv.Pos != 120 || !sv.PinEnd || sv.MinA != 40 {
+		t.Fatalf("after a minA set: pos=%v pinEnd=%v minA=%v", sv.Pos, sv.PinEnd, sv.MinA)
+	}
+	ns.Apply(sv, 1, props{"pos": nil, "pinEnd": nil})
+	if sv.Pos != 300 || sv.PinEnd {
+		t.Fatalf("null should reset to defaults: pos=%v pinEnd=%v", sv.Pos, sv.PinEnd)
+	}
+
+	ns.Apply(sv, 1, props{"width": 200.0})
+	if sv.Width == nil || *sv.Width != 200 {
+		t.Fatalf("width = %v", sv.Width)
+	}
+	ns.Apply(sv, 1, props{"width": nil})
+	if sv.Width != nil {
+		t.Fatalf("null width should clear the override, got %v", *sv.Width)
+	}
+}

@@ -45,6 +45,63 @@ func boolean(v any) (bool, bool) {
 	return b, ok
 }
 
+// a set op carries only the props that changed, so a missing key leaves the
+// field alone. a present key of the wrong type, null included, resets it to
+// the zero value
+func set[T propType](p props, key string, dst *T) {
+	var zero T
+	setOr(p, key, dst, zero)
+}
+
+// set with def in place of the zero value
+func setOr[T propType](p props, key string, dst *T, def T) {
+	v, ok := p[key]
+	if !ok {
+		return
+	}
+	*dst = def
+	f, isNum := v.(float64) // encoding/json numbers
+	switch d := any(dst).(type) {
+	case *string:
+		if s, ok := v.(string); ok {
+			*d = s
+		}
+	case *bool:
+		if b, ok := v.(bool); ok {
+			*d = b
+		}
+	case *float32:
+		if isNum {
+			*d = float32(f)
+		}
+	case **float32:
+		if isNum {
+			*d = new(float32(f))
+		}
+	case *int:
+		if isNum {
+			*d = int(f)
+		}
+	}
+}
+
+type propType interface {
+	string | bool | float32 | *float32 | int
+}
+
+// choice props (radio, tabs, select) replace the whole list
+func setOptions(p props, dst *[]string) {
+	v, ok := p["options"].([]any)
+	if !ok {
+		return
+	}
+	*dst = (*dst)[:0]
+	for _, o := range v {
+		s, _ := str(o)
+		*dst = append(*dst, s)
+	}
+}
+
 func color(v any) *gfx.Color {
 	s, ok := str(v)
 	if !ok || s == "" {
@@ -160,9 +217,6 @@ func applyCommon(w ui.Widget, p props) {
 		s, _ := str(v)
 		b.Dock = s
 	}
-	if v, ok := p["windowDrag"]; ok {
-		b.WindowDrag, _ = boolean(v)
-	}
 	if v, ok := p["stack"]; ok {
 		ss, valid := stackSize(v)
 		if !valid {
@@ -170,34 +224,17 @@ func applyCommon(w ui.Widget, p props) {
 		}
 		b.StackSize = ss
 	}
-	if v, ok := p["span"]; ok {
-		if f, ok := num(v); ok {
-			b.GridSpan = int(f)
-		} else {
-			b.GridSpan = 1
-		}
-	}
-	if v, ok := p["width"]; ok {
-		b.Width = numP(v)
-	}
-	if v, ok := p["height"]; ok {
-		b.Height = numP(v)
-	}
-	if v, ok := p["clips"]; ok {
-		b.Clips, _ = boolean(v)
-	}
-	if v, ok := p["noFade"]; ok {
-		b.NoFade, _ = boolean(v)
-	}
 	if v, ok := p["effect"]; ok {
 		b.Effect = effectSpec(v)
 	}
-	if v, ok := p["tip"]; ok {
-		b.Tip, _ = str(v)
-	}
-	if v, ok := p["sound"]; ok {
-		b.SoundToken, _ = str(v)
-	}
+	set(p, "windowDrag", &b.WindowDrag)
+	setOr(p, "span", &b.GridSpan, 1)
+	set(p, "width", &b.Width)
+	set(p, "height", &b.Height)
+	set(p, "clips", &b.Clips)
+	set(p, "noFade", &b.NoFade)
+	set(p, "tip", &b.Tip)
+	set(p, "sound", &b.SoundToken)
 }
 
 func contextItems(v any) []ui.ContextItem {
@@ -305,12 +342,7 @@ func (ns *NodeStore) Apply(w ui.Widget, id int, p props) {
 		if v, ok := p["borderColor"]; ok {
 			t.BorderColor = color(v)
 		}
-		if v, ok := p["borderWidth"]; ok {
-			t.BorderWidth = 1
-			if f, ok := num(v); ok {
-				t.BorderWidth = f
-			}
-		}
+		setOr(p, "borderWidth", &t.BorderWidth, 1)
 		if v, ok := p["radius"]; ok {
 			t.Radius, _ = radius(v)
 		}
@@ -318,9 +350,7 @@ func (ns *NodeStore) Apply(w ui.Widget, id int, p props) {
 			t.DropShadow = nil
 			if o, ok := v.(props); ok {
 				blur := float32(10)
-				if f, ok := num(o["blur"]); ok {
-					blur = f
-				}
+				setOr(o, "blur", &blur, 10)
 				col := gfx.Hex("#00000080")
 				if c := color(o["color"]); c != nil {
 					col = *c
@@ -331,9 +361,7 @@ func (ns *NodeStore) Apply(w ui.Widget, id int, p props) {
 			}
 		}
 	case *ui.Label:
-		if v, ok := p["text"]; ok {
-			t.Text, _ = str(v)
-		}
+		set(p, "text", &t.Text)
 		applyLabelFont(t, p)
 		if v, ok := p["color"]; ok {
 			if c := color(v); c != nil {
@@ -342,128 +370,36 @@ func (ns *NodeStore) Apply(w ui.Widget, id int, p props) {
 				t.Color = ui.Tok("ink")
 			}
 		}
-		if v, ok := p["selectable"]; ok {
-			t.Selectable, _ = boolean(v)
-		}
-		if v, ok := p["wrap"]; ok {
-			t.Wrap, _ = boolean(v)
-		}
+		set(p, "selectable", &t.Selectable)
+		set(p, "wrap", &t.Wrap)
 	case *ui.Button:
-		if v, ok := p["label"]; ok {
-			t.Label, _ = str(v)
-		}
-		if v, ok := p["primary"]; ok {
-			t.Primary, _ = boolean(v)
-		}
-		if v, ok := p["radius"]; ok {
-			t.Radius = numP(v)
-		}
+		set(p, "label", &t.Label)
+		set(p, "primary", &t.Primary)
+		set(p, "radius", &t.Radius)
 		if subscribed(p, wire.EvClick) {
 			t.OnClick = func() { ns.sink.Event(id, wire.EvClick, nil) }
 		}
 	case *ui.Checkbox:
-		if v, ok := p["label"]; ok {
-			t.Label, _ = str(v)
-		}
-		if v, ok := p["checked"]; ok {
-			t.Checked, _ = boolean(v)
-		}
+		set(p, "label", &t.Label)
+		set(p, "checked", &t.Checked)
 		if subscribed(p, wire.EvToggle) {
 			t.OnToggle = func(checked bool) { ns.sink.Event(id, wire.EvToggle, checked) }
 		}
 	case *ui.TextField:
-		if v, ok := p["radius"]; ok {
-			t.Radius = numP(v)
-		}
-		// local echo, while the user types a focused field ignores server sets
-		if v, ok := p["value"]; ok {
-			if s, _ := str(v); !t.Focused {
-				t.Value = s
-			}
-		}
-		if v, ok := p["placeholder"]; ok {
-			t.Placeholder, _ = str(v)
-		}
-		if v, ok := p["size"]; ok {
-			t.FontSize = 14
-			if f, ok := num(v); ok {
-				t.FontSize = f
-			}
-		}
-		if v, ok := p["mono"]; ok {
-			t.Mono, _ = boolean(v)
-		}
-		if v, ok := p["sensitive"]; ok {
-			t.Sensitive, _ = boolean(v)
-		}
-		if subscribed(p, wire.EvInput) {
-			t.OnInput = debounce(150*time.Millisecond, func(v string) {
-				ns.sink.Event(id, wire.EvInput, v)
-			})
-		}
-		if subscribed(p, wire.EvCommit) {
-			t.OnCommit = func(v string) { ns.sink.Event(id, wire.EvCommit, v) }
-		}
+		ns.applyText(t, id, p)
 	case *ui.TextArea:
-		// same contract as TextField (it embeds the editing core), plus rows
-		if v, ok := p["value"]; ok {
-			if s, _ := str(v); !t.Focused {
-				t.Value = s
-			}
-		}
-		if v, ok := p["placeholder"]; ok {
-			t.Placeholder, _ = str(v)
-		}
-		if v, ok := p["size"]; ok {
-			t.FontSize = 14
-			if f, ok := num(v); ok {
-				t.FontSize = f
-			}
-		}
-		if v, ok := p["mono"]; ok {
-			t.Mono, _ = boolean(v)
-		}
-		if v, ok := p["rows"]; ok {
-			t.Rows = 4
-			if f, ok := num(v); ok {
-				t.Rows = int(f)
-			}
-		}
-		if subscribed(p, wire.EvInput) {
-			t.OnInput = debounce(150*time.Millisecond, func(v string) {
-				ns.sink.Event(id, wire.EvInput, v)
-			})
-		}
-		if subscribed(p, wire.EvCommit) {
-			t.OnCommit = func(v string) { ns.sink.Event(id, wire.EvCommit, v) }
-		}
+		ns.applyText(&t.TextField, id, p)
+		setOr(p, "rows", &t.Rows, 4)
 	case *ui.Stack:
-		if v, ok := p["padding"]; ok {
-			t.Padding, _ = num(v)
-		}
-		if v, ok := p["spacing"]; ok {
-			t.Spacing = 8
-			if f, ok := num(v); ok {
-				t.Spacing = f
-			}
-		}
-		if v, ok := p["align"]; ok {
-			t.Align, _ = str(v)
-		}
+		set(p, "padding", &t.Padding)
+		setOr(p, "spacing", &t.Spacing, 8)
+		set(p, "align", &t.Align)
 	case *ui.Dock:
-		if v, ok := p["padding"]; ok {
-			t.Padding, _ = num(v)
-		}
-		if v, ok := p["gap"]; ok {
-			t.Gap, _ = num(v)
-		}
+		set(p, "padding", &t.Padding)
+		set(p, "gap", &t.Gap)
 	case *ui.ScrollView:
-		if v, ok := p["insetBottom"]; ok {
-			t.ContentInsetBottom, _ = num(v)
-		}
-		if v, ok := p["stickBottom"]; ok {
-			t.StickBottom, _ = boolean(v)
-		}
+		set(p, "insetBottom", &t.ContentInsetBottom)
+		set(p, "stickBottom", &t.StickBottom)
 	case *ui.TableView:
 		if v, ok := p["columns"].([]any); ok {
 			t.Columns = t.Columns[:0]
@@ -478,19 +414,9 @@ func (ns *NodeStore) Apply(w ui.Widget, id int, p props) {
 				t.Columns = append(t.Columns, col)
 			}
 		}
-		if v, ok := p["rowCount"]; ok {
-			f, _ := num(v)
-			t.RowCount = int(f)
-		}
-		if v, ok := p["rowHeight"]; ok {
-			t.RowHeight = 0 // unparsable prop: defer to the row.height token
-			if f, ok := num(v); ok {
-				t.RowHeight = f
-			}
-		}
-		if v, ok := p["sortKey"]; ok {
-			t.SortKey, _ = str(v)
-		}
+		set(p, "rowCount", &t.RowCount)
+		set(p, "rowHeight", &t.RowHeight) // 0 defers to the row.height token
+		set(p, "sortKey", &t.SortKey)
 		if v, ok := p["sortDir"]; ok {
 			s, _ := str(v)
 			t.SortDir = "asc"
@@ -498,21 +424,9 @@ func (ns *NodeStore) Apply(w ui.Widget, id int, p props) {
 				t.SortDir = "desc"
 			}
 		}
-		if v, ok := p["selected"]; ok {
-			t.Selected = -1
-			if f, ok := num(v); ok {
-				t.Selected = int(f)
-			}
-		}
-		if v, ok := p["rowKey"]; ok {
-			t.KeyCol = -1
-			if f, ok := num(v); ok {
-				t.KeyCol = int(f)
-			}
-		}
-		if v, ok := p["selectedKey"]; ok {
-			t.SelectedKey, _ = str(v)
-		}
+		setOr(p, "selected", &t.Selected, -1)
+		setOr(p, "rowKey", &t.KeyCol, -1)
+		set(p, "selectedKey", &t.SelectedKey)
 		if subscribed(p, wire.EvVisibleRange) {
 			t.OnVisibleRange = func(start, end int) {
 				ns.sink.Event(id, wire.EvVisibleRange, map[string]any{"start": start, "end": end})
@@ -558,25 +472,14 @@ func (ns *NodeStore) Apply(w ui.Widget, id int, p props) {
 			}
 		}
 	case *ui.Progress:
-		if v, ok := p["value"]; ok {
-			t.Value, _ = num(v)
-		}
+		set(p, "value", &t.Value)
 	case *ui.Slider:
-		if v, ok := p["min"]; ok {
-			t.Min, _ = num(v)
-		}
-		if v, ok := p["max"]; ok {
-			t.Max = 1
-			if f, ok := num(v); ok {
-				t.Max = f
-			}
-		}
-		if v, ok := p["step"]; ok {
-			t.Step, _ = num(v)
-		}
+		set(p, "min", &t.Min)
+		setOr(p, "max", &t.Max, 1)
+		set(p, "step", &t.Step)
 		// local echo, mid-drag the client's value wins
-		if v, ok := p["value"]; ok && !t.Dragging {
-			t.Value, _ = num(v)
+		if !t.Dragging {
+			set(p, "value", &t.Value)
 		}
 		if subscribed(p, wire.EvInput) {
 			t.OnInput = debounce(100*time.Millisecond, func(v float32) {
@@ -587,72 +490,27 @@ func (ns *NodeStore) Apply(w ui.Widget, id int, p props) {
 			t.OnCommit = func(v float32) { ns.sink.Event(id, wire.EvCommit, v) }
 		}
 	case *ui.RadioGroup:
-		if v, ok := p["options"].([]any); ok {
-			t.Options = t.Options[:0]
-			for _, o := range v {
-				s, _ := str(o)
-				t.Options = append(t.Options, s)
-			}
-		}
-		if v, ok := p["selected"]; ok {
-			t.Selected = -1
-			if f, ok := num(v); ok {
-				t.Selected = int(f)
-			}
-		}
+		setOptions(p, &t.Options)
+		setOr(p, "selected", &t.Selected, -1)
 		if subscribed(p, wire.EvSelect) {
 			t.OnSelect = func(i int) { ns.sink.Event(id, wire.EvSelect, i) }
 		}
 	case *ui.Tabs:
-		if v, ok := p["options"].([]any); ok {
-			t.Options = t.Options[:0]
-			for _, o := range v {
-				s, _ := str(o)
-				t.Options = append(t.Options, s)
-			}
-		}
-		if v, ok := p["selected"]; ok {
-			t.Selected = 0
-			if f, ok := num(v); ok {
-				t.Selected = int(f)
-			}
-		}
+		setOptions(p, &t.Options)
+		set(p, "selected", &t.Selected)
 		if subscribed(p, wire.EvSelect) {
 			t.OnSelect = func(i int) { ns.sink.Event(id, wire.EvSelect, i) }
 		}
 	case *ui.Select:
-		if v, ok := p["options"].([]any); ok {
-			t.Options = t.Options[:0]
-			for _, o := range v {
-				s, _ := str(o)
-				t.Options = append(t.Options, s)
-			}
-		}
-		if v, ok := p["selected"]; ok {
-			t.Selected = -1
-			if f, ok := num(v); ok {
-				t.Selected = int(f)
-			}
-		}
+		setOptions(p, &t.Options)
+		setOr(p, "selected", &t.Selected, -1)
 		if subscribed(p, wire.EvSelect) {
 			t.OnSelect = func(i int) { ns.sink.Event(id, wire.EvSelect, i) }
 		}
 	case *ui.Dialog:
-		if v, ok := p["title"]; ok {
-			t.Title, _ = str(v)
-		}
-		if v, ok := p["cardWidth"]; ok {
-			t.CardW = 420
-			if f, ok := num(v); ok {
-				t.CardW = f
-			}
-		}
-		if v, ok := p["cardHeight"]; ok {
-			t.CardH = 200
-			if f, ok := num(v); ok {
-				t.CardH = f
-			}
-		}
+		set(p, "title", &t.Title)
+		setOr(p, "cardWidth", &t.CardW, 420)
+		setOr(p, "cardHeight", &t.CardH, 200)
 		if subscribed(p, wire.EvDismiss) {
 			t.OnDismiss = func() { ns.sink.Event(id, wire.EvDismiss, nil) }
 		}
@@ -664,34 +522,15 @@ func (ns *NodeStore) Apply(w ui.Widget, id int, p props) {
 				t.Axis = "v"
 			}
 		}
-		if v, ok := p["pos"]; ok {
-			t.Pos = 300
-			if f, ok := num(v); ok {
-				t.Pos = f
-			}
-		}
-		if v, ok := p["pinEnd"]; ok {
-			t.PinEnd, _ = boolean(v)
-		}
-		if v, ok := p["minA"]; ok {
-			t.MinA = 80
-			if f, ok := num(v); ok {
-				t.MinA = f
-			}
-		}
-		if v, ok := p["minB"]; ok {
-			t.MinB = 80
-			if f, ok := num(v); ok {
-				t.MinB = f
-			}
-		}
+		setOr(p, "pos", &t.Pos, 300)
+		set(p, "pinEnd", &t.PinEnd)
+		setOr(p, "minA", &t.MinA, 80)
+		setOr(p, "minB", &t.MinB, 80)
 		if subscribed(p, wire.EvSplitResize) {
 			t.OnResize = func(pos float32) { ns.sink.Event(id, wire.EvSplitResize, pos) }
 		}
 	case *ui.ImageView:
-		if v, ok := p["src"]; ok {
-			t.Src, _ = str(v)
-		}
+		set(p, "src", &t.Src)
 		if v, ok := p["fit"]; ok {
 			s, _ := str(v)
 			t.Fit = "contain"
@@ -702,13 +541,9 @@ func (ns *NodeStore) Apply(w ui.Widget, id int, p props) {
 		if v, ok := p["radius"]; ok {
 			t.Radius, _ = radius(v)
 		}
-		if v, ok := p["alt"]; ok {
-			t.Alt, _ = str(v)
-		}
+		set(p, "alt", &t.Alt)
 	case *ui.ShaderPane:
-		if v, ok := p["frag"]; ok {
-			t.Frag, _ = str(v)
-		}
+		set(p, "frag", &t.Frag)
 		// merge only, a set op carries just the changed keys (SetUniform) so
 		// tweening one float never re-ships the whole uniform map
 		if v, ok := p["uniforms"]; ok {
@@ -719,9 +554,7 @@ func (ns *NodeStore) Apply(w ui.Widget, id int, p props) {
 				t.Uniforms[k] = f
 			}
 		}
-		if v, ok := p["animate"]; ok {
-			t.Animate, _ = boolean(v)
-		}
+		set(p, "animate", &t.Animate)
 	case *ui.Glass:
 		// the glass resolves pick targets through the store's id map
 		// (deepest widget -> nearest server-known ancestor)
@@ -776,18 +609,29 @@ func (ns *NodeStore) Apply(w ui.Widget, id int, p props) {
 				t.Columns = append(t.Columns, track)
 			}
 		}
-		if v, ok := p["colGap"]; ok {
-			t.ColGap = 12
-			if f, ok := num(v); ok {
-				t.ColGap = f
-			}
-		}
-		if v, ok := p["rowGap"]; ok {
-			t.RowGap = 10
-			if f, ok := num(v); ok {
-				t.RowGap = f
-			}
-		}
+		setOr(p, "colGap", &t.ColGap, 12)
+		setOr(p, "rowGap", &t.RowGap, 10)
+	}
+}
+
+// TextArea embeds TextField and shares its whole prop contract
+func (ns *NodeStore) applyText(t *ui.TextField, id int, p props) {
+	set(p, "radius", &t.Radius)
+	// local echo, while the user types a focused field ignores server sets
+	if !t.Focused {
+		set(p, "value", &t.Value)
+	}
+	set(p, "placeholder", &t.Placeholder)
+	setOr(p, "size", &t.FontSize, 14)
+	set(p, "mono", &t.Mono)
+	set(p, "sensitive", &t.Sensitive)
+	if subscribed(p, wire.EvInput) {
+		t.OnInput = debounce(150*time.Millisecond, func(v string) {
+			ns.sink.Event(id, wire.EvInput, v)
+		})
+	}
+	if subscribed(p, wire.EvCommit) {
+		t.OnCommit = func(v string) { ns.sink.Event(id, wire.EvCommit, v) }
 	}
 }
 
