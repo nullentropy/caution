@@ -92,6 +92,16 @@ const (
 	OpStop     Op = "stop"
 	OpSounds   Op = "sounds"
 	OpCmd      Op = "cmd"
+	OpMotion   Op = "motion"
+)
+
+// Session.SetMotion values, the mount's "motion" field and the motion op
+type Motion string
+
+const (
+	MotionSystem  Motion = "system"
+	MotionFull    Motion = "full"
+	MotionReduced Motion = "reduced"
 )
 
 type Cmd string

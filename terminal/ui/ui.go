@@ -82,6 +82,11 @@ type UI struct {
 	animating  bool
 	frameAt    time.Time
 	inNew      bool // animWalk is inside a subtree first seen this pass
+	inNoFade   bool // animWalk is inside a NoFade subtree
+
+	// see Motion. systemReduced is the OS preference, the shell reports it
+	motion        Motion
+	systemReduced bool
 
 	// multi-click detection, GLFW only reports individual presses
 	lastDown struct {
@@ -209,6 +214,12 @@ type themeTween struct {
 // (BuildFrame advances it, TickIn keeps the shell awake). a new theme
 // mid-tween restarts from the current colors
 func (u *UI) AnimateTheme(tokens map[string]string) {
+	if u.reducedMotion() {
+		u.tween = nil
+		ApplyTheme(tokens)
+		u.Invalidate()
+		return
+	}
 	tw := &themeTween{start: time.Now()}
 	for k, v := range tokens {
 		c := gfx.Hex(v)
@@ -243,6 +254,28 @@ const (
 	fadeDur  = 200 * time.Millisecond
 )
 
+// how much decorative motion plays: the insert fade, the reflow slide and the
+// theme crossfade. app-driven animation (shaders, effects) always runs
+type Motion uint8
+
+const (
+	MotionSystem  Motion = iota // full unless the OS asks for reduced motion
+	MotionFull                  // ignores the OS preference
+	MotionReduced               // no decorative motion
+)
+
+// the session's choice, see Motion. a change applies to motion that starts
+// after it, tweens mid-flight finish
+func (u *UI) SetMotion(m Motion) { u.motion = m }
+
+// the OS reduce-motion preference, the shell reports it at startup and
+// whenever it may have changed
+func (u *UI) SetSystemReducedMotion(on bool) { u.systemReduced = on }
+
+func (u *UI) reducedMotion() bool {
+	return u.motion == MotionReduced || u.motion == MotionSystem && u.systemReduced
+}
+
 func easeOut(t float32) float32 { return t * (2 - t) }
 
 // runs between layout and paint. on a structural frame it starts a decaying
@@ -259,6 +292,10 @@ func (u *UI) animGeometry(dl *gfx.DisplayList) {
 	}
 	u.frameAt = now
 	u.animating = false
+	// a structural frame under reduced motion snaps, prevX/prevY still track
+	if u.structural && u.reducedMotion() {
+		u.structural = false
+	}
 	u.animWalk(u.Root, dt)
 	u.structural = false
 	if u.animating {
@@ -309,7 +346,7 @@ func (u *UI) animWalk(w Widget, dt float32) {
 		b.hadFrame = true
 		// only the top of a newly inserted subtree fades, descendants ride along in
 		// that layer
-		if u.structural && !u.inNew {
+		if u.structural && !u.inNew && !u.inNoFade && !b.NoFade {
 			b.fadeR = 1
 		}
 	} else if u.structural && (bb.X != b.prevX || bb.Y != b.prevY) {
@@ -345,15 +382,16 @@ func (u *UI) animWalk(w Widget, dt float32) {
 	b.takeRequests()
 	need := b.selfNeedsPaint()
 	b.dirty = false
-	outer := u.inNew
+	outer, outerNoFade := u.inNew, u.inNoFade
 	u.inNew = outer || isNew
+	u.inNoFade = outerNoFade || b.NoFade
 	for _, c := range b.Kids {
 		u.animWalk(c, dt)
 		if c.Base().needsPaint {
 			need = true
 		}
 	}
-	u.inNew = outer
+	u.inNew, u.inNoFade = outer, outerNoFade
 	b.needsPaint = need
 }
 

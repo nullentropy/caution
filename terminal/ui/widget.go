@@ -85,6 +85,8 @@ type Core struct {
 	Height    *float32
 
 	Clips bool
+	// widgets inserted into this subtree appear without the insert fade
+	NoFade bool
 
 	// -- geometric animation (server-driven reflows only; see UI.animGeometry) --
 	// prevX/prevY are last frame's laid-out position. a structural frame

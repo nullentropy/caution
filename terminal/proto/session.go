@@ -30,6 +30,7 @@ type serverMsg struct {
 	Title     string             `json:"title"`
 	Keys      []keySpec          `json:"keys"`
 	Resources *resourceSpec      `json:"resources"`
+	Motion    wire.Motion        `json:"motion"`
 	Ops       []patchOp          `json:"ops"`
 }
 
@@ -83,6 +84,7 @@ type patchOp struct {
 	Meta    []metaSpec         `json:"meta"`
 	Cmd     wire.Cmd           `json:"cmd"`
 	Value   string             `json:"value"`
+	Motion  wire.Motion        `json:"motion"`
 }
 
 // one tree row's meta, parallel to its cells in a rows op
@@ -371,6 +373,7 @@ func (s *Session) handle(msg *serverMsg) {
 		if msg.Keys != nil {
 			s.applyKeys(msg.Keys)
 		}
+		s.ui.SetMotion(motion(msg.Motion)) // absent is system, replacing a resumed choice
 		if msg.Resources != nil {
 			s.applyResources(msg.Resources.Images, msg.Resources.Sounds)
 		}
@@ -467,6 +470,8 @@ func (s *Session) applyOp(op *patchOp) bool {
 		}
 	case wire.OpKeys:
 		s.applyKeys(op.Keys)
+	case wire.OpMotion:
+		s.ui.SetMotion(motion(op.Motion))
 	case wire.OpResource:
 		s.applyResources(op.Images, op.Sounds)
 	case wire.OpPlay:
@@ -710,3 +715,13 @@ func (s *Session) showStatus(text string) {
 }
 
 func f32p(v float32) *float32 { return &v }
+
+func motion(m wire.Motion) ui.Motion {
+	switch m {
+	case wire.MotionFull:
+		return ui.MotionFull
+	case wire.MotionReduced:
+		return ui.MotionReduced
+	}
+	return ui.MotionSystem
+}

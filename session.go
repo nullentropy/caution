@@ -46,6 +46,7 @@ type Session struct {
 	theme   map[string]string
 	metrics map[string]float64
 	title   string
+	motion  Motion
 
 	menu         []any
 	menuHandlers map[int]func()
@@ -309,6 +310,29 @@ func (s *Session) SetTitle(title string) {
 	s.title = title
 	if s.mounted {
 		s.ops = append(s.ops, map[string]any{"op": wire.OpTitle, "title": title})
+	}
+}
+
+// how much decorative motion the client plays: the fade a newly inserted
+// widget gets, the slide of widgets a reflow moved, the theme crossfade.
+// app shaders and effects always animate
+type Motion = wire.Motion
+
+const (
+	// full unless the OS asks for reduced motion (macOS Reduce motion, Windows
+	// "Show animations", GNOME and KDE animation settings, the browser's
+	// prefers-reduced-motion). the default
+	MotionSystem = wire.MotionSystem
+	// full regardless of the OS preference
+	MotionFull = wire.MotionFull
+	// none: inserts appear, reflows snap, themes switch at once
+	MotionReduced = wire.MotionReduced
+)
+
+func (s *Session) SetMotion(m Motion) {
+	s.motion = m
+	if s.mounted {
+		s.ops = append(s.ops, map[string]any{"op": wire.OpMotion, "motion": m})
 	}
 }
 
@@ -598,6 +622,9 @@ func (s *Session) sendMount() {
 	}
 	if s.title != "" {
 		msg["title"] = s.title
+	}
+	if s.motion != "" {
+		msg["motion"] = s.motion
 	}
 	if s.menu != nil {
 		msg["menu"] = s.menu

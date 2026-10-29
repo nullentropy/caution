@@ -172,6 +172,24 @@ and `MetricsComfortable` ship as plain maps to copy or tweak. Per-node props
 (an explicit `Radius`, a table's `RowHeight`) override tokens. Colors accept
 `#rrggbb[aa]` or token references (`"$accent"`).
 
+## Motion
+
+Server patches animate. A newly inserted widget fades in over 200ms, widgets
+the reflow moved slide to their new spot, and a theme patch crossfades. By
+default this follows the OS reduce-motion preference: macOS Reduce motion,
+Windows "Animation effects", GNOME and KDE animation settings, and the
+browser's `prefers-reduced-motion`. Under reduced motion inserts appear,
+reflows snap and themes switch at once. Shaders and effects are app animation
+and always run.
+
+```go
+s.SetMotion(caution.MotionReduced) // or MotionFull, or MotionSystem (default)
+messages := caution.Scroll().NoFade() // bulk inserts here appear at once
+```
+
+`NoFade` covers inserts anywhere in the node's subtree and leaves the reflow
+slide alone.
+
 ## Tables and trees
 
 The client keeps a sparse cache and asks for windows as the user scrolls.
@@ -385,8 +403,8 @@ Table rows travel as an op too:
  "rows": [["E00181", "Ada Lovelace", "ada@example.com", "Engineer"]]}
 ```
 
-Theme, metrics, menu, shortcut, and preload ops follow the same pattern and
-also ride the mount. Preloads name images and sounds separately, and a sound
+Theme, metrics, menu, shortcut, motion, and preload ops follow the same
+pattern and also ride the mount. Preloads name images and sounds separately, and a sound
 plays through its own op:
 
 ```jsonc

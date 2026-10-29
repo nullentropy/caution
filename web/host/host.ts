@@ -50,6 +50,9 @@ export class Host {
       afterInput: () => this.funnel.sync(),
     });
     document.addEventListener('fullscreenchange', () => term.fullscreen(document.fullscreenElement != null));
+    const motion = matchMedia('(prefers-reduced-motion: reduce)');
+    term.reduceMotion(motion.matches);
+    motion.addEventListener('change', (e) => term.reduceMotion(e.matches));
     new ResizeObserver(() => this.invalidate()).observe(canvas);
     // ResizeObserver misses pure-DPR changes (browser zoom, monitor move)
     window.addEventListener('resize', () => this.invalidate());

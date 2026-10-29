@@ -531,6 +531,11 @@ func (n *Node) Fixed(px float64) *Node {
 }
 func (n *Node) Clips() *Node { return n.set("clips", true) }
 
+// nodes inserted into this subtree appear without the insert fade, for bulk
+// loads like a history page or a channel switch. see Session.SetMotion for
+// turning motion off everywhere
+func (n *Node) NoFade() *Node { return n.set("noFade", true) }
+
 // -- container props ----------------------------------------------------------
 
 func (n *Node) Pad(p float64) *Node         { return n.set("padding", p) }

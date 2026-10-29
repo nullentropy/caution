@@ -104,6 +104,7 @@ func main() {
 		"semantics":    js.FuncOf(semantics),
 		"activate":     js.FuncOf(activate),
 		"fullscreen":   js.FuncOf(fullscreen),
+		"reduceMotion": js.FuncOf(reduceMotion),
 	})
 	select {}
 }
@@ -164,6 +165,11 @@ func paint(_ js.Value, a []js.Value) any {
 		on = 1
 	}
 	return []any{on, kind}
+}
+
+func reduceMotion(_ js.Value, a []js.Value) any {
+	u.SetSystemReducedMotion(a[0].Bool())
+	return nil
 }
 
 func tickIn(js.Value, []js.Value) any {

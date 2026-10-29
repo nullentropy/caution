@@ -379,6 +379,7 @@ func Run(o Options) error {
 	}
 
 	u := ui.New()
+	u.SetSystemReducedMotion(systemReducedMotion())
 	dirty := true
 	animating := false
 	u.OnInvalidate = func() {
@@ -667,6 +668,10 @@ func Run(o Options) error {
 	})
 	win.SetFocusCallback(func(_ *glfw.Window, focused bool) {
 		u.SetWindowActive(focused)
+		if focused {
+			// the user may have changed it in system settings while away
+			u.SetSystemReducedMotion(systemReducedMotion())
+		}
 	})
 	win.SetRefreshCallback(func(*glfw.Window) {
 		dirty = true

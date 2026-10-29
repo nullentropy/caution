@@ -637,3 +637,29 @@ func TestLoopsRideMountAndStopsClearThem(t *testing.T) {
 		t.Fatalf("op = %v; want a stop with no src", op)
 	}
 }
+
+func TestMotionRidesMountAndPatchesLive(t *testing.T) {
+	var sess *Session
+	tc := dialSession(t, func(s *Session) *Node {
+		sess = s
+		s.SetMotion(MotionReduced)
+		return Panel().Kids(VStack().NoFade())
+	})
+	m := tc.read()
+	if m["motion"] != "reduced" {
+		t.Fatalf("mount motion = %v; want reduced", m["motion"])
+	}
+	root, _ := m["root"].(map[string]any)
+	kids, _ := root["kids"].([]any)
+	k0, _ := kids[0].(map[string]any)
+	if p, _ := k0["p"].(map[string]any); p["noFade"] != true {
+		t.Fatalf("stack props = %v; want noFade", p)
+	}
+
+	sess.Update(func() { sess.SetMotion(MotionFull) })
+	ops, _ := tc.read()["ops"].([]any)
+	op, _ := ops[0].(map[string]any)
+	if len(ops) != 1 || op["op"] != "motion" || op["motion"] != "full" {
+		t.Fatalf("live motion op = %v", ops)
+	}
+}

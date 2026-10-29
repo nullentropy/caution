@@ -20,6 +20,8 @@ export interface WasmTerm {
   semantics(): string;
   activate(id: number, row: number): void;
   fullscreen(on: boolean): void;
+  // the OS reduce-motion preference, at startup and on every change
+  reduceMotion(on: boolean): void;
 }
 
 // frame kinds paint reports

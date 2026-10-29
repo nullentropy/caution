@@ -186,6 +186,9 @@ func applyCommon(w ui.Widget, p props) {
 	if v, ok := p["clips"]; ok {
 		b.Clips, _ = boolean(v)
 	}
+	if v, ok := p["noFade"]; ok {
+		b.NoFade, _ = boolean(v)
+	}
 	if v, ok := p["effect"]; ok {
 		b.Effect = effectSpec(v)
 	}
