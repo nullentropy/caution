@@ -105,18 +105,37 @@ func (s *Stack) IntrinsicSize() Size {
 	return Size{cross + pad, main + pad}
 }
 
-func (s *Stack) LayoutChildren() {
+func (s *Stack) HeightForWidth(w float32) (float32, bool) {
 	s.adopt()
-	if len(s.Kids) == 0 {
-		return
-	}
-	r := gfx.Inset(s.Bounds, s.Padding)
-	mainAvail, crossAvail := r.W, r.H
+	inner := max(0, w-s.Padding*2)
+	var h float32
 	if s.Axis == "v" {
-		mainAvail, crossAvail = r.H, r.W
+		h = s.Spacing * float32(max(0, len(s.Kids)-1))
+		for _, c := range s.Kids {
+			if ss := c.Base().StackSize; ss.Kind == "fixed" {
+				h += ss.Px
+				continue
+			}
+			h += heightAt(c, s.childWidth(c, inner), sizeOf(c).H)
+		}
+	} else {
+		mains := s.mainSizes(inner, 0)
+		for i, c := range s.Kids {
+			h = max(h, heightAt(c, mains[i], sizeOf(c).H))
+		}
 	}
+	return h + s.Padding*2, true
+}
 
-	used := s.Spacing * float32(len(s.Kids)-1)
+func (s *Stack) childWidth(c Widget, crossAvail float32) float32 {
+	if s.Align == "stretch" {
+		return crossAvail
+	}
+	return min(sizeOf(c).W, crossAvail)
+}
+
+func (s *Stack) mainSizes(mainAvail, crossAvail float32) []float32 {
+	used := s.Spacing * float32(max(0, len(s.Kids)-1))
 	var weightSum float32
 	mains := make([]float32, len(s.Kids))
 	for i, c := range s.Kids {
@@ -130,11 +149,7 @@ func (s *Stack) LayoutChildren() {
 		if s.Axis == "v" {
 			// A v-stack knows each child's eventual width, so wrapped labels
 			// can restate their height before the main-axis pass.
-			cw := min(sz.W, crossAvail)
-			if s.Align == "stretch" {
-				cw = crossAvail
-			}
-			m = heightAt(c, cw, sz.H)
+			m = heightAt(c, s.childWidth(c, crossAvail), sz.H)
 		}
 		if ss.Kind == "fixed" {
 			m = ss.Px
@@ -143,21 +158,36 @@ func (s *Stack) LayoutChildren() {
 		used += m
 	}
 	leftover := max(0, mainAvail-used)
+	for i, c := range s.Kids {
+		if ss := c.Base().StackSize; ss.Kind == "fill" && weightSum > 0 {
+			mains[i] = leftover * ss.Weight / weightSum
+		}
+	}
+	return mains
+}
+
+func (s *Stack) LayoutChildren() {
+	s.adopt()
+	if len(s.Kids) == 0 {
+		return
+	}
+	r := gfx.Inset(s.Bounds, s.Padding)
+	mainAvail, crossAvail := r.W, r.H
+	if s.Axis == "v" {
+		mainAvail, crossAvail = r.H, r.W
+	}
+	mains := s.mainSizes(mainAvail, crossAvail)
 
 	pos := r.X
 	if s.Axis == "v" {
 		pos = r.Y
 	}
 	for i, c := range s.Kids {
-		ss := c.Base().StackSize
 		main := mains[i]
-		if ss.Kind == "fill" && weightSum > 0 {
-			main = leftover * ss.Weight / weightSum
-		}
 		sz := sizeOf(c)
 		// Cross-axis children never exceed the stack's extent (labels
 		// truncate at the boundary instead of overflowing).
-		crossNat := sz.H
+		crossNat := heightAt(c, main, sz.H)
 		if s.Axis == "v" {
 			crossNat = sz.W
 		}
@@ -357,6 +387,8 @@ type ScrollView struct {
 	Scroller
 	// ContentInsetBottom is extra space below the last child.
 	ContentInsetBottom float32
+	StickBottom        bool
+	lastMax            float32
 }
 
 func NewScrollView() *ScrollView {
@@ -406,9 +438,15 @@ func (sv *ScrollView) LayoutChildren() {
 		}
 		extentW = max(extentW, left+w)
 	}
+	// against the previous layout's max, so a resize doesn't unpin
+	pinned := sv.StickBottom && (sv.ContentH == 0 || sv.ScrollY >= sv.lastMax-1)
 	sv.ContentH = extent + sv.ContentInsetBottom
 	sv.ContentW = extentW
+	if pinned {
+		sv.ScrollY = sv.maxScroll()
+	}
 	sv.clampScroll()
+	sv.lastMax = sv.maxScroll()
 	sv.LayoutInto(gfx.R(sv.Bounds.X-sv.ScrollX, sv.Bounds.Y-sv.ScrollY,
 		max(sv.ContentW, sv.Bounds.W), max(sv.ContentH, sv.Bounds.H)))
 }

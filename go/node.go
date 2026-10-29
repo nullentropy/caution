@@ -566,6 +566,9 @@ func (n *Node) InsetBottom(v float64) *Node { return n.set("insetBottom", v) }
 func (n *Node) ColGap(g float64) *Node      { return n.set("colGap", g) }
 func (n *Node) RowGap(g float64) *Node      { return n.set("rowGap", g) }
 
+// StickBottom keeps a Scroll pinned to its end while the user is there.
+func (n *Node) StickBottom() *Node { return n.set("stickBottom", true) }
+
 // Span makes this child cover n columns of its parent Grid.
 func (n *Node) Span(cols int) *Node { return n.set("span", cols) }
 

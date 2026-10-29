@@ -465,6 +465,9 @@ func (ns *NodeStore) Apply(w ui.Widget, id int, p props) {
 		if v, ok := p["insetBottom"]; ok {
 			t.ContentInsetBottom, _ = num(v)
 		}
+		if v, ok := p["stickBottom"]; ok {
+			t.StickBottom, _ = v.(bool)
+		}
 	case *ui.TableView:
 		if v, ok := p["columns"].([]any); ok {
 			t.Columns = t.Columns[:0]

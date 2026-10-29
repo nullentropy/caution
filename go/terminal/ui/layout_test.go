@@ -163,6 +163,57 @@ func TestDockedWrappedLabelSizesTheDockSlot(t *testing.T) {
 	wantBounds(t, fill, 0, 61, 100, 339)
 }
 
+func TestWrappedLabelInNestedStacksSizesTheRow(t *testing.T) {
+	u := fakeUi()
+	col := NewVStack()
+	col.Spacing = 0
+	col.Align = "stretch"
+	row := NewHStack()
+	row.Spacing = 0
+	gutter := NewPanel()
+	w := float32(20)
+	gutter.Width = &w
+	l := wrapFixtureLabel()
+	l.StackSize = StackSize{Kind: "fill", Weight: 1}
+	row.Add(gutter)
+	row.Add(l)
+	next := NewPanel()
+	h := float32(10)
+	next.Height = &h
+	col.Add(row)
+	col.Add(next)
+	layout(u, col, 120, 400)
+	wantBounds(t, row, 0, 0, 120, 61)
+	wantBounds(t, l, 20, 0, 100, 61)
+	wantBounds(t, next, 0, 61, 120, 10)
+}
+
+func TestStickBottomFollowsGrowingContent(t *testing.T) {
+	u := fakeUi()
+	sv := NewScrollView()
+	sv.StickBottom = true
+	content := NewPanel()
+	h := float32(500)
+	content.Height = &h
+	content.Anchors = &Anchors{Left: f32p(0), Right: f32p(0), Top: f32p(0)}
+	sv.Add(content)
+	layout(u, sv, 100, 200)
+	if sv.ScrollY != 300 {
+		t.Fatalf("initial ScrollY = %g; want 300", sv.ScrollY)
+	}
+	h = 700
+	sv.LayoutChildren()
+	if sv.ScrollY != 500 {
+		t.Fatalf("after growth ScrollY = %g; want 500", sv.ScrollY)
+	}
+	sv.ScrollBy(-100)
+	h = 900
+	sv.LayoutChildren()
+	if sv.ScrollY != 400 {
+		t.Fatalf("scrolled away ScrollY = %g; want 400", sv.ScrollY)
+	}
+}
+
 func TestTabTrapsInsideTopmostDialog(t *testing.T) {
 	u := fakeUi()
 	root := NewPanel()
