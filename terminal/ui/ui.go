@@ -275,6 +275,7 @@ func (u *UI) animGeometry(dl *gfx.DisplayList) {
 // a dirty widget always reaches it
 func (u *UI) markPaint(w Widget) bool {
 	b := w.Base()
+	b.takeRequests()
 	need := b.selfNeedsPaint()
 	b.dirty = false
 	for _, c := range b.Kids {
@@ -341,6 +342,7 @@ func (u *UI) animWalk(w Widget, dt float32) {
 	}
 	// marking rides along with the pass that already visits every widget, after
 	// the animation bookkeeping settles the bounds a splice compares against
+	b.takeRequests()
 	need := b.selfNeedsPaint()
 	b.dirty = false
 	outer := u.inNew

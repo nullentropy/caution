@@ -140,25 +140,46 @@ type Core struct {
 	laidOut     bool
 	laidOutAt   gfx.Rect
 
-	// server focus and reveal park until the next paint (a widget built by the
-	// same patch that commands it has no UI yet)
+	// server focus and reveal park until the next frame's marking walk (a widget
+	// built by the same patch that commands it has no UI yet)
 	wantsFocus  bool
 	wantsReveal bool
+	// outside its clipping parent last paint, so it recorded no commands
+	culled bool
 
 	// assigned on first semantics visit
 	semID int
 }
 
-// server-driven `Focus()`, consumed at the next paint
+// server-driven `Focus()`, consumed at the next frame
 func (b *Core) RequestFocus() {
 	b.wantsFocus = true
 	b.Invalidate()
 }
 
-// server-driven `Reveal()`, consumed at the next paint when bounds are fresh
+// server-driven `Reveal()`, consumed at the next frame when bounds are fresh
 func (b *Core) RequestReveal() {
 	b.wantsReveal = true
 	b.Invalidate()
+}
+
+// runs from the marking walks rather than paint, which skips culled widgets
+// and a reveal mostly targets exactly those
+func (b *Core) takeRequests() {
+	if b.UI == nil {
+		return
+	}
+	if b.wantsFocus {
+		b.wantsFocus = false
+		if b.self.Focusable() {
+			b.UI.FocusWidget(b.self)
+		}
+		b.UI.RevealWidget(b.self) // server focus also brings it into view
+	}
+	if b.wantsReveal {
+		b.wantsReveal = false
+		b.UI.RevealWidget(b.self)
+	}
 }
 
 func (b *Core) Base() *Core { return b }
@@ -297,19 +318,6 @@ func (b *Core) PaintTree(dl *gfx.DisplayList, oldBase int) {
 	}
 	start := len(dl.Cmds)
 	b.cacheBounds, b.cacheClip = b.Bounds, dl.Clip()
-	if b.UI != nil {
-		if b.wantsFocus {
-			b.wantsFocus = false
-			if b.self.Focusable() {
-				b.UI.FocusWidget(b.self)
-			}
-			b.UI.RevealWidget(b.self) // server focus also brings it into view
-		}
-		if b.wantsReveal {
-			b.wantsReveal = false
-			b.UI.RevealWidget(b.self)
-		}
-	}
 	// a freshly inserted subtree fades through its own layer, outside any app
 	// effect layer. rect is inflated so drop shadows fade with the widget instead
 	// of popping in at the end
@@ -330,11 +338,19 @@ func (b *Core) PaintTree(dl *gfx.DisplayList, oldBase int) {
 	for _, c := range b.Kids {
 		cb := c.Base()
 		at := len(dl.Cmds)
-		oldChild := -1
-		if oldBase >= 0 && cb.cacheOK {
-			oldChild = oldBase + int(cb.cacheOff)
+		if b.Clips && !gfx.Overlaps(gfx.Inflate(cb.Bounds, cullMargin), dl.Clip()) {
+			// an empty range. culling depends only on bounds and clip, the same
+			// pair the splice check compares, so it stays valid until one changes
+			cb.cacheBounds, cb.cacheClip, cb.culled = cb.Bounds, dl.Clip(), true
+		} else {
+			oldChild := -1
+			// a culled child's descendants hold offsets into a range it never wrote
+			if oldBase >= 0 && cb.cacheOK && !cb.culled {
+				oldChild = oldBase + int(cb.cacheOff)
+			}
+			cb.culled = false
+			c.PaintTree(dl, oldChild)
 		}
-		c.PaintTree(dl, oldChild)
 		cb.cacheOff = int32(at - start)
 		cb.cacheLen = int32(len(dl.Cmds) - at)
 		cb.cacheOK = true
@@ -351,6 +367,10 @@ func (b *Core) PaintTree(dl *gfx.DisplayList, oldBase int) {
 		dl.EndLayer(fadeFrag, map[string]float32{"u_fade": easeOut(t)}, false)
 	}
 }
+
+// how far outside a clipping parent a child may sit and still be painted, for
+// drop shadows and focus rings that reach past its bounds
+const cullMargin = 64
 
 // pipeline is premultiplied so scaling the sample scales coverage and color together
 const fadeFrag = `vec4 effect(vec2 uv) { return src(uv) * u_fade; }`
