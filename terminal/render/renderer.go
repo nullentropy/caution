@@ -1,9 +1,11 @@
 package render
 
 import (
+	"cmp"
 	"fmt"
 	"log"
 	"math"
+	"slices"
 	"sort"
 	"strings"
 
@@ -38,10 +40,22 @@ type target struct {
 }
 
 type pooledLayer struct {
-	fbo uint32
-	tex uint32
-	key string
+	fbo      uint32
+	tex      uint32
+	key      string
+	bytes    int
+	released uint64 // frame it went back to the pool
 }
+
+// pooled layers are keyed by exact pixel size, so a texture only comes back
+// for a widget of the same size. one released and not taken again within
+// layerIdleFrames is freed, and the pool never holds more than maxPoolBytes
+// (fades over a list of rows in assorted heights used to leave hundreds of
+// MB behind)
+const (
+	layerIdleFrames = 60
+	maxPoolBytes    = 64 << 20
+)
 
 type userProgram struct {
 	prog uint32
@@ -92,6 +106,8 @@ type Renderer struct {
 	lastDPR   float32
 	time      float32
 	layerPool map[string][]*pooledLayer
+	poolBytes int
+	frameNo   uint64 // counts Render and RenderPartial calls, the pool's clock
 	userProgs map[string]*userProgram
 	progTick  uint64 // monotonic access clock for userProgs LRU
 	// logical size the pooled layers were sized for. the pool is keyed by pixel
@@ -323,6 +339,7 @@ func (r *Renderer) Render(dl *gfx.DisplayList, background gfx.Color, fr Frame) F
 	}
 
 	r.flushLayerCache() // cached textures belong to the outgoing list
+	r.trimLayerPool()
 	r.ensureScene(fr)
 	r.retained = dl
 	r.plan = plan
@@ -445,6 +462,7 @@ func (r *Renderer) RenderPartial(background gfx.Color, fr Frame) bool {
 		return false
 	}
 	r.Frames.Partial++
+	r.trimLayerPool()
 	r.time = fr.Time
 	dpr := r.lastDPR
 	r.count = 0
@@ -669,8 +687,9 @@ func (r *Renderer) acquireLayer(rect gfx.Rect, dpr float32) target {
 	if list := r.layerPool[key]; len(list) > 0 {
 		pooled = list[len(list)-1]
 		r.layerPool[key] = list[:len(list)-1]
+		r.poolBytes -= pooled.bytes
 	} else {
-		pooled = &pooledLayer{key: key}
+		pooled = &pooledLayer{key: key, bytes: int(devW) * int(devH) * 4}
 		glx.GenTextures(1, &pooled.tex)
 		glx.ActiveTexture(glx.TEXTURE0)
 		glx.BindTexture(glx.TEXTURE_2D, pooled.tex)
@@ -692,17 +711,64 @@ func (r *Renderer) acquireLayer(rect gfx.Rect, dpr float32) target {
 }
 
 func (r *Renderer) releaseLayer(p *pooledLayer) {
+	p.released = r.frameNo
 	r.layerPool[p.key] = append(r.layerPool[p.key], p)
+	r.poolBytes += p.bytes
 }
 
 func (r *Renderer) clearLayerPool() {
 	for _, list := range r.layerPool {
 		for _, p := range list {
-			glx.DeleteFramebuffers(1, &p.fbo)
-			glx.DeleteTextures(1, &p.tex)
+			deleteLayer(p)
 		}
 	}
 	clear(r.layerPool)
+	r.poolBytes = 0
+}
+
+func deleteLayer(p *pooledLayer) {
+	glx.DeleteFramebuffers(1, &p.fbo)
+	glx.DeleteTextures(1, &p.tex)
+}
+
+// advances the pool clock, frees layers idle too long, then the least
+// recently released ones until the pool fits maxPoolBytes
+func (r *Renderer) trimLayerPool() {
+	r.frameNo++
+	if r.poolBytes == 0 {
+		return
+	}
+	var kept []*pooledLayer
+	for key, list := range r.layerPool {
+		live := list[:0]
+		for _, p := range list {
+			if r.frameNo-p.released > layerIdleFrames {
+				deleteLayer(p)
+				r.poolBytes -= p.bytes
+			} else {
+				live = append(live, p)
+			}
+		}
+		if len(live) == 0 {
+			delete(r.layerPool, key)
+			continue
+		}
+		r.layerPool[key] = live
+		kept = append(kept, live...)
+	}
+	if r.poolBytes <= maxPoolBytes {
+		return
+	}
+	slices.SortFunc(kept, func(a, b *pooledLayer) int { return cmp.Compare(a.released, b.released) })
+	for _, p := range kept {
+		if r.poolBytes <= maxPoolBytes {
+			break
+		}
+		list := r.layerPool[p.key]
+		r.layerPool[p.key] = slices.DeleteFunc(list, func(q *pooledLayer) bool { return q == p })
+		deleteLayer(p)
+		r.poolBytes -= p.bytes
+	}
 }
 
 // -- custom shader passes ----------------------------------------------------------
@@ -899,9 +965,9 @@ func (r *Renderer) inst(
 
 // cmd/loopprobe asserts both stay bounded across resize and shader-mint
 // storms
-func (r *Renderer) PoolSizes() (pooledLayers, userPrograms int) {
+func (r *Renderer) PoolSizes() (pooledLayers, pooledBytes, userPrograms int) {
 	for _, ls := range r.layerPool {
 		pooledLayers += len(ls)
 	}
-	return pooledLayers, len(r.userProgs)
+	return pooledLayers, r.poolBytes, len(r.userProgs)
 }

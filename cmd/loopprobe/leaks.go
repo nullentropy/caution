@@ -19,6 +19,9 @@ import (
 //
 //	shader mint   an app baking per-state data into generated frag
 //	              sources compiles a program per state
+//
+//	layer burst   hundreds of layered rows in assorted heights in one
+//	              frame, each a pool key of its own that never comes back
 func runLeaks() error {
 	if err := glfw.Init(); err != nil {
 		return err
@@ -85,7 +88,7 @@ func runLeaks() error {
 	for i := 0; i < 150; i++ {
 		draw(float32(320+i*2), float32(240+i))
 	}
-	layers, progs := r.PoolSizes()
+	layers, _, progs := r.PoolSizes()
 	fmt.Printf("after resize storm: pooledLayers=%d userPrograms=%d\n", layers, progs)
 	if layers > 8 {
 		return fmt.Errorf("layer pool retained %d textures across a resize storm - the per-size leak is back", layers)
@@ -102,10 +105,44 @@ func runLeaks() error {
 		pane.Invalidate()
 		draw(620, 389)
 	}
-	layers, progs = r.PoolSizes()
+	layers, _, progs = r.PoolSizes()
 	fmt.Printf("after shader mint:  pooledLayers=%d userPrograms=%d\n", layers, progs)
 	if progs > 48 {
 		return fmt.Errorf("user-program cache holds %d entries - the cap is not holding", progs)
+	}
+
+	// layer burst, 300 rows outside any clip so culling can't hide them,
+	// about 200 MB of textures at 2x
+	burst := ui.NewPanel()
+	burst.Frame = &gfx.Rect{X: 0, Y: 0, W: 600, H: 389}
+	y := float32(0)
+	for i := 0; i < 300; i++ {
+		row := ui.NewPanel()
+		row.Frame = &gfx.Rect{X: 0, Y: y, W: 600, H: float32(40 + i)}
+		row.Bg = ui.Theme["panel"]
+		row.Effect = &ui.Effect{Frag: "vec4 effect(vec2 uv) { return src(uv) * 0.9; }"}
+		burst.Add(row)
+		y += float32(40 + i)
+	}
+	root.Add(burst)
+	u.Invalidate()
+	draw(620, 389)
+	root.Kids = root.Kids[:len(root.Kids)-1]
+	u.Invalidate()
+	draw(620, 389) // the burst's cached layers go back to the pool here
+	_, bytes, _ := r.PoolSizes()
+	fmt.Printf("after layer burst:  pooledMB=%.1f\n", float64(bytes)/(1<<20))
+	if bytes > 64<<20 {
+		return fmt.Errorf("layer pool holds %d MB after a burst - the byte cap is not holding", bytes>>20)
+	}
+	for i := 0; i < 70; i++ {
+		u.Invalidate()
+		draw(620, 389)
+	}
+	_, idle, _ := r.PoolSizes()
+	fmt.Printf("after idle frames:  pooledMB=%.1f\n", float64(idle)/(1<<20))
+	if idle >= bytes {
+		return fmt.Errorf("layer pool still holds %d MB after 70 frames without the burst", idle>>20)
 	}
 	fmt.Println("leaks: ok - layer pool and program cache stay bounded")
 	return nil
