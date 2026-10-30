@@ -6,6 +6,8 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
+	"strconv"
 	"syscall/js"
 	"time"
 
@@ -32,6 +34,49 @@ var (
 )
 
 func host() js.Value { return js.Global().Get("__cautionHost") }
+
+// the page's fetch, so a server path resolves against the page origin and
+// carries its cookies. net/http would reach the same API but links the whole
+// client stack into the wasm
+func fetchBytes(src string) ([]byte, error) {
+	type result struct {
+		data []byte
+		err  error
+	}
+	ch := make(chan result, 1)
+	onResp := js.FuncOf(func(_ js.Value, args []js.Value) any {
+		resp := args[0]
+		if !resp.Get("ok").Bool() {
+			return js.Global().Get("Promise").Call("reject", "GET "+src+": "+strconv.Itoa(resp.Get("status").Int()))
+		}
+		return resp.Call("arrayBuffer")
+	})
+	onBuf := js.FuncOf(func(_ js.Value, args []js.Value) any {
+		u8 := js.Global().Get("Uint8Array").New(args[0])
+		data := make([]byte, u8.Length())
+		js.CopyBytesToGo(data, u8)
+		ch <- result{data: data}
+		return nil
+	})
+	onErr := js.FuncOf(func(_ js.Value, args []js.Value) any {
+		msg := "fetch failed"
+		if len(args) > 0 {
+			if args[0].Type() == js.TypeObject {
+				msg = args[0].Get("message").String()
+			} else {
+				msg = args[0].String()
+			}
+		}
+		ch <- result{err: errors.New(msg)}
+		return nil
+	})
+	defer onResp.Release()
+	defer onBuf.Release()
+	defer onErr.Release()
+	js.Global().Call("fetch", src).Call("then", onResp).Call("then", onBuf).Call("catch", onErr)
+	r := <-ch
+	return r.data, r.err
+}
 
 func call(method string, args ...any) js.Value { return host().Call(method, args...) }
 
@@ -84,6 +129,8 @@ func main() {
 		Play:         func(src string, loop bool) { call("play", src, loop) },
 		Stop:         func(src string) { call("stop", src) },
 		OnMount:      func(sid string) { call("mounted", sid) },
+		Fonts:        r.Fonts,
+		Fetch:        fetchBytes,
 	})
 
 	js.Global().Set("__cautionTerm", map[string]any{

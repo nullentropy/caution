@@ -12,7 +12,7 @@ import (
 // flatter every number
 func realUi() *UI {
 	u := New()
-	sh := text.NewShaper()
+	sh := text.NewShaper(text.NewRegistry())
 	u.Measure = func(f gfx.Font, s string) *text.Run { return sh.Shape(f, 2, s) }
 	return u
 }

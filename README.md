@@ -385,6 +385,40 @@ caution.Button("Send").Sound("whoosh") // a token you added to the table
 caution.Button("Cancel").Sound("none")
 ```
 
+## Fonts
+
+Text draws with the embedded Go faces unless the app registers its own.
+Font files are TTF or OTF, served the way images are, by URL or `data:` URI:
+
+```go
+s.AddFont("Body", "/assets/Body-Regular.ttf", "/assets/Body-Italic.ttf")
+s.AddFont("Code", "/assets/Code.ttf")
+s.SetFonts("Body", "Code") // default for normal text, default for Mono text
+```
+
+Weight, italic and any variable weight range are read from each file, so a
+family is one static file per style or one variable file covering a range.
+`Weight(650)` on a variable font draws at exactly 650. A weight no file
+covers takes the nearest one. A rune the family lacks falls back to the Go
+face, then to the emoji face.
+
+Any text node names a family with `Font`, and a span with `Font`:
+
+```go
+caution.Label("Title").Font("Display").Weight(800)
+caution.RichText(
+    caution.Span{Text: "plain, then "},
+    caution.Span{Text: "code", Font: "Code"},
+)
+```
+
+`""` means the session default. Fonts registered before the mount load
+before the first frame, with a three second limit after which the frame
+draws with fallbacks and swaps when they arrive. A font registered later
+swaps in when it arrives. A file that fails to fetch or parse is logged and
+skipped. Both terminals shape and rasterize the same files with the same
+engine, so a custom font looks the same in the window and in the browser.
+
 ## Glass
 
 `caution.Glass()` is a transparent pointer-capture surface for custom
@@ -473,9 +507,10 @@ http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 })
 ```
 
-`ServeAssets(prefix, dir)` serves static files. `Image()` and `Play()` also
-accept `data:` URIs. `s.Preload(srcs...)` and `s.PreloadSounds(srcs...)` warm
-the client's caches for screens not yet mounted.
+`ServeAssets(prefix, dir)` serves static files. `Image()`, `Play()` and
+`AddFont()` also accept `data:` URIs. `s.Preload(srcs...)` and
+`s.PreloadSounds(srcs...)` warm the client's caches for screens not yet
+mounted.
 
 ## Clojure SDK
 
@@ -506,17 +541,23 @@ Table rows travel as an op too:
  "rows": [["E00181", "Ada Lovelace", "ada@example.com", "Engineer"]]}
 ```
 
-Theme, metrics, menu, shortcut, motion, and preload ops follow the same
-pattern and also ride the mount. Preloads name images and sounds separately, and a sound
-plays through its own op:
+Theme, metrics, menu, shortcut, motion, font and preload ops follow the same
+pattern and also ride the mount. Preloads name images, sounds and font
+families separately, and a sound plays through its own op:
 
 ```jsonc
-{"op": "resource", "images": ["/assets/next.png"], "sounds": ["/assets/ding.wav"]}
+{"op": "resource", "images": ["/assets/next.png"], "sounds": ["/assets/ding.wav"],
+ "fonts": [{"family": "Body", "srcs": ["/assets/Body.ttf"]}]}
+{"op": "fonts", "ui": "Body", "mono": ""}
 {"op": "play", "src": "/assets/ding.wav"}
 {"op": "play", "src": "/assets/alarm.wav", "loop": true}
 {"op": "stop", "src": "/assets/alarm.wav"}
 {"op": "sounds", "tokens": {"press": "/assets/click.wav"}}
 ```
+
+A text node's `font` prop and a span's `font` field name a family. The
+first mount that names fonts is applied once they load or three seconds
+pass, whichever comes first.
 
 The mount carries `loops` alongside `sounds`, and a client stops everything it
 was playing before starting them.

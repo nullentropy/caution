@@ -323,7 +323,7 @@ const benchRows = 1300
 // both ways so the difference is what invalidation saves
 func bench(bg gfx.Color, fbo uint32) error {
 	u := ui.New()
-	sh := text.NewShaper()
+	sh := text.NewShaper(text.NewRegistry())
 	u.Measure = func(f gfx.Font, s string) *text.Run { return sh.Shape(f, dpr, s) }
 	root := ui.NewPanel()
 	root.Bg = ui.Theme["bg"]
@@ -394,7 +394,7 @@ func bench(bg gfx.Color, fbo uint32) error {
 // frame hits the screen for a tick
 func presentation(bg gfx.Color, fbo uint32, read func() []byte) error {
 	u := ui.New()
-	sh := text.NewShaper()
+	sh := text.NewShaper(text.NewRegistry())
 	u.Measure = func(f gfx.Font, s string) *text.Run { return sh.Shape(f, dpr, s) }
 	root := ui.NewPanel()
 	root.Bg = ui.Theme["bg"]

@@ -88,6 +88,8 @@ type Frame struct {
 
 // the GL context must be current on the calling thread for every method
 type Renderer struct {
+	// app-registered faces, the shaper and atlas resolve through it
+	Fonts  *text.Registry
 	Shaper *text.Shaper
 	Atlas  *text.Atlas
 	Images *ImageStore
@@ -225,9 +227,11 @@ func uniform(prog uint32, name string) int32 {
 
 // GL context must be current and glx.Init() done
 func New() (*Renderer, error) {
+	fonts := text.NewRegistry()
 	r := &Renderer{
-		Shaper:     text.NewShaper(),
-		Atlas:      text.NewAtlas(),
+		Fonts:      fonts,
+		Shaper:     text.NewShaper(fonts),
+		Atlas:      text.NewAtlas(fonts),
 		Images:     newImageStore(),
 		data:       make([]float32, 4096*floatsPerInstance),
 		layerPool:  make(map[string][]*pooledLayer),
@@ -919,7 +923,7 @@ func (r *Renderer) emitText(cmd *gfx.Cmd, dpr float32) {
 			penX++
 			phase = 0
 		}
-		glyph := r.Atlas.Get(cmd.Font, dpr, g.GID, phase, g.Emoji)
+		glyph := r.Atlas.Get(g.Face, cmd.Font.Size, dpr, g.GID, phase)
 		if glyph == nil {
 			continue
 		}

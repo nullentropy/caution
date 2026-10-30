@@ -272,6 +272,7 @@ func spans(v any) []ui.Span {
 		s.Color = color(o["color"])
 		s.Bg = color(o["bg"])
 		s.Action, _ = str(o["action"])
+		s.Font, _ = str(o["font"])
 		out = append(out, s)
 	}
 	return out
@@ -295,7 +296,11 @@ func applyLabelFont(l *ui.Label, p props) {
 	if b, ok := boolean(p["mono"]); ok {
 		mono = b
 	}
-	l.Font = gfx.NewFont(size, gfx.FontOpts{Weight: weight, Italic: italic, Mono: mono})
+	family := prev.Family
+	if v, ok := str(p["font"]); ok {
+		family = v
+	}
+	l.Font = gfx.NewFont(size, gfx.FontOpts{Weight: weight, Italic: italic, Mono: mono, Family: family})
 }
 
 // construct by type, apply props, wire subscribed events to the sink
@@ -399,9 +404,14 @@ func (ns *NodeStore) Apply(w ui.Widget, id int, p props) {
 		if v, ok := p["spans"]; ok {
 			t.SetSpans(spans(v))
 		}
+		size, family := t.Font.Size, t.Font.Family
 		if f, ok := num(p["size"]); ok {
-			t.Font = gfx.NewFont(f, gfx.FontOpts{})
+			size = f
 		}
+		if v, ok := str(p["font"]); ok {
+			family = v
+		}
+		t.Font = gfx.NewFont(size, gfx.FontOpts{Family: family})
 		if v, ok := p["color"]; ok {
 			if c := color(v); c != nil {
 				t.Color = c
@@ -665,6 +675,7 @@ func (ns *NodeStore) applyText(t *ui.TextField, id int, p props) {
 	set(p, "placeholder", &t.Placeholder)
 	setOr(p, "size", &t.FontSize, 14)
 	set(p, "mono", &t.Mono)
+	set(p, "font", &t.Family)
 	set(p, "sensitive", &t.Sensitive)
 	if subscribed(p, wire.EvInput) {
 		t.OnInput = debounce(150*time.Millisecond, func(v string) {

@@ -762,3 +762,62 @@ func TestSpanClickDeliversTheAction(t *testing.T) {
 	tc.eventValue(kidIDs(t, m)[0], "span-click", "open", seqOf(t, m))
 	expectFire(t, fired, "open")
 }
+
+func TestFontsRideMountAndPatchLive(t *testing.T) {
+	var sess *Session
+	tc := dialSession(t, func(s *Session) *Node {
+		sess = s
+		s.AddFont("Body", "/fonts/body.ttf")
+		s.AddFont("Body", "/fonts/body.ttf", "/fonts/body-italic.ttf")
+		s.SetFonts("Body", "")
+		return Panel().Kids(Label("x").Font("Body"), RichText(Span{Text: "y", Font: "Body"}))
+	})
+	m := tc.read()
+	res, _ := m["resources"].(map[string]any)
+	fonts, _ := res["fonts"].([]any)
+	if len(fonts) != 1 {
+		t.Fatalf("mount resources.fonts = %v; want one family", fonts)
+	}
+	fam, _ := fonts[0].(map[string]any)
+	srcs, _ := fam["srcs"].([]any)
+	if fam["family"] != "Body" || len(srcs) != 2 || srcs[0] != "/fonts/body.ttf" || srcs[1] != "/fonts/body-italic.ttf" {
+		t.Fatalf("mount family = %v; want Body with both files once", fam)
+	}
+	defaults, _ := m["fonts"].(map[string]any)
+	if defaults["ui"] != "Body" || defaults["mono"] != "" {
+		t.Fatalf("mount fonts = %v; want ui Body, mono empty", defaults)
+	}
+	root, _ := m["root"].(map[string]any)
+	kids, _ := root["kids"].([]any)
+	label, _ := kids[0].(map[string]any)
+	if p, _ := label["p"].(map[string]any); p["font"] != "Body" {
+		t.Fatalf("label props = %v; want font Body", p)
+	}
+	rich, _ := kids[1].(map[string]any)
+	rp, _ := rich["p"].(map[string]any)
+	spans, _ := rp["spans"].([]any)
+	if span, _ := spans[0].(map[string]any); span["font"] != "Body" {
+		t.Fatalf("span = %v; want font Body", span)
+	}
+
+	sess.Update(func() {
+		sess.AddFont("Body", "/fonts/body.ttf", "/fonts/body-bold.ttf")
+		sess.SetFonts("Body", "Code")
+	})
+	p := tc.read()
+	ops, _ := p["ops"].([]any)
+	if len(ops) != 2 {
+		t.Fatalf("patch ops = %v; want a resource op and a fonts op", ops)
+	}
+	op, _ := ops[0].(map[string]any)
+	added, _ := op["fonts"].([]any)
+	first, _ := added[0].(map[string]any)
+	got, _ := first["srcs"].([]any)
+	if op["op"] != "resource" || len(added) != 1 || first["family"] != "Body" || len(got) != 1 || got[0] != "/fonts/body-bold.ttf" {
+		t.Fatalf("live font op = %v; want resource with only the new src", op)
+	}
+	op, _ = ops[1].(map[string]any)
+	if op["op"] != "fonts" || op["ui"] != "Body" || op["mono"] != "Code" {
+		t.Fatalf("live defaults op = %v; want fonts with ui Body, mono Code", op)
+	}
+}

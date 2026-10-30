@@ -464,6 +464,8 @@ func Run(o Options) error {
 		PreloadSound: preloadSound,
 		Play:         playSound,
 		Stop:         stopSound,
+		Fonts:        r.Fonts,
+		Fetch:        fetch,
 	})
 	watchFullscreen(win, sess.NoteFullscreen)
 	watchFileDrag(win, sess.NoteFileDrag)

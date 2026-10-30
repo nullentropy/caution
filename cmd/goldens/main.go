@@ -93,6 +93,7 @@ func run(sceneName, out string, w, h int, settle float64, chromeFlag string) err
 	}
 	port := l.Addr().(*net.TCPAddr).Port
 	dev.ServeClient("")
+	caution.ServeAssets("/fonts/", filepath.Join(root, "terminal", "text", "testdata"))
 	go func() {
 		if err := caution.ServeListener(l, mount, caution.Options{}); err != nil {
 			fmt.Fprintln(os.Stderr, "goldens: server:", err)

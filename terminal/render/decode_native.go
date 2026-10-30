@@ -10,13 +10,15 @@ import (
 	_ "image/jpeg"
 	_ "image/png"
 	"strings"
+
+	"github.com/nullentropy/caution/wire"
 )
 
 func (s *ImageStore) fetchAndDecode(src string) ([]byte, int, int, error) {
 	var raw []byte
 	var err error
 	if strings.HasPrefix(src, "data:") {
-		raw, err = decodeDataURI(src)
+		raw, err = wire.DataURI(src)
 	} else if s.Fetch != nil {
 		raw, err = s.Fetch(src)
 	} else {

@@ -10,6 +10,8 @@ import (
 type Span struct {
 	Text               string
 	Bold, Italic, Mono bool
+	// "" takes the widget's family
+	Font string
 	// nil takes the widget's Color
 	Color *gfx.Color
 	Bg    *gfx.Color
@@ -98,7 +100,11 @@ func (r *RichText) spanFont(s Span) gfx.Font {
 	if s.Bold {
 		w = 700
 	}
-	return gfx.NewFont(r.Font.Size, gfx.FontOpts{Weight: w, Italic: s.Italic, Mono: s.Mono})
+	family := s.Font
+	if family == "" {
+		family = r.Font.Family
+	}
+	return gfx.NewFont(r.Font.Size, gfx.FontOpts{Weight: w, Italic: s.Italic, Mono: s.Mono, Family: family})
 }
 
 // width of text[a:b] with each span's own face

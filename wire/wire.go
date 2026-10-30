@@ -1,5 +1,12 @@
 package wire
 
+import (
+	"encoding/base64"
+	"errors"
+	"net/url"
+	"strings"
+)
+
 type Type string
 
 const (
@@ -117,6 +124,7 @@ const (
 	OpPlay     Op = "play"
 	OpStop     Op = "stop"
 	OpSounds   Op = "sounds"
+	OpFonts    Op = "fonts"
 	OpCmd      Op = "cmd"
 	OpMotion   Op = "motion"
 	OpCookie   Op = "cookie"
@@ -152,3 +160,21 @@ const (
 	// Options.Authorize refused the connection, the client stops retrying
 	MsgDenied Msg = "denied"
 )
+
+// payload of a data: URI, base64 or percent-encoded. images, sounds and fonts
+// all accept one in place of a URL
+func DataURI(src string) ([]byte, error) {
+	comma := strings.IndexByte(src, ',')
+	if comma < 0 {
+		return nil, errors.New("malformed data URI")
+	}
+	meta, payload := src[5:comma], src[comma+1:]
+	if strings.HasSuffix(meta, ";base64") {
+		return base64.StdEncoding.DecodeString(payload)
+	}
+	unescaped, err := url.PathUnescape(payload)
+	if err != nil {
+		return nil, err
+	}
+	return []byte(unescaped), nil
+}

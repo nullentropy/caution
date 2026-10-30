@@ -1,15 +1,15 @@
 package audio
 
 import (
-	"encoding/base64"
 	"encoding/binary"
 	"errors"
 	"io"
 	"math"
-	"net/url"
 	"strings"
 	"sync"
 	"sync/atomic"
+
+	"github.com/nullentropy/caution/wire"
 
 	"github.com/rs/zerolog/log"
 )
@@ -184,7 +184,7 @@ func (s *Store) fetch(src string, e *clipEntry) {
 
 func (s *Store) bytes(src string) ([]byte, error) {
 	if strings.HasPrefix(src, "data:") {
-		return decodeDataURI(src)
+		return wire.DataURI(src)
 	}
 	if s.Fetch == nil {
 		return nil, errors.New("no fetcher configured")
@@ -273,20 +273,4 @@ func (s *Store) start(src string, samples []float32, loop bool) {
 			sink.Play(pv)
 		}
 	}()
-}
-
-func decodeDataURI(src string) ([]byte, error) {
-	comma := strings.IndexByte(src, ',')
-	if comma < 0 {
-		return nil, errors.New("malformed data URI")
-	}
-	meta, payload := src[5:comma], src[comma+1:]
-	if strings.HasSuffix(meta, ";base64") {
-		return base64.StdEncoding.DecodeString(payload)
-	}
-	unescaped, err := url.PathUnescape(payload)
-	if err != nil {
-		return nil, err
-	}
-	return []byte(unescaped), nil
 }

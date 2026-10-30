@@ -33,7 +33,7 @@ func intsEqual(a, b []int) bool {
 }
 
 func TestShapeLatinStaysSingleRunAscending(t *testing.T) {
-	s := NewShaper()
+	s := NewShaper(NewRegistry())
 	run := s.Shape(gfx.NewFont(14, gfx.FontOpts{}), 2, "Hello, world")
 	if len(run.Glyphs) == 0 || run.Width <= 0 {
 		t.Fatalf("empty shape: %+v", run)
@@ -52,7 +52,7 @@ func TestShapeHebrewReversesToVisualOrder(t *testing.T) {
 	// the embedded Go fonts have no Hebrew (glyphs are .notdef) but bidi is
 	// font-independent. an RTL run comes back in visual order, so clusters
 	// DESCEND across the glyph array while x ascends
-	s := NewShaper()
+	s := NewShaper(NewRegistry())
 	run := s.Shape(gfx.NewFont(14, gfx.FontOpts{}), 2, "שלום")
 	if len(run.Glyphs) != 4 {
 		t.Fatalf("got %d glyphs, want 4: %v", len(run.Glyphs), clustersOf(run))
@@ -71,7 +71,7 @@ func TestShapeMixedDirectionOrdersRunsVisually(t *testing.T) {
 	// "abc אבג def" under an LTR base, the Hebrew renders between the Latin
 	// segments, internally right-to-left. runes:
 	//   a=0 b=1 c=2 ' '=3 א=4 ב=5 ג=6 ' '=7 d=8 e=9 f=10
-	s := NewShaper()
+	s := NewShaper(NewRegistry())
 	run := s.Shape(gfx.NewFont(14, gfx.FontOpts{}), 2, "abc אבג def")
 	want := []int{0, 1, 2, 3, 6, 5, 4, 7, 8, 9, 10}
 	if !intsEqual(clustersOf(run), want) {
@@ -87,7 +87,7 @@ func TestShapeMixedDirectionOrdersRunsVisually(t *testing.T) {
 func TestShapeMixedScriptItemizes(t *testing.T) {
 	// Latin + Greek + Cyrillic, which the embedded fonts really cover
 	// itemization must not reorder or drop glyphs for LTR scripts
-	s := NewShaper()
+	s := NewShaper(NewRegistry())
 	text := "abc αβγ абв"
 	run := s.Shape(gfx.NewFont(14, gfx.FontOpts{}), 2, text)
 	if len(run.Glyphs) != len([]rune(text)) {
@@ -153,7 +153,7 @@ func TestEveryStyleHasItsOwnFace(t *testing.T) {
 			}
 			for _, italic := range []bool{false, true} {
 				name := fmt.Sprintf("mono=%v weight=%d italic=%v", mono, w, italic)
-				face := FaceFor(gfx.NewFont(13, gfx.FontOpts{Mono: mono, Weight: w, Italic: italic}))
+				face := goFace(gfx.NewFont(13, gfx.FontOpts{Mono: mono, Weight: w, Italic: italic}))
 				if prev, ok := seen[face]; ok {
 					t.Fatalf("%s renders with the %s face", name, prev)
 				}

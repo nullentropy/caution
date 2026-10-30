@@ -16,9 +16,10 @@ type TextField struct {
 	// overrides radius.control (nil = the token), for pill search boxes and
 	// other chrome-strip shapes
 	Radius *float32
-	// `size` and `mono` props, size in logical px
+	// `size`, `mono` and `font` props, size in logical px
 	FontSize  float32
 	Mono      bool
+	Family    string
 	Sensitive bool
 	// mirrors UI focus for local echo: a focused field ignores server value sets
 	Focused bool
@@ -69,7 +70,7 @@ func NewTextField() *TextField {
 }
 
 func (t *TextField) font() gfx.Font {
-	return gfx.NewFont(t.FontSize, gfx.FontOpts{Mono: t.Mono})
+	return gfx.NewFont(t.FontSize, gfx.FontOpts{Mono: t.Mono, Family: t.Family})
 }
 
 func (t *TextField) IntrinsicSize() Size {

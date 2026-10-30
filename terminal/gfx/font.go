@@ -2,16 +2,18 @@ package gfx
 
 import "fmt"
 
-// the browser resolves a CSS family list. natively the text package maps
-// (Weight, Italic, Mono) onto embedded faces, so rendering is deterministic
-// across machines with no system font stack to vary
+// both terminals run the same text package, which maps (Family, Weight,
+// Italic, Mono) onto embedded or app-registered faces, so rendering is
+// deterministic across machines with no system font stack to vary
 type Font struct {
 	// logical px
 	Size   float32
 	Weight int
 	Italic bool
 	Mono   bool
-	// stable cache key for shaping and atlas lookups
+	// app-registered family. "" takes the session default for the style
+	Family string
+	// stable cache key for shaping and widget measurement memos
 	Key string
 }
 
@@ -19,6 +21,7 @@ type FontOpts struct {
 	Weight int
 	Italic bool
 	Mono   bool
+	Family string
 }
 
 func NewFont(size float32, opts FontOpts) Font {
@@ -38,6 +41,7 @@ func NewFont(size float32, opts FontOpts) Font {
 		Weight: w,
 		Italic: opts.Italic,
 		Mono:   opts.Mono,
-		Key:    fmt.Sprintf("%d%s:%g", w, suffix, size),
+		Family: opts.Family,
+		Key:    fmt.Sprintf("%d%s:%g|%s", w, suffix, size, opts.Family),
 	}
 }

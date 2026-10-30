@@ -66,6 +66,9 @@ type Session struct {
 
 	preloads      []string
 	soundPreloads []string
+	fonts         []fontFamily
+	fontUI        string
+	fontMono      string
 	sounds        map[string]string
 	loops         []string
 
@@ -415,6 +418,41 @@ func (s *Session) Preload(srcs ...string) {
 	}
 }
 
+// one family's files on the wire
+type fontFamily struct {
+	Family string   `json:"family"`
+	Srcs   []string `json:"srcs"`
+}
+
+// TTF or OTF, URLs or data: URIs. weight, italic and any variable weight
+// range are read from the files. repeated srcs are dropped
+func (s *Session) AddFont(family string, srcs ...string) {
+	i := slices.IndexFunc(s.fonts, func(f fontFamily) bool { return f.Family == family })
+	if i < 0 {
+		i = len(s.fonts)
+		s.fonts = append(s.fonts, fontFamily{Family: family})
+	}
+	var fresh []string
+	for _, src := range srcs {
+		if !slices.Contains(s.fonts[i].Srcs, src) {
+			s.fonts[i].Srcs = append(s.fonts[i].Srcs, src)
+			fresh = append(fresh, src)
+		}
+	}
+	if s.mounted && len(fresh) > 0 {
+		s.ops = append(s.ops, map[string]any{"op": wire.OpResource, "fonts": []fontFamily{{Family: family, Srcs: fresh}}})
+	}
+}
+
+// default families for text that names none: ui for normal text, mono for
+// Mono text. "" is the built-in Go face
+func (s *Session) SetFonts(ui, mono string) {
+	s.fontUI, s.fontMono = ui, mono
+	if s.mounted {
+		s.ops = append(s.ops, map[string]any{"op": wire.OpFonts, "ui": ui, "mono": mono})
+	}
+}
+
 // gesture table: which WAV plays on press, toggle, select, open, close or
 // type, fired client-side at the moment of the gesture
 func (s *Session) SetSounds(tokens map[string]string) {
@@ -716,13 +754,19 @@ func (s *Session) sendMount() {
 	if s.cookies != nil {
 		msg["cookies"] = s.cookies
 	}
-	if s.preloads != nil || s.soundPreloads != nil {
+	if s.fontUI != "" || s.fontMono != "" {
+		msg["fonts"] = map[string]any{"ui": s.fontUI, "mono": s.fontMono}
+	}
+	if s.preloads != nil || s.soundPreloads != nil || s.fonts != nil {
 		res := map[string]any{}
 		if s.preloads != nil {
 			res["images"] = s.preloads
 		}
 		if s.soundPreloads != nil {
 			res["sounds"] = s.soundPreloads
+		}
+		if s.fonts != nil {
+			res["fonts"] = s.fonts
 		}
 		msg["resources"] = res
 	}

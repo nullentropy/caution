@@ -249,6 +249,12 @@ func (u *UI) AnimateTheme(tokens map[string]string) {
 // mutates the metric tokens and invalidates everything derived from them
 func (u *UI) ApplyMetrics(tokens map[string]float64) {
 	applyMetricTokens(tokens)
+	u.Remeasure()
+}
+
+// drops every cached measurement and rebuilds the frame, for a change that
+// makes the same string measure differently: new metrics, a font arriving
+func (u *UI) Remeasure() {
 	u.measureEpoch++
 	u.Invalidate()
 }

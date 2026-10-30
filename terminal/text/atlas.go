@@ -6,8 +6,6 @@ import (
 	"log"
 	"math"
 
-	"github.com/nullentropy/caution/terminal/gfx"
-
 	"github.com/go-text/typesetting/font"
 	"github.com/go-text/typesetting/font/opentype"
 	"golang.org/x/image/vector"
@@ -36,11 +34,11 @@ type Glyph struct {
 }
 
 type glyphKey struct {
-	font  string
+	face  *font.Face
+	size  float32
 	dpr   string
 	gid   font.GID
 	phase uint8
-	emoji bool
 }
 
 // shelf-packed CPU buffer the renderer uploads wholesale when Dirty
@@ -53,32 +51,38 @@ type Atlas struct {
 	// Pix has glyphs the GPU texture hasn't seen
 	Dirty bool
 
+	reg        *Registry
+	gen        int
 	glyphs     map[glyphKey]*Glyph
 	x, y, rowH int
 }
 
-func NewAtlas() *Atlas {
+func NewAtlas(reg *Registry) *Atlas {
 	return &Atlas{
 		Pix:    make([]byte, AtlasSize*AtlasSize*4),
+		reg:    reg,
+		gen:    reg.gen,
 		glyphs: make(map[glyphKey]*Glyph),
 		x:      1,
 		y:      1,
 	}
 }
 
-// rasterizes on miss. phase is a subpixel offset index in [0, Phases)
-// emoji selects the fallback face, the GID namespace follows the face that
-// shaped the run. nil means no ink (spaces), cached too
-func (a *Atlas) Get(f gfx.Font, dpr float32, gid font.GID, phase int, emoji bool) *Glyph {
-	key := glyphKey{f.Key, fmtDPR(dpr), gid, uint8(phase), emoji}
+// rasterizes on miss. face is the one that shaped the glyph (Placed.Face),
+// size the font's logical px, phase a subpixel offset index in [0, Phases)
+// nil means no ink (spaces), cached too
+func (a *Atlas) Get(face *font.Face, size, dpr float32, gid font.GID, phase int) *Glyph {
+	if a.gen != a.reg.gen {
+		// a swapped font leaves glyphs rasterized from faces nothing shapes
+		// with any more
+		a.gen = a.reg.gen
+		a.Reset()
+	}
+	key := glyphKey{face, size, fmtDPR(dpr), gid, uint8(phase)}
 	if hit, ok := a.glyphs[key]; ok {
 		return hit
 	}
 
-	face := FaceFor(f)
-	if emoji {
-		face = emojiFace
-	}
 	data := face.GlyphData(gid)
 	outline, ok := data.(font.GlyphOutline)
 	if !ok || len(outline.Segments) == 0 {
@@ -88,7 +92,7 @@ func (a *Atlas) Get(f gfx.Font, dpr float32, gid font.GID, phase int, emoji bool
 
 	// font units -> device px, y flipped (outlines are y-up), subpixel shift
 	// applied before the bounding box so the box grows with it
-	scale := f.Size * dpr / float32(face.Upem())
+	scale := size * dpr / float32(face.Upem())
 	off := float32(phase) / Phases
 	tx := func(p opentype.SegmentPoint) (float32, float32) {
 		return p.X*scale + off, -p.Y * scale
@@ -130,7 +134,7 @@ func (a *Atlas) Get(f gfx.Font, dpr float32, gid font.GID, phase int, emoji bool
 	if a.y+h+1 > AtlasSize {
 		log.Println("caution: glyph atlas full, resetting")
 		a.Reset()
-		return a.Get(f, dpr, gid, phase, emoji)
+		return a.Get(face, size, dpr, gid, phase)
 	}
 
 	gx, gy := a.x, a.y

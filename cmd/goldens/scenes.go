@@ -1,12 +1,15 @@
 package main
 
 import (
+	"encoding/base64"
 	"fmt"
 	"strconv"
 	"strings"
 	"sync/atomic"
 
 	"github.com/nullentropy/caution"
+
+	"golang.org/x/image/font/gofont/gosmallcaps"
 )
 
 // scenes must be deterministic. no animated shaders (different clocks), no
@@ -35,6 +38,7 @@ var scenes = []scene{
 	{"text-midnight", "Midnight", textScene, nil},
 	{"text-light", "Light", textScene, nil},
 	{"richtext-midnight", "Midnight", richTextScene, nil},
+	{"fonts-midnight", "Midnight", fontsScene, nil},
 	{"metrics-square", "Midnight", metricsScene, squareMetrics},
 }
 
@@ -429,4 +433,58 @@ func makeEmployees(n int) []employee {
 		}
 	}
 	return out
+}
+
+// app fonts: a variable family over HTTP drawn across its weight axis, a
+// static family as a data: URI, the session default, and every fallback (a
+// family nobody registered, runes the app face lacks, mono with no mono
+// default)
+func fontsScene(s *caution.Session) *caution.Node {
+	s.AddFont("Sweep", "/fonts/Estedad-VF.ttf")
+	s.AddFont("Caps", "data:font/ttf;base64,"+base64.StdEncoding.EncodeToString(gosmallcaps.TTF))
+	s.SetFonts("Sweep", "")
+	row := func(title string, body *caution.Node) *caution.Node {
+		return caution.Panel().H(56).Bg("$panelAlt").Radius(8).Border("$edgeSoft", 1).Kids(
+			caution.Label(title).FontSize(11).Color("$inkFaint").
+				Anchor(caution.A{Left: caution.Px(12), Top: caution.Px(7)}),
+			body.Anchor(caution.A{Left: caution.Px(12), Bottom: caution.Px(8)}),
+		)
+	}
+	sweep := caution.HStack().Gap(14)
+	for w := 100; w <= 900; w += 100 {
+		sweep.Kids(caution.Label("Weight").FontSize(18).Weight(w))
+	}
+	list := caution.VStack().Gap(10).Align("stretch").
+		Anchor(caution.A{Left: caution.Px(16), Top: caution.Px(14), Right: caution.Px(16)}).Kids(
+		caution.Label("App fonts - the same files shape and rasterize in both terminals").FontSize(15).Weight(600),
+		row("one variable file across its weight axis, session default family", sweep),
+		row("per-node family: static small caps from a data: URI, then a family nobody registered",
+			caution.HStack().Gap(14).Kids(
+				caution.Label("Small capitals at fourteen").FontSize(14).Font("Caps"),
+				caution.Label("unknown family draws with the Go face").FontSize(14).Font("Missing"),
+			)),
+		row("runes the app face lacks fall back per rune, mono keeps its own default",
+			caution.HStack().Gap(14).Kids(
+				caution.Label("latin αβγδ greek ✅ emoji").FontSize(14),
+				caution.Label("0123 |ml. mono").FontSize(14).Mono(),
+			)),
+		row("rich text: spans name their own family and inherit the block's",
+			caution.RichText(
+				caution.Span{Text: "block family, "},
+				caution.Span{Text: "bold at 700", Bold: true},
+				caution.Span{Text: ", "},
+				caution.Span{Text: "caps span", Font: "Caps"},
+				caution.Span{Text: ", "},
+				caution.Span{Text: "mono span", Mono: true},
+				caution.Span{Text: " and "},
+				caution.Span{Text: "italic with no italic file", Italic: true},
+			).FontSize(14).W(900)),
+	)
+	return caution.DockPanel().Kids(
+		caution.Panel().Dock("top").H(40).Bg("$panelAlt").Kids(
+			caution.Label("Fonts - app families, variable weights, fallbacks").FontSize(14).Weight(600).
+				Anchor(caution.A{Left: caution.Px(18), CenterY: caution.Px(0)}),
+		),
+		caution.Panel().Dock("fill").Kids(list),
+	)
 }

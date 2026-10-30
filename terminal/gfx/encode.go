@@ -26,6 +26,7 @@ func Encode(dl *DisplayList, bg Color, buf []byte) []byte {
 		switch c.Kind {
 		case CmdText:
 			e.intern(c.Text)
+			e.intern(c.Font.Family)
 		case CmdImage:
 			e.intern(c.Src)
 		case CmdLayerEnd, CmdShaderQuad:
@@ -149,6 +150,7 @@ func (e *encoder) font(f Font) {
 		flags |= 2
 	}
 	e.u8(flags)
+	e.str(f.Family)
 }
 
 // uniforms are written in key order so the same map always encodes the same way
@@ -331,7 +333,8 @@ func (d *decoder) font() Font {
 	size := d.f32()
 	weight := int(d.u16())
 	flags := d.u8()
-	return NewFont(size, FontOpts{Weight: weight, Italic: flags&1 != 0, Mono: flags&2 != 0})
+	family := d.str()
+	return NewFont(size, FontOpts{Weight: weight, Italic: flags&1 != 0, Mono: flags&2 != 0, Family: family})
 }
 
 func (d *decoder) uniforms() map[string]float32 {

@@ -1,9 +1,6 @@
 package render
 
 import (
-	"encoding/base64"
-	"errors"
-	"strings"
 	"sync"
 
 	"github.com/nullentropy/caution/terminal/gfx"
@@ -84,18 +81,6 @@ func (s *ImageStore) load(src string) {
 	if s.OnLoad != nil {
 		s.OnLoad()
 	}
-}
-
-func decodeDataURI(src string) ([]byte, error) {
-	comma := strings.IndexByte(src, ',')
-	if comma < 0 {
-		return nil, errors.New("malformed data URI")
-	}
-	meta, data := src[5:comma], src[comma+1:]
-	if strings.HasSuffix(meta, ";base64") {
-		return base64.StdEncoding.DecodeString(data)
-	}
-	return []byte(data), nil
 }
 
 // GL thread, once per frame. true means some image changed state: same

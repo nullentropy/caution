@@ -434,6 +434,8 @@ type Span struct {
 	Color  string `json:"color,omitempty"`
 	Bg     string `json:"bg,omitempty"`
 	Action string `json:"action,omitempty"`
+	// family from Session.AddFont. "" takes the node's
+	Font string `json:"font,omitempty"`
 }
 
 // always wraps. FontSize sizes every span, Color is the default for spans
@@ -609,6 +611,9 @@ func (n *Node) FontSize(s float64) *Node { return n.set("size", s) }
 func (n *Node) Weight(w int) *Node       { return n.set("weight", w) }
 func (n *Node) Italic() *Node            { return n.set("italic", true) }
 func (n *Node) Mono() *Node              { return n.set("mono", true) }
+
+// family from Session.AddFont. "" takes the session default
+func (n *Node) Font(family string) *Node { return n.set("font", family) }
 func (n *Node) Sensitive() *Node         { return n.set("sensitive", true) }
 func (n *Node) Selectable() *Node        { return n.set("selectable", true) }
 func (n *Node) Primary() *Node           { return n.set("primary", true) }

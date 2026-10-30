@@ -2,14 +2,17 @@ package proto
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"math"
 	"net/url"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/nullentropy/caution/terminal/gfx"
+	"github.com/nullentropy/caution/terminal/text"
 	"github.com/nullentropy/caution/terminal/ui"
 	"github.com/nullentropy/caution/wire"
 
@@ -30,6 +33,7 @@ type serverMsg struct {
 	Title     string             `json:"title"`
 	Keys      []keySpec          `json:"keys"`
 	Resources *resourceSpec      `json:"resources"`
+	Fonts     *fontDefaults      `json:"fonts"`
 	Motion    wire.Motion        `json:"motion"`
 	Cookies   []string           `json:"cookies"`
 	FileCap   int64              `json:"fileCap"`
@@ -38,8 +42,21 @@ type serverMsg struct {
 
 // the mount's preload block, the `resource` op inline
 type resourceSpec struct {
-	Images []string `json:"images"`
-	Sounds []string `json:"sounds"`
+	Images []string   `json:"images"`
+	Sounds []string   `json:"sounds"`
+	Fonts  []fontSpec `json:"fonts"`
+}
+
+// one family's files, URLs or data: URIs
+type fontSpec struct {
+	Family string   `json:"family"`
+	Srcs   []string `json:"srcs"`
+}
+
+// the mount's "fonts" field and the `fonts` op. "" is the built-in face
+type fontDefaults struct {
+	UI   string `json:"ui"`
+	Mono string `json:"mono"`
 }
 
 type keySpec struct {
@@ -81,6 +98,9 @@ type patchOp struct {
 	Keys    []keySpec          `json:"keys"`
 	Images  []string           `json:"images"`
 	Sounds  []string           `json:"sounds"`
+	Fonts   []fontSpec         `json:"fonts"`
+	UI      string             `json:"ui"`
+	Mono    string             `json:"mono"`
 	Src     string             `json:"src"`
 	Loop    bool               `json:"loop"`
 	Meta    []metaSpec         `json:"meta"`
@@ -153,7 +173,16 @@ type Config struct {
 	// stores a Set-Cookie string for every later request to the server. nil
 	// ignores cookies
 	SetCookie func(raw string)
+	// app-registered faces, the renderer's. nil ignores fonts
+	Fonts *text.Registry
+	// bytes behind a URL the server named, fonts today. nil leaves only
+	// data: URIs loadable
+	Fetch func(src string) ([]byte, error)
 }
+
+// how long the first mount that names fonts waits for them before drawing
+// with fallbacks
+const fontWait = 3 * time.Second
 
 // protocol client: applies mount/patch, ships events, reconnects with
 // backoff and resumes via the server's sid (in memory natively, the browser
@@ -177,8 +206,21 @@ type Session struct {
 	stop         func(src string)
 	setCookie    func(raw string)
 	onMount      func(sid string)
+	fonts        *text.Registry
+	fetch        func(src string) ([]byte, error)
 
 	queue chan func()
+
+	// main thread. every family+src ever asked for, loading, loaded or
+	// failed, so a remount or repeated AddFont never refetches
+	fontSrcs     map[string]bool
+	fontsLoading int
+	// the first mount naming fonts waits for them (fontWait at most) so the
+	// first frame shows no fallbacks. messages behind it queue in held and
+	// replay in order on release
+	held      []*serverMsg
+	holdTimer *time.Timer
+	waited    bool
 
 	mu      sync.Mutex
 	conn    Conn
@@ -237,6 +279,8 @@ func NewSession(u *ui.UI, cfg Config) *Session {
 		stop:         cfg.Stop,
 		setCookie:    cfg.SetCookie,
 		onMount:      cfg.OnMount,
+		fonts:        cfg.Fonts,
+		fetch:        cfg.Fetch,
 		sid:          cfg.SID,
 		queue:        make(chan func(), 256),
 		retry:        500 * time.Millisecond,
@@ -366,6 +410,19 @@ func (s *Session) readLoop(conn Conn) {
 // -- message handling (main thread) ----------------------------------------------------
 
 func (s *Session) handle(msg *serverMsg) {
+	if s.held != nil {
+		s.held = append(s.held, msg)
+		return
+	}
+	if msg.T == wire.MsgMount && msg.Resources != nil {
+		s.loadFonts(msg.Resources.Fonts)
+		if !s.waited && s.fontsLoading > 0 {
+			s.waited = true
+			s.held = []*serverMsg{msg}
+			s.holdTimer = time.AfterFunc(fontWait, func() { s.post(s.release) })
+			return
+		}
+	}
 	s.mu.Lock()
 	s.lastSeq = msg.Seq
 	s.mu.Unlock()
@@ -410,8 +467,13 @@ func (s *Session) handle(msg *serverMsg) {
 			}
 		}
 		if msg.Resources != nil {
-			s.applyResources(msg.Resources.Images, msg.Resources.Sounds)
+			s.applyResources(msg.Resources)
 		}
+		defaults := fontDefaults{} // absent is built-in, replacing a resumed choice
+		if msg.Fonts != nil {
+			defaults = *msg.Fonts
+		}
+		s.setFonts(defaults)
 		s.store.Reset()
 		if msg.Root != nil {
 			root := s.store.Build(*msg.Root)
@@ -516,7 +578,9 @@ func (s *Session) applyOp(op *patchOp) bool {
 			s.setCookie(op.Cookie)
 		}
 	case wire.OpResource:
-		s.applyResources(op.Images, op.Sounds)
+		s.applyResources(&resourceSpec{Images: op.Images, Sounds: op.Sounds, Fonts: op.Fonts})
+	case wire.OpFonts:
+		s.setFonts(fontDefaults{UI: op.UI, Mono: op.Mono})
 	case wire.OpPlay:
 		if s.play != nil {
 			s.play(op.Src, op.Loop)
@@ -617,16 +681,97 @@ func (s *Session) applySounds(tokens map[string]string) {
 	}
 }
 
-func (s *Session) applyResources(images, sounds []string) {
+func (s *Session) applyResources(res *resourceSpec) {
 	if s.preload != nil {
-		for _, src := range images {
+		for _, src := range res.Images {
 			s.preload(src)
 		}
 	}
 	if s.preloadSound != nil {
-		for _, src := range sounds {
+		for _, src := range res.Sounds {
 			s.preloadSound(src)
 		}
+	}
+	s.loadFonts(res.Fonts)
+}
+
+// -- fonts -------------------------------------------------------------------------------
+
+func (s *Session) setFonts(d fontDefaults) {
+	if s.fonts == nil {
+		return
+	}
+	gen := s.fonts.Gen()
+	s.fonts.SetDefaults(d.UI, d.Mono)
+	if s.fonts.Gen() != gen {
+		s.ui.Remeasure()
+	}
+}
+
+func (s *Session) loadFonts(specs []fontSpec) {
+	for _, spec := range specs {
+		for _, src := range spec.Srcs {
+			s.loadFont(spec.Family, src)
+		}
+	}
+}
+
+// fetch and parse off the main thread, install on it. a file that fails to
+// fetch or parse is logged and skipped, text falls back to the built-in face
+func (s *Session) loadFont(family, src string) {
+	if s.fonts == nil {
+		return
+	}
+	key := family + "\x00" + src
+	if s.fontSrcs[key] {
+		return
+	}
+	if s.fontSrcs == nil {
+		s.fontSrcs = map[string]bool{}
+	}
+	s.fontSrcs[key] = true
+	s.fontsLoading++
+	go func() {
+		data, err := s.fontBytes(src)
+		var file *text.FontFile
+		if err == nil {
+			file, err = text.ParseFont(data)
+		}
+		s.post(func() {
+			s.fontsLoading--
+			if err != nil {
+				log.Printf("caution: font %q failed: %v", src, err)
+			} else {
+				s.fonts.Add(family, file)
+				s.ui.Remeasure()
+			}
+			if s.fontsLoading == 0 {
+				s.release()
+			}
+		})
+	}()
+}
+
+func (s *Session) fontBytes(src string) ([]byte, error) {
+	if strings.HasPrefix(src, "data:") {
+		return wire.DataURI(src)
+	}
+	if s.fetch == nil {
+		return nil, errors.New("no fetcher configured")
+	}
+	return s.fetch(src)
+}
+
+// applies the mount that waited for its fonts and everything queued behind it
+func (s *Session) release() {
+	if s.held == nil {
+		return
+	}
+	s.holdTimer.Stop()
+	held := s.held
+	s.held = nil
+	for _, m := range held {
+		s.handle(m)
 	}
 }
 

@@ -2,87 +2,22 @@
 // shaping (kerning, ligatures, mark placement) and outline rasterization into
 // a shelf-packed atlas with subpixel phases
 //
-// fonts are embedded, not discovered, so native pixels are deterministic
-// across machines
+// fonts are embedded or registered by the app, never discovered, so native
+// pixels are deterministic across machines
 //
 // not safe for concurrent use. the terminal renders on one thread and
 // go-text Faces cache internally without locks
 package text
 
 import (
-	"bytes"
-	"sync"
-
 	"github.com/nullentropy/caution/terminal/gfx"
 
 	"github.com/go-text/typesetting/di"
 	"github.com/go-text/typesetting/font"
 	"github.com/go-text/typesetting/language"
 	"github.com/go-text/typesetting/shaping"
-	"golang.org/x/image/font/gofont/gobold"
-	"golang.org/x/image/font/gofont/gobolditalic"
-	"golang.org/x/image/font/gofont/goitalic"
-	"golang.org/x/image/font/gofont/gomedium"
-	"golang.org/x/image/font/gofont/gomediumitalic"
-	"golang.org/x/image/font/gofont/gomono"
-	"golang.org/x/image/font/gofont/gomonobold"
-	"golang.org/x/image/font/gofont/gomonobolditalic"
-	"golang.org/x/image/font/gofont/gomonoitalic"
-	"golang.org/x/image/font/gofont/goregular"
 	"golang.org/x/image/math/fixed"
 )
-
-type faceStyle struct {
-	mono, italic bool
-	// 400, 500 or 700. mono has no medium
-	weight int
-}
-
-var faceTTFs = map[faceStyle][]byte{
-	{weight: 400}:                           goregular.TTF,
-	{weight: 400, italic: true}:             goitalic.TTF,
-	{weight: 500}:                           gomedium.TTF,
-	{weight: 500, italic: true}:             gomediumitalic.TTF,
-	{weight: 700}:                           gobold.TTF,
-	{weight: 700, italic: true}:             gobolditalic.TTF,
-	{mono: true, weight: 400}:               gomono.TTF,
-	{mono: true, weight: 400, italic: true}: gomonoitalic.TTF,
-	{mono: true, weight: 700}:               gomonobold.TTF,
-	{mono: true, weight: 700, italic: true}: gomonobolditalic.TTF,
-}
-
-var (
-	facesMu sync.Mutex
-	faces   = map[faceStyle]*font.Face{}
-)
-
-func mustParse(ttf []byte) *font.Face {
-	f, err := font.ParseTTF(bytes.NewReader(ttf))
-	if err != nil {
-		panic("caution: embedded font failed to parse: " + err.Error())
-	}
-	return f
-}
-
-// weights snap to the nearest of regular/medium/bold, which covers the
-// protocol's practical range
-func FaceFor(f gfx.Font) *font.Face {
-	st := faceStyle{mono: f.Mono, italic: f.Italic, weight: 400}
-	switch {
-	case f.Weight >= 650:
-		st.weight = 700
-	case f.Weight >= 500 && !f.Mono:
-		st.weight = 500
-	}
-	facesMu.Lock()
-	defer facesMu.Unlock()
-	face, ok := faces[st]
-	if !ok {
-		face = mustParse(faceTTFs[st])
-		faces[st] = face
-	}
-	return face
-}
 
 // positioned relative to the run origin
 type Placed struct {
@@ -91,9 +26,9 @@ type Placed struct {
 	X float32
 	// rune index this glyph maps back to, for caret and selection math
 	Cluster int
-	// GID belongs to the emoji fallback face and the atlas must rasterize
-	// from it
-	Emoji bool
+	// the face that shaped it, which owns the GID namespace the atlas
+	// rasterizes from
+	Face *font.Face
 }
 
 type Run struct {
@@ -110,26 +45,30 @@ type Run struct {
 // laid out in visual order. pure LTR is one run, so the common case is
 // byte-identical to unsegmented shaping
 type Shaper struct {
-	hb    shaping.HarfbuzzShaper
-	seg   shaping.Segmenter
+	reg *Registry
+	gen int
+	seg shaping.Segmenter
+	// go-text caches its harfbuzz font per parsed *font.Font, so faces that
+	// share a file but differ in variation coords each need their own shaper
+	hbs   map[*font.Face]*shaping.HarfbuzzShaper
 	cache map[string]*Run
 }
 
 // set by emoji.go's init
 var emojiFace *font.Face
 
-// per rune: the font's own face if it covers the rune, else the emoji face
-// if that does, else the primary face (.notdef, deterministic tofu instead
-// of a system font). default-ignorable runes (ZWJ, variation selectors)
-// never force a face change so emoji sequences stay whole
+// per rune: the first face in the chain that covers it, else the primary
+// face (.notdef, deterministic tofu instead of a system font). default-
+// ignorable runes (ZWJ, variation selectors) never force a face change so
+// emoji sequences stay whole
 //
 // force carries sequence context the per-rune interface can't see. runes
-// followed by a VS16 or combining keycap take the emoji face even when the
-// text face covers them ("1" is a Go-font digit but "1️⃣" must ligate in the
+// followed by a VS16 or combining keycap take the emoji face even when a
+// text face covers them ("1" is a text digit but "1️⃣" must ligate in the
 // emoji face's GSUB)
 type fallbackFontmap struct {
-	primary *font.Face
-	force   map[rune]bool
+	chain []*font.Face
+	force map[rune]bool
 }
 
 func (m fallbackFontmap) ResolveFace(r rune) *font.Face {
@@ -138,13 +77,12 @@ func (m fallbackFontmap) ResolveFace(r rune) *font.Face {
 			return emojiFace
 		}
 	}
-	if _, ok := m.primary.NominalGlyph(r); ok {
-		return m.primary
+	for _, face := range m.chain {
+		if _, ok := face.NominalGlyph(r); ok {
+			return face
+		}
 	}
-	if _, ok := emojiFace.NominalGlyph(r); ok {
-		return emojiFace
-	}
-	return m.primary
+	return m.chain[0]
 }
 
 // runes before U+FE0F (VS16) or U+20E3 (combining enclosing keycap) go to
@@ -174,13 +112,33 @@ func emojiForced(runes []rune) map[rune]bool {
 	return m
 }
 
-func NewShaper() *Shaper {
-	return &Shaper{cache: make(map[string]*Run)}
+func NewShaper(reg *Registry) *Shaper {
+	return &Shaper{reg: reg, hbs: map[*font.Face]*shaping.HarfbuzzShaper{}, cache: make(map[string]*Run)}
 }
 
 func fixed2f(v fixed.Int26_6) float32 { return float32(v) / 64 }
 
+// a registry change (font loaded, defaults switched) can resolve every run
+// differently, so both caches start over
+func (s *Shaper) sync() {
+	if s.gen != s.reg.gen {
+		s.gen = s.reg.gen
+		clear(s.cache)
+		clear(s.hbs)
+	}
+}
+
+func (s *Shaper) hb(face *font.Face) *shaping.HarfbuzzShaper {
+	h, ok := s.hbs[face]
+	if !ok {
+		h = &shaping.HarfbuzzShaper{}
+		s.hbs[face] = h
+	}
+	return h
+}
+
 func (s *Shaper) Shape(f gfx.Font, dpr float32, textStr string) *Run {
+	s.sync()
 	key := f.Key + "|" + fmtDPR(dpr) + "|" + textStr
 	if hit, ok := s.cache[key]; ok {
 		return hit
@@ -189,7 +147,8 @@ func (s *Shaper) Shape(f gfx.Font, dpr float32, textStr string) *Run {
 		s.cache = make(map[string]*Run)
 	}
 
-	face := FaceFor(f)
+	chain := s.reg.chain(f)
+	face := chain[0]
 	sizeDev := fixed.Int26_6(f.Size*dpr*64 + 0.5)
 
 	runes := []rune(textStr)
@@ -217,14 +176,14 @@ func (s *Shaper) Shape(f gfx.Font, dpr float32, textStr string) *Run {
 		Size:      sizeDev,
 		Script:    language.Latin,
 		Language:  language.NewLanguage("en"),
-	}, fallbackFontmap{primary: face, force: emojiForced(runes)})
+	}, fallbackFontmap{chain: chain, force: emojiForced(runes)})
 
 	outs := make([]shaping.Output, len(inputs))
 	total := 0
 	for i := range inputs {
 		// runs share the full Text with RunStart/RunEnd windows, so harfbuzz
 		// sees cross-run context and clusters stay absolute rune offsets
-		outs[i] = s.hb.Shape(inputs[i])
+		outs[i] = s.hb(inputs[i].Face).Shape(inputs[i])
 		total += len(outs[i].Glyphs)
 		a := fixed2f(outs[i].LineBounds.Ascent) / dpr
 		d := fixed2f(outs[i].LineBounds.Descent) / dpr
@@ -239,13 +198,12 @@ func (s *Shaper) Shape(f gfx.Font, dpr float32, textStr string) *Run {
 	pen := fixed.Int26_6(0)
 	run.Glyphs = make([]Placed, 0, total)
 	for _, li := range visualOrder(inputs, di.DirectionLTR) {
-		emoji := inputs[li].Face == emojiFace
 		for _, g := range outs[li].Glyphs {
 			run.Glyphs = append(run.Glyphs, Placed{
 				GID:     g.GlyphID,
 				X:       fixed2f(pen+g.XOffset) / dpr,
 				Cluster: g.ClusterIndex,
-				Emoji:   emoji,
+				Face:    inputs[li].Face,
 			})
 			pen += g.XAdvance
 		}
