@@ -693,3 +693,54 @@ func TestSubmitRepeatsAndFocusReachesTheSession(t *testing.T) {
 		t.Fatal("Focused() still true after the client reported a blur")
 	}
 }
+
+func TestTabHandlerKeepsOrReleasesTheKey(t *testing.T) {
+	type call struct {
+		shift bool
+		value string
+		caret int
+	}
+	calls := make(chan call, 4)
+	keep := true
+	var sess *Session
+	var field *Node
+	tc := dialSession(t, func(s *Session) *Node {
+		sess = s
+		field = TextField("").OnTab(func(shift bool, v string, caret int) bool {
+			calls <- call{shift, v, caret}
+			return keep
+		})
+		return Panel().Kids(field)
+	})
+	m := tc.read()
+	id, seq := kidIDs(t, m)[0], seqOf(t, m)
+	ev := map[string]any{"shift": false, "value": "ab", "caret": 1}
+
+	tc.eventValue(id, "tab", ev, seq)
+	if got := <-calls; got != (call{false, "ab", 1}) {
+		t.Fatalf("handler got %+v", got)
+	}
+	// a kept key queues nothing, so the next message is the one after release
+	keep = false
+	ev["shift"] = true
+	tc.eventValue(id, "tab", ev, seq)
+	<-calls
+	var op map[string]any
+	for op == nil {
+		ops, _ := tc.read()["ops"].([]any)
+		for _, o := range ops {
+			if om, _ := o.(map[string]any); om["cmd"] == "tabout" {
+				op = om
+			}
+		}
+	}
+	if op["value"] != "-1" || int(op["id"].(float64)) != id {
+		t.Fatalf("tabout op = %v; want value -1 for node %d", op, id)
+	}
+
+	done := make(chan any)
+	sess.Update(func() { done <- field.props["value"] })
+	if v := <-done; v != "ab" {
+		t.Fatalf("server value = %v; want the echoed text", v)
+	}
+}

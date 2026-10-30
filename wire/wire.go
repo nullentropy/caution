@@ -48,6 +48,7 @@ const (
 	EvInput        Event = "input"
 	EvCommit       Event = "commit"
 	EvSubmit       Event = "submit"
+	EvTab          Event = "tab"
 	EvSelect       Event = "select"
 	EvDismiss      Event = "dismiss"
 	EvSort         Event = "sort"
@@ -114,6 +115,8 @@ const (
 	CmdReveal Cmd = "reveal"
 	CmdClear  Cmd = "clear"
 	CmdValue  Cmd = "value"
+	// value "1" or "-1", moves focus on from the node as Tab or Shift+Tab would
+	CmdTabOut Cmd = "tabout"
 )
 
 type Msg string

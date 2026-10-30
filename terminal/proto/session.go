@@ -574,6 +574,12 @@ func (s *Session) command(w ui.Widget, cmd wire.Cmd, value string) {
 		case *ui.TextArea:
 			t.ForceClear()
 		}
+	case wire.CmdTabOut:
+		dir := 1
+		if value == "-1" {
+			dir = -1
+		}
+		s.ui.TabOut(w, dir)
 	case wire.CmdValue:
 		switch t := w.(type) {
 		case *ui.TextField:

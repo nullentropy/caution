@@ -879,6 +879,10 @@ func (u *UI) focusedText() *TextField {
 
 func (u *UI) keyDown(k Key) bool {
 	if k.Name == "Tab" {
+		if tf := u.focusedText(); tf != nil && tf.OnTab != nil && !k.Meta && !k.Ctrl && !k.Alt {
+			tf.OnTab(k.Shift, tf.Value, tf.selEnd)
+			return true
+		}
 		dir := 1
 		if k.Shift {
 			dir = -1
@@ -968,7 +972,16 @@ func (u *UI) IsFocused(w Widget) bool { return u.focused == w }
 // keyboard-driven focus only, like :focus-visible
 func (u *UI) ShowFocusRing(w Widget) bool { return u.focused == w && u.focusRing }
 
-func (u *UI) moveFocus(dir int) {
+func (u *UI) moveFocus(dir int) { u.moveFocusFrom(u.focused, dir) }
+
+// as Tab would from w. dropped once w lost focus, the server answered late
+func (u *UI) TabOut(w Widget, dir int) {
+	if u.focused == w {
+		u.moveFocusFrom(w, dir)
+	}
+}
+
+func (u *UI) moveFocusFrom(from Widget, dir int) {
 	var order []Widget
 	var collect func(w Widget)
 	collect = func(w Widget) {
@@ -993,7 +1006,7 @@ func (u *UI) moveFocus(dir int) {
 	}
 	idx := -1
 	for i, w := range order {
-		if w == u.focused {
+		if w == from {
 			idx = i
 			break
 		}

@@ -25,6 +25,7 @@ type Node struct {
 	onInput  func(string)
 	onCommit func(string)
 	onSubmit func(string)
+	onTab    func(shift bool, value string, caret int) bool
 
 	onSelect      func(index int)
 	onDismiss     func()
@@ -447,6 +448,12 @@ func (n *Node) OnCommit(fn func(string)) *Node {
 func (n *Node) OnSubmit(fn func(string)) *Node {
 	n.onSubmit = fn
 	return n.subscribe(wire.EvSubmit)
+}
+
+// return false and focus moves as Tab would. caret is a rune index
+func (n *Node) OnTab(fn func(shift bool, value string, caret int) bool) *Node {
+	n.onTab = fn
+	return n.subscribe(wire.EvTab)
 }
 
 func (n *Node) OnSelect(fn func(index int)) *Node {

@@ -865,6 +865,18 @@ func (s *Session) dispatch(m clientMsg) {
 		if n.onSubmit != nil {
 			n.onSubmit(v)
 		}
+	case wire.EvTab:
+		v, _ := m.Value.(map[string]any)
+		text, _ := v["value"].(string)
+		shift, _ := v["shift"].(bool)
+		n.props["value"] = text // silent local-echo sync
+		if n.onTab != nil && !n.onTab(shift, text, toInt(v["caret"])) {
+			dir := "1"
+			if shift {
+				dir = "-1"
+			}
+			s.queueCmd(n.id, wire.CmdTabOut, dir)
+		}
 	case wire.EvVisibleRange:
 		v, _ := m.Value.(map[string]any)
 		start, end := toInt(v["start"]), toInt(v["end"])

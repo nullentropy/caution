@@ -100,8 +100,8 @@ local interaction, and declares which events it can send.
 | `Label` | wrapping, ellipsis, text selection, copy | |
 | `Image` | async load, aspect fit, rounded corners | |
 | `Button` | hover/press/focus, keyboard activation | `OnClick` |
-| `TextField` | full editing: caret, selection, IME, undo, revert | `OnInput` (debounced), `OnCommit`, `OnSubmit` |
-| `Textarea` | multi-line editing, soft wrap | `OnInput`, `OnCommit`, `OnSubmit` |
+| `TextField` | full editing: caret, selection, IME, undo, revert | `OnInput` (debounced), `OnCommit`, `OnSubmit`, `OnTab` |
+| `Textarea` | multi-line editing, soft wrap | `OnInput`, `OnCommit`, `OnSubmit`, `OnTab` |
 | `Checkbox`, `Radio` | toggle | `OnToggle`, `OnSelect` |
 | `Slider` | drag and keyboard adjust, stepping | `OnSlide`, `OnSlideEnd` |
 | `Progress` | determinate fill | |
@@ -153,6 +153,12 @@ the server use `ClearValue()` or `SetValueNow(v)`.
 
 `OnCommit` fires on Enter and on blur, only when the text changed.
 `OnSubmit` fires on every Enter (Cmd+Enter in a text area) and never on blur.
+
+`OnTab(func(shift bool, value string, caret int) bool)` fires on Tab and
+Shift+Tab in a focused field or text area, with the text and the caret as a
+rune index. Return true to keep the key. Return false and focus moves as it
+would have. `SetValueNow(v)` replaces the text from the handler and leaves the
+caret at the end.
 
 ## Styling: two token tables
 

@@ -638,6 +638,11 @@ func (ns *NodeStore) applyText(t *ui.TextField, id int, p props) {
 	if subscribed(p, wire.EvSubmit) {
 		t.OnSubmit = func(v string) { ns.sink.Event(id, wire.EvSubmit, v) }
 	}
+	if subscribed(p, wire.EvTab) {
+		t.OnTab = func(shift bool, v string, caret int) {
+			ns.sink.Event(id, wire.EvTab, map[string]any{"shift": shift, "value": v, "caret": caret})
+		}
+	}
 }
 
 func (ns *NodeStore) Remove(id int) {

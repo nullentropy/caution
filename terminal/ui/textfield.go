@@ -29,6 +29,8 @@ type TextField struct {
 	OnInput  func(v string)
 	OnCommit func(v string)
 	OnSubmit func(v string)
+	// set, Tab stays here instead of moving focus
+	OnTab func(shift bool, value string, caret int)
 
 	// selEnd is the caret, selStart pins the other end
 	selStart, selEnd int
