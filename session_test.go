@@ -668,3 +668,28 @@ func TestMotionRidesMountAndPatchesLive(t *testing.T) {
 		t.Fatalf("live motion op = %v", ops)
 	}
 }
+
+func TestSubmitRepeatsAndFocusReachesTheSession(t *testing.T) {
+	fired := make(chan string, 8)
+	var sess *Session
+	tc := dialSession(t, func(s *Session) *Node {
+		sess = s
+		s.OnFocus(func(focused bool) { fired <- fmt.Sprint("focus ", focused) })
+		return Panel().Kids(TextField("").OnSubmit(func(v string) { fired <- "submit " + v }))
+	})
+	m := tc.read()
+	id, seq := kidIDs(t, m)[0], seqOf(t, m)
+
+	tc.eventValue(id, "submit", "hi", seq)
+	expectFire(t, fired, "submit hi")
+	tc.eventValue(id, "submit", "hi", seq)
+	expectFire(t, fired, "submit hi")
+
+	tc.eventValue(0, "focus", false, seq)
+	expectFire(t, fired, "focus false")
+	done := make(chan bool)
+	sess.Update(func() { done <- sess.Focused() })
+	if <-done {
+		t.Fatal("Focused() still true after the client reported a blur")
+	}
+}

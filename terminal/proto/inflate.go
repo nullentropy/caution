@@ -635,6 +635,9 @@ func (ns *NodeStore) applyText(t *ui.TextField, id int, p props) {
 	if subscribed(p, wire.EvCommit) {
 		t.OnCommit = func(v string) { ns.sink.Event(id, wire.EvCommit, v) }
 	}
+	if subscribed(p, wire.EvSubmit) {
+		t.OnSubmit = func(v string) { ns.sink.Event(id, wire.EvSubmit, v) }
+	}
 }
 
 func (ns *NodeStore) Remove(id int) {

@@ -57,6 +57,8 @@ type Session struct {
 	onAux        func(button int)
 	onFullscreen func(on bool)
 	fullscreen   bool
+	onFocus      func(focused bool)
+	unfocused    bool
 
 	preloads      []string
 	soundPreloads []string
@@ -485,6 +487,13 @@ func (s *Session) OnFullscreen(fn func(on bool)) { s.onFullscreen = fn }
 // last known client state
 func (s *Session) Fullscreen() bool { return s.fullscreen }
 
+// the client window gaining or losing focus. a hidden browser tab counts as
+// unfocused
+func (s *Session) OnFocus(fn func(focused bool)) { s.onFocus = fn }
+
+// last known client state, true until the client says otherwise
+func (s *Session) Focused() bool { return !s.unfocused }
+
 // canonical modifier order and case so the client's event-derived string
 // always matches: cmd+ctrl+alt+shift+<key>
 func normalizeCombo(combo string) string {
@@ -784,6 +793,12 @@ func (s *Session) dispatch(m clientMsg) {
 			if s.onFullscreen != nil {
 				s.onFullscreen(on)
 			}
+		case wire.EvFocus:
+			focused, _ := m.Value.(bool)
+			s.unfocused = !focused
+			if s.onFocus != nil {
+				s.onFocus(focused)
+			}
 		}
 		return
 	}
@@ -843,6 +858,12 @@ func (s *Session) dispatch(m clientMsg) {
 			}
 		} else if n.onCommit != nil {
 			n.onCommit(v)
+		}
+	case wire.EvSubmit:
+		v, _ := m.Value.(string)
+		n.props["value"] = v // silent local-echo sync
+		if n.onSubmit != nil {
+			n.onSubmit(v)
 		}
 	case wire.EvVisibleRange:
 		v, _ := m.Value.(map[string]any)

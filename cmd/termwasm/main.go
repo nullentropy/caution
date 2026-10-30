@@ -106,6 +106,7 @@ func main() {
 		"activate":     js.FuncOf(activate),
 		"fullscreen":   js.FuncOf(fullscreen),
 		"reduceMotion": js.FuncOf(reduceMotion),
+		"focus":        js.FuncOf(focus),
 	})
 	select {}
 }
@@ -166,6 +167,11 @@ func paint(_ js.Value, a []js.Value) any {
 		on = 1
 	}
 	return []any{on, kind}
+}
+
+func focus(_ js.Value, a []js.Value) any {
+	sess.NoteFocus(a[0].Bool())
+	return nil
 }
 
 func reduceMotion(_ js.Value, a []js.Value) any {

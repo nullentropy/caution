@@ -47,6 +47,7 @@ const (
 	EvToggle       Event = "toggle"
 	EvInput        Event = "input"
 	EvCommit       Event = "commit"
+	EvSubmit       Event = "submit"
 	EvSelect       Event = "select"
 	EvDismiss      Event = "dismiss"
 	EvSort         Event = "sort"
@@ -72,6 +73,7 @@ const (
 	EvKey        Event = "key"
 	EvAux        Event = "aux"
 	EvFullscreen Event = "fullscreen"
+	EvFocus      Event = "focus"
 )
 
 type Op string

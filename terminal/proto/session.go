@@ -185,6 +185,7 @@ type Session struct {
 	sid     string
 
 	fullscreen bool
+	unfocused  bool
 
 	mounted bool
 	// set by a denied message, under mu. the server refused us so retrying
@@ -419,10 +420,14 @@ func (s *Session) handle(msg *serverMsg) {
 			}
 		}
 		s.mu.Lock()
-		fs := s.fullscreen
+		fs, unfocused := s.fullscreen, s.unfocused
 		s.mu.Unlock()
 		if fs {
 			s.Event(0, wire.EvFullscreen, true)
+		}
+		// a server assumes focused, so only the exception needs saying
+		if unfocused {
+			s.Event(0, wire.EvFocus, false)
 		}
 	case wire.MsgResume:
 		// nothing changed while we were away, keep everything
@@ -668,6 +673,18 @@ func (s *Session) NoteFullscreen(on bool) {
 	s.fullscreen = on
 	s.mu.Unlock()
 	s.Event(0, wire.EvFullscreen, on)
+}
+
+// main thread
+func (s *Session) NoteFocus(focused bool) {
+	s.ui.SetWindowActive(focused)
+	s.mu.Lock()
+	changed := s.unfocused == focused
+	s.unfocused = !focused
+	s.mu.Unlock()
+	if changed {
+		s.Event(0, wire.EvFocus, focused)
+	}
 }
 
 // debounced into the session-level resize event, node id 0 since no widget

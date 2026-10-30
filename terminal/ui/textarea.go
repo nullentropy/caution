@@ -196,7 +196,7 @@ func (a *TextArea) hostKey(k Key) bool {
 		a.verticalMove(1, k.Shift)
 		return true
 	case k.Name == "Enter" && (k.Meta || k.Ctrl):
-		a.Commit()
+		a.Submit()
 		return true
 	case k.Name == "Escape":
 		return a.revert()
@@ -218,7 +218,7 @@ func (a *TextArea) OnKey(k Key) bool {
 	switch k.Name {
 	case "Enter":
 		if cmdish {
-			a.Commit() // Cmd+Enter commits without leaving the field
+			a.Submit() // Cmd+Enter submits without leaving the field
 			return true
 		}
 		a.edit(s, e, "\n")

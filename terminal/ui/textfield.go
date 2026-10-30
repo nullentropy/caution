@@ -24,9 +24,11 @@ type TextField struct {
 	Focused bool
 
 	// OnInput fires on every edit (the protocol layer debounces), OnCommit on
-	// Enter/blur and only when changed
+	// Enter/blur and only when changed, OnSubmit on every Enter and never on
+	// blur
 	OnInput  func(v string)
 	OnCommit func(v string)
+	OnSubmit func(v string)
 
 	// selEnd is the caret, selStart pins the other end
 	selStart, selEnd int
@@ -94,6 +96,14 @@ func (t *TextField) Commit() {
 	t.lastCommitted = t.Value
 	if t.OnCommit != nil {
 		t.OnCommit(t.Value)
+	}
+}
+
+// Enter: a commit if the value changed, then a submit regardless
+func (t *TextField) Submit() {
+	t.Commit()
+	if t.OnSubmit != nil {
+		t.OnSubmit(t.Value)
 	}
 }
 
@@ -326,7 +336,7 @@ func (t *TextField) SyncFromHost(value string, selStart, selEnd int, typed bool)
 func (t *TextField) hostKey(k Key) bool {
 	switch k.Name {
 	case "Enter":
-		t.Commit()
+		t.Submit()
 		return true
 	case "Escape":
 		return t.revert()
@@ -343,7 +353,7 @@ func (t *TextField) OnKey(k Key) bool {
 	cmdish := k.Meta || k.Ctrl
 	switch k.Name {
 	case "Enter":
-		t.Commit()
+		t.Submit()
 		return true
 	case "Backspace":
 		switch {

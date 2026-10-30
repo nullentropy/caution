@@ -53,6 +53,11 @@ export class Host {
     const motion = matchMedia('(prefers-reduced-motion: reduce)');
     term.reduceMotion(motion.matches);
     motion.addEventListener('change', (e) => term.reduceMotion(e.matches));
+    const focus = () => term.focus(document.hasFocus() && document.visibilityState === 'visible');
+    window.addEventListener('focus', focus);
+    window.addEventListener('blur', focus);
+    document.addEventListener('visibilitychange', focus);
+    focus();
     new ResizeObserver(() => this.invalidate()).observe(canvas);
     // ResizeObserver misses pure-DPR changes (browser zoom, monitor move)
     window.addEventListener('resize', () => this.invalidate());

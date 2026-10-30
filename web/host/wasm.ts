@@ -22,6 +22,8 @@ export interface WasmTerm {
   fullscreen(on: boolean): void;
   // the OS reduce-motion preference, at startup and on every change
   reduceMotion(on: boolean): void;
+  // window focus, false while the tab is hidden too
+  focus(focused: boolean): void;
 }
 
 // frame kinds paint reports

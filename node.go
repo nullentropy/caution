@@ -24,6 +24,7 @@ type Node struct {
 	onToggle func(bool)
 	onInput  func(string)
 	onCommit func(string)
+	onSubmit func(string)
 
 	onSelect      func(index int)
 	onDismiss     func()
@@ -436,10 +437,16 @@ func (n *Node) OnInput(fn func(string)) *Node {
 	return n.subscribe(wire.EvInput)
 }
 
-// enter or blur
+// enter or blur, only when the text changed since focus or the last commit
 func (n *Node) OnCommit(fn func(string)) *Node {
 	n.onCommit = fn
 	return n.subscribe(wire.EvCommit)
+}
+
+// every enter (cmd+enter in a text area), changed or not, never blur
+func (n *Node) OnSubmit(fn func(string)) *Node {
+	n.onSubmit = fn
+	return n.subscribe(wire.EvSubmit)
 }
 
 func (n *Node) OnSelect(fn func(index int)) *Node {

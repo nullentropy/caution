@@ -100,8 +100,8 @@ local interaction, and declares which events it can send.
 | `Label` | wrapping, ellipsis, text selection, copy | |
 | `Image` | async load, aspect fit, rounded corners | |
 | `Button` | hover/press/focus, keyboard activation | `OnClick` |
-| `TextField` | full editing: caret, selection, IME, undo, revert | `OnInput` (debounced), `OnCommit` |
-| `Textarea` | multi-line editing, soft wrap | `OnInput`, `OnCommit` |
+| `TextField` | full editing: caret, selection, IME, undo, revert | `OnInput` (debounced), `OnCommit`, `OnSubmit` |
+| `Textarea` | multi-line editing, soft wrap | `OnInput`, `OnCommit`, `OnSubmit` |
 | `Checkbox`, `Radio` | toggle | `OnToggle`, `OnSelect` |
 | `Slider` | drag and keyboard adjust, stepping | `OnSlide`, `OnSlideEnd` |
 | `Progress` | determinate fill | |
@@ -150,6 +150,9 @@ s.Update(func() {              // server push, no client event involved
 Text fields edit locally and stream debounced `OnInput`. The client is
 authoritative for a focused field until `OnCommit`. To force a value from
 the server use `ClearValue()` or `SetValueNow(v)`.
+
+`OnCommit` fires on Enter and on blur, only when the text changed.
+`OnSubmit` fires on every Enter (Cmd+Enter in a text area) and never on blur.
 
 ## Styling: two token tables
 
@@ -255,6 +258,10 @@ s.OnFullscreen(func(on bool) {
     bar.H(map[bool]float64{false: 38, true: 28}[on])
 })
 ```
+
+`s.OnFocus(func(focused bool))` reports the window gaining and losing focus.
+A hidden browser tab counts as unfocused. `s.Focused()` holds the last known
+state.
 
 ## Custom shaders
 
@@ -479,7 +486,7 @@ Each event carries the last patch seq the client applied.
 ```
 
 Node id 0 means the session owns the event, not a widget: viewport resizes, menu
-picks, key combos, and the mouse's extra buttons.
+picks, key combos, the mouse's extra buttons, fullscreen, and window focus.
 
 ### Rules
 

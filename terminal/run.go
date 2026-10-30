@@ -670,7 +670,7 @@ func Run(o Options) error {
 		}
 	})
 	win.SetFocusCallback(func(_ *glfw.Window, focused bool) {
-		u.SetWindowActive(focused)
+		sess.NoteFocus(focused)
 		if focused {
 			// the user may have changed it in system settings while away
 			u.SetSystemReducedMotion(systemReducedMotion())
