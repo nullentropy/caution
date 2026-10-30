@@ -24,6 +24,11 @@ export interface WasmTerm {
   reduceMotion(on: boolean): void;
   // window focus, false while the tab is hidden too
   focus(focused: boolean): void;
+  fileDrag(over: boolean): void;
+  // most bytes the server takes in one drop, 0 until it mounts
+  fileDropCap(): number;
+  // x, y in logical px
+  fileDrop(x: number, y: number, files: { name: string; type: string; data: Uint8Array }[]): void;
 }
 
 // frame kinds paint reports

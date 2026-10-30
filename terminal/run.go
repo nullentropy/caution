@@ -466,6 +466,7 @@ func Run(o Options) error {
 		Stop:         stopSound,
 	})
 	watchFullscreen(win, sess.NoteFullscreen)
+	watchFileDrag(win, sess.NoteFileDrag)
 
 	// grace period swallows the launch burst (the key or click that started the
 	// app, a cursor already crossing the window)
@@ -675,6 +676,11 @@ func Run(o Options) error {
 			// the user may have changed it in system settings while away
 			u.SetSystemReducedMotion(systemReducedMotion())
 		}
+	})
+	win.SetDropCallback(func(_ *glfw.Window, paths []string) {
+		// glfw feeds the drop point through the cursor callback first. the
+		// polled cursor position is the pointer's, not the drag's, on macOS
+		sendDroppedFiles(sess, paths, float64(mouseX), float64(mouseY))
 	})
 	win.SetRefreshCallback(func(*glfw.Window) {
 		dirty = true

@@ -269,6 +269,40 @@ s.OnFullscreen(func(on bool) {
 A hidden browser tab counts as unfocused. `s.Focused()` holds the last known
 state.
 
+## File drops
+
+Files dragged from the OS onto the window reach the server with their
+contents, since the server may run on another machine than the window:
+
+```go
+s.OnFileDrop(func(files []caution.File, x, y float64) {
+    for _, f := range files {
+        log.Println(f.Name, f.Type, len(f.Data))
+    }
+})
+s.OnFileDrag(func(over bool) {
+    hint := ""
+    if over {
+        hint = "release to drop"
+    }
+    status.SetText(hint)
+})
+```
+
+`x` and `y` are the drop point in logical px. `File.Type` is the media type the
+client reports, empty if it could not tell. A handler runs once per drop, after
+every byte has arrived. A drop whose total size is over `Options.MaxDropBytes`
+(default 32MB) is skipped by the client and logged, and a drop cut off by a
+disconnect delivers nothing. Directories are skipped.
+
+`OnFileDrag` reports a file drag entering and leaving the window, and `false`
+when the drop lands. Natively it fires on macOS only, since GLFW has no drag
+enter or leave callback elsewhere.
+
+Files travel as `filedrop` events on node id 0: a `start` with the drop point
+and each file's name, type and size, then base64 `data` chunks of at most 384KB
+raw, then `end`.
+
 ## Custom shaders
 
 Apps can ship GLSL over the wire. Two forms:

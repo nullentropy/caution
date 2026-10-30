@@ -32,6 +32,7 @@ type serverMsg struct {
 	Resources *resourceSpec      `json:"resources"`
 	Motion    wire.Motion        `json:"motion"`
 	Cookies   []string           `json:"cookies"`
+	FileCap   int64              `json:"fileCap"`
 	Ops       []patchOp          `json:"ops"`
 }
 
@@ -186,6 +187,9 @@ type Session struct {
 
 	fullscreen bool
 	unfocused  bool
+	fileCap    int64
+	// one drop on the wire at a time, the server rejects interleaved chunks
+	dropMu sync.Mutex
 
 	mounted bool
 	// set by a denied message, under mu. the server refused us so retrying
@@ -378,6 +382,9 @@ func (s *Session) handle(msg *serverMsg) {
 		if msg.Metrics != nil {
 			s.ui.ApplyMetrics(msg.Metrics)
 		}
+		s.mu.Lock()
+		s.fileCap = msg.FileCap
+		s.mu.Unlock()
 		s.applySounds(msg.Sounds) // nil is silent and replaces a table a resume left behind
 		if s.stop != nil {
 			s.stop("")
@@ -626,11 +633,14 @@ func (s *Session) applyResources(images, sounds []string) {
 // -- upstream events -------------------------------------------------------------------
 
 // safe from any goroutine, input debounce timers fire off-thread
-func (s *Session) Event(id int, ev wire.Event, value any) {
+func (s *Session) Event(id int, ev wire.Event, value any) { s.send(id, ev, value) }
+
+// false when nothing was sent
+func (s *Session) send(id int, ev wire.Event, value any) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.conn == nil {
-		return
+		return false
 	}
 	msg := clientEvent{T: wire.MsgEvent, ID: id, Ev: ev, Value: value, Seq: s.lastSeq}
 	data, err := json.Marshal(msg)
@@ -639,7 +649,9 @@ func (s *Session) Event(id int, ev wire.Event, value any) {
 	}
 	if err != nil {
 		log.Println("caution: event send failed:", err)
+		return false
 	}
+	return true
 }
 
 type gorillaConn struct{ *websocket.Conn }

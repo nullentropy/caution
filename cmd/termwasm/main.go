@@ -107,6 +107,9 @@ func main() {
 		"fullscreen":   js.FuncOf(fullscreen),
 		"reduceMotion": js.FuncOf(reduceMotion),
 		"focus":        js.FuncOf(focus),
+		"fileDrag":     js.FuncOf(fileDrag),
+		"fileDropCap":  js.FuncOf(fileDropCap),
+		"fileDrop":     js.FuncOf(fileDrop),
 	})
 	select {}
 }
@@ -171,6 +174,29 @@ func paint(_ js.Value, a []js.Value) any {
 
 func focus(_ js.Value, a []js.Value) any {
 	sess.NoteFocus(a[0].Bool())
+	return nil
+}
+
+func fileDrag(_ js.Value, a []js.Value) any {
+	sess.NoteFileDrag(a[0].Bool())
+	return nil
+}
+
+func fileDropCap(js.Value, []js.Value) any { return float64(sess.FileDropCap()) }
+
+// args: x, y, [{name, type, data}]. sends block on the socket, so off the js
+// callback
+func fileDrop(_ js.Value, a []js.Value) any {
+	list := a[2]
+	files := make([]proto.DropFile, list.Length())
+	for i := range files {
+		f := list.Index(i)
+		data := make([]byte, f.Get("data").Get("length").Int())
+		js.CopyBytesToGo(data, f.Get("data"))
+		files[i] = proto.DropFile{Name: f.Get("name").String(), Type: f.Get("type").String(), Data: data}
+	}
+	x, y := a[0].Float(), a[1].Float()
+	go sess.NoteFileDrop(files, x, y)
 	return nil
 }
 

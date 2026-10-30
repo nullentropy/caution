@@ -59,6 +59,10 @@ type Session struct {
 	fullscreen   bool
 	onFocus      func(focused bool)
 	unfocused    bool
+	onFileDrop   func(files []File, x, y float64)
+	onFileDrag   func(over bool)
+	drop         dropAssembly
+	maxDropBytes int64
 
 	preloads      []string
 	soundPreloads []string
@@ -105,6 +109,8 @@ type Options struct {
 	// how long a disconnected session waits for its client to resume before it
 	// ends. 0 is 60s
 	ResumeGrace time.Duration
+	// total bytes per file drop, the client skips a larger one. 0 is 32MB
+	MaxDropBytes int64
 }
 
 // reconnecting socket plus its reported viewport and the last seq the client
@@ -121,6 +127,8 @@ type clientMsg struct {
 	Ev    wire.Event `json:"ev"`
 	Value any        `json:"value"`
 	Seq   int        `json:"seq"`
+	// socket it arrived on
+	from *websocket.Conn
 }
 
 var (
@@ -192,6 +200,10 @@ func wsHandler(mount MountFunc, opts Options) http.HandlerFunc {
 		if grace == 0 {
 			grace = 60 * time.Second
 		}
+		maxDrop := opts.MaxDropBytes
+		if maxDrop == 0 {
+			maxDrop = defaultMaxDropBytes
+		}
 		var identity any
 		if opts.Authorize != nil {
 			id, err := opts.Authorize(r)
@@ -213,18 +225,19 @@ func wsHandler(mount MountFunc, opts Options) http.HandlerFunc {
 			return
 		}
 		s := &Session{
-			sid:      int(sessionCounter.Add(1)),
-			token:    randToken(),
-			conns:    make(chan adoptedConn, 1),
-			nodes:    map[int]*Node{},
-			updates:  make(chan func(), 64),
-			done:     make(chan struct{}),
-			closing:  make(chan struct{}),
-			grace:    grace,
-			vw:       vw,
-			vh:       vh,
-			identity: identity,
-			req:      r,
+			sid:          int(sessionCounter.Add(1)),
+			token:        randToken(),
+			conns:        make(chan adoptedConn, 1),
+			nodes:        map[int]*Node{},
+			updates:      make(chan func(), 64),
+			done:         make(chan struct{}),
+			closing:      make(chan struct{}),
+			grace:        grace,
+			maxDropBytes: maxDrop,
+			vw:           vw,
+			vh:           vh,
+			identity:     identity,
+			req:          r,
 		}
 		registry.Store(s.token, s)
 		log.Info().Msgf("caution: session %d connected (%s)", s.sid, r.RemoteAddr)
@@ -558,6 +571,7 @@ func (s *Session) run(mount MountFunc, first *websocket.Conn) {
 					dead <- c
 					return
 				}
+				m.from = c
 				msgs <- m
 			}
 		}()
@@ -572,6 +586,7 @@ func (s *Session) run(mount MountFunc, first *websocket.Conn) {
 		// events are small, a message near this limit is a bug or an attack
 		c.SetReadLimit(1 << 20)
 		s.conn = c
+		s.drop.reset() // a drop cut by the old socket can't finish on this one
 		if resumeSeq >= 0 && resumeSeq == s.seq {
 			if err := c.WriteJSON(map[string]any{"t": wire.MsgResume, "seq": s.seq}); err != nil {
 				log.Info().Msgf("caution: session %d resume ack failed: %v", s.sid, err)
@@ -611,6 +626,7 @@ func (s *Session) run(mount MountFunc, first *websocket.Conn) {
 			}
 			_ = s.conn.Close()
 			s.conn = nil
+			s.drop.reset()
 			expire = time.After(s.grace)
 			log.Info().Msgf("caution: session %d disconnected - resumable for %s", s.sid, s.grace)
 		case <-expire:
@@ -669,7 +685,7 @@ func (s *Session) sendMount() {
 	if s.conn == nil {
 		return
 	}
-	msg := map[string]any{"t": wire.MsgMount, "seq": s.seq, "sid": s.token, "root": s.root.toJSON()}
+	msg := map[string]any{"t": wire.MsgMount, "seq": s.seq, "sid": s.token, "root": s.root.toJSON(), "fileCap": s.maxDropBytes}
 	if s.focus != nil && s.focus.sess == s {
 		msg["focus"] = s.focus.id
 	}
@@ -752,7 +768,8 @@ func (s *Session) dispatch(m clientMsg) {
 	if m.T != wire.MsgEvent {
 		return
 	}
-	if !s.allowEvent() {
+	// a drop is many chunks, the byte cap bounds it instead
+	if m.Ev != wire.EvFileDrop && !s.allowEvent() {
 		log.Debug().Msgf("caution: session %d event flood - dropping %s", s.sid, m.Ev)
 		return
 	}
@@ -798,6 +815,19 @@ func (s *Session) dispatch(m clientMsg) {
 			s.unfocused = !focused
 			if s.onFocus != nil {
 				s.onFocus(focused)
+			}
+		case wire.EvFileDrag:
+			over, _ := m.Value.(bool)
+			if s.onFileDrag != nil {
+				s.onFileDrag(over)
+			}
+		case wire.EvFileDrop:
+			if m.from != s.conn {
+				break // queued before a reconnect, its drop was already discarded
+			}
+			v, _ := m.Value.(map[string]any)
+			if files, x, y := s.drop.apply(v, s.maxDropBytes); files != nil && s.onFileDrop != nil {
+				s.onFileDrop(files, x, y)
 			}
 		}
 		return

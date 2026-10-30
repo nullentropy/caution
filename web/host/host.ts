@@ -1,4 +1,5 @@
 import { SoundStore } from '../audio';
+import { attachFileDrop } from './filedrop';
 import { Funnel } from './funnel';
 import { attachInput } from './input';
 import { SemanticsMirror } from './semantics';
@@ -49,6 +50,7 @@ export class Host {
       funnelActive: () => this.funnel.isActive,
       afterInput: () => this.funnel.sync(),
     });
+    attachFileDrop(canvas, term);
     document.addEventListener('fullscreenchange', () => term.fullscreen(document.fullscreenElement != null));
     const motion = matchMedia('(prefers-reduced-motion: reduce)');
     term.reduceMotion(motion.matches);
