@@ -1,11 +1,13 @@
 package text
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/nullentropy/caution/terminal/gfx"
 
 	"github.com/go-text/typesetting/di"
+	"github.com/go-text/typesetting/font"
 	"github.com/go-text/typesetting/shaping"
 )
 
@@ -142,10 +144,21 @@ func TestVisualOrderTwoLevel(t *testing.T) {
 	}
 }
 
-func TestBoldMonoHasItsOwnFace(t *testing.T) {
-	regular := FaceFor(gfx.NewFont(13, gfx.FontOpts{Mono: true}))
-	bold := FaceFor(gfx.NewFont(13, gfx.FontOpts{Mono: true, Weight: 700}))
-	if bold == regular {
-		t.Fatal("bold mono text renders with the regular mono face")
+func TestEveryStyleHasItsOwnFace(t *testing.T) {
+	seen := map[*font.Face]string{}
+	for _, mono := range []bool{false, true} {
+		for _, w := range []int{400, 500, 700} {
+			if mono && w == 500 {
+				continue
+			}
+			for _, italic := range []bool{false, true} {
+				name := fmt.Sprintf("mono=%v weight=%d italic=%v", mono, w, italic)
+				face := FaceFor(gfx.NewFont(13, gfx.FontOpts{Mono: mono, Weight: w, Italic: italic}))
+				if prev, ok := seen[face]; ok {
+					t.Fatalf("%s renders with the %s face", name, prev)
+				}
+				seen[face] = name
+			}
+		}
 	}
 }

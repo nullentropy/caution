@@ -320,6 +320,12 @@ func richTextScene(_ *caution.Session) *caution.Node {
 		caution.Span{Text: "base line height", Bold: true, Mono: true, Bg: "$edgeSoft"},
 		caution.Span{Text: " when faces mix, and dims "},
 		caution.Span{Text: "this run", Italic: true, Color: "$inkDim"},
+		caution.Span{Text: ".\nItalic combines: "},
+		caution.Span{Text: "bold italic", Bold: true, Italic: true},
+		caution.Span{Text: ", "},
+		caution.Span{Text: "mono italic", Mono: true, Italic: true},
+		caution.Span{Text: ", "},
+		caution.Span{Text: "bold mono italic", Bold: true, Mono: true, Italic: true},
 		caution.Span{Text: "."},
 	).FontSize(14).Selectable().
 		Anchor(caution.A{Left: caution.Px(16), Top: caution.Px(16), Right: caution.Px(16)})

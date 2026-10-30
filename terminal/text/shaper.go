@@ -20,19 +20,40 @@ import (
 	"github.com/go-text/typesetting/language"
 	"github.com/go-text/typesetting/shaping"
 	"golang.org/x/image/font/gofont/gobold"
+	"golang.org/x/image/font/gofont/gobolditalic"
 	"golang.org/x/image/font/gofont/goitalic"
 	"golang.org/x/image/font/gofont/gomedium"
+	"golang.org/x/image/font/gofont/gomediumitalic"
 	"golang.org/x/image/font/gofont/gomono"
 	"golang.org/x/image/font/gofont/gomonobold"
+	"golang.org/x/image/font/gofont/gomonobolditalic"
+	"golang.org/x/image/font/gofont/gomonoitalic"
 	"golang.org/x/image/font/gofont/goregular"
 	"golang.org/x/image/math/fixed"
 )
 
+type faceStyle struct {
+	mono, italic bool
+	// 400, 500 or 700. mono has no medium
+	weight int
+}
+
+var faceTTFs = map[faceStyle][]byte{
+	{weight: 400}:                           goregular.TTF,
+	{weight: 400, italic: true}:             goitalic.TTF,
+	{weight: 500}:                           gomedium.TTF,
+	{weight: 500, italic: true}:             gomediumitalic.TTF,
+	{weight: 700}:                           gobold.TTF,
+	{weight: 700, italic: true}:             gobolditalic.TTF,
+	{mono: true, weight: 400}:               gomono.TTF,
+	{mono: true, weight: 400, italic: true}: gomonoitalic.TTF,
+	{mono: true, weight: 700}:               gomonobold.TTF,
+	{mono: true, weight: 700, italic: true}: gomonobolditalic.TTF,
+}
+
 var (
-	facesOnce sync.Once
-	faces     struct {
-		regular, medium, bold, italic, mono, monoBold *font.Face
-	}
+	facesMu sync.Mutex
+	faces   = map[faceStyle]*font.Face{}
 )
 
 func mustParse(ttf []byte) *font.Face {
@@ -43,33 +64,24 @@ func mustParse(ttf []byte) *font.Face {
 	return f
 }
 
-func loadFaces() {
-	faces.regular = mustParse(goregular.TTF)
-	faces.medium = mustParse(gomedium.TTF)
-	faces.bold = mustParse(gobold.TTF)
-	faces.italic = mustParse(goitalic.TTF)
-	faces.mono = mustParse(gomono.TTF)
-	faces.monoBold = mustParse(gomonobold.TTF)
-}
-
 // weights snap to the nearest of regular/medium/bold, which covers the
 // protocol's practical range
 func FaceFor(f gfx.Font) *font.Face {
-	facesOnce.Do(loadFaces)
+	st := faceStyle{mono: f.Mono, italic: f.Italic, weight: 400}
 	switch {
-	case f.Mono && f.Weight >= 650:
-		return faces.monoBold
-	case f.Mono:
-		return faces.mono
-	case f.Italic:
-		return faces.italic
 	case f.Weight >= 650:
-		return faces.bold
-	case f.Weight >= 500:
-		return faces.medium
-	default:
-		return faces.regular
+		st.weight = 700
+	case f.Weight >= 500 && !f.Mono:
+		st.weight = 500
 	}
+	facesMu.Lock()
+	defer facesMu.Unlock()
+	face, ok := faces[st]
+	if !ok {
+		face = mustParse(faceTTFs[st])
+		faces[st] = face
+	}
+	return face
 }
 
 // positioned relative to the run origin
