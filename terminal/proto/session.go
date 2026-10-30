@@ -7,6 +7,7 @@ import (
 	"log"
 	"math"
 	"net/url"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -230,6 +231,8 @@ type Session struct {
 	fullscreen bool
 	unfocused  bool
 	fileCap    int64
+	// debounced events waiting out their quiet period, in arrival order, under mu
+	pending []*pendingEvent
 	// one drop on the wire at a time, the server rejects interleaved chunks
 	dropMu sync.Mutex
 
@@ -780,10 +783,51 @@ func (s *Session) release() {
 // safe from any goroutine, input debounce timers fire off-thread
 func (s *Session) Event(id int, ev wire.Event, value any) { s.send(id, ev, value) }
 
+type pendingEvent struct {
+	id    int
+	ev    wire.Event
+	value any
+	timer *time.Timer
+}
+
+// sends value once id's ev has been quiet for d, replacing any value still
+// waiting. every other event flushes what is waiting first, so the server
+// never sees an edit after the key or click that followed it
+func (s *Session) Debounce(id int, ev wire.Event, value any, d time.Duration) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, p := range s.pending {
+		if p.id == id && p.ev == ev {
+			p.value = value
+			p.timer.Reset(d)
+			return
+		}
+	}
+	p := &pendingEvent{id: id, ev: ev, value: value}
+	p.timer = time.AfterFunc(d, func() {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		if i := slices.Index(s.pending, p); i >= 0 {
+			s.pending = slices.Delete(s.pending, i, i+1)
+			s.writeLocked(p.id, p.ev, p.value)
+		}
+	})
+	s.pending = append(s.pending, p)
+}
+
 // false when nothing was sent
 func (s *Session) send(id int, ev wire.Event, value any) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	for _, p := range s.pending {
+		p.timer.Stop()
+		s.writeLocked(p.id, p.ev, p.value)
+	}
+	s.pending = nil
+	return s.writeLocked(id, ev, value)
+}
+
+func (s *Session) writeLocked(id int, ev wire.Event, value any) bool {
 	if s.conn == nil {
 		return false
 	}

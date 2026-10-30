@@ -165,7 +165,9 @@ s.Update(func() {              // server push, no client event involved
 })
 ```
 
-Text fields edit locally and stream debounced `OnInput`. The client is
+Text fields edit locally and stream `OnInput` after 150ms without typing. A
+pending `OnInput` is sent before any later event, so the server never sees
+a key or click ahead of the edit that preceded it. The client is
 authoritative for a focused field until `OnCommit`. To force a value from
 the server use `ClearValue()` or `SetValueNow(v)`.
 

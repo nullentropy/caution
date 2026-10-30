@@ -2,6 +2,7 @@ package proto
 
 import (
 	"testing"
+	"time"
 
 	"github.com/nullentropy/caution/terminal/ui"
 	"github.com/nullentropy/caution/wire"
@@ -17,6 +18,10 @@ type recorded struct {
 
 func (r *recordingSink) Event(id int, ev wire.Event, value any) {
 	r.events = append(r.events, recorded{id, ev, value})
+}
+
+func (r *recordingSink) Debounce(id int, ev wire.Event, value any, _ time.Duration) {
+	r.Event(id, ev, value)
 }
 
 func TestRichTextSpansInflateReplaceAndClickBack(t *testing.T) {

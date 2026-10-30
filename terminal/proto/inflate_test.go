@@ -2,6 +2,7 @@ package proto
 
 import (
 	"testing"
+	"time"
 
 	"github.com/nullentropy/caution/terminal/gfx"
 	"github.com/nullentropy/caution/terminal/text"
@@ -11,7 +12,8 @@ import (
 
 type nullSink struct{}
 
-func (nullSink) Event(int, wire.Event, any) {}
+func (nullSink) Event(int, wire.Event, any)                   {}
+func (nullSink) Debounce(int, wire.Event, any, time.Duration) {}
 
 // local echo: a focused field ignores plain value sets, the value command
 // forces one through

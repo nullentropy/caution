@@ -21,6 +21,7 @@ type nodeJSON struct {
 
 type EventSink interface {
 	Event(id int, ev wire.Event, value any)
+	Debounce(id int, ev wire.Event, value any, d time.Duration)
 }
 
 func num(v any) (float32, bool) {
@@ -533,9 +534,7 @@ func (ns *NodeStore) Apply(w ui.Widget, id int, p props) {
 			set(p, "value", &t.Value)
 		}
 		if subscribed(p, wire.EvInput) {
-			t.OnInput = debounce(100*time.Millisecond, func(v float32) {
-				ns.sink.Event(id, wire.EvInput, v)
-			})
+			t.OnInput = func(v float32) { ns.sink.Debounce(id, wire.EvInput, v, 100*time.Millisecond) }
 		}
 		if subscribed(p, wire.EvCommit) {
 			t.OnCommit = func(v float32) { ns.sink.Event(id, wire.EvCommit, v) }
@@ -678,9 +677,7 @@ func (ns *NodeStore) applyText(t *ui.TextField, id int, p props) {
 	set(p, "font", &t.Family)
 	set(p, "sensitive", &t.Sensitive)
 	if subscribed(p, wire.EvInput) {
-		t.OnInput = debounce(150*time.Millisecond, func(v string) {
-			ns.sink.Event(id, wire.EvInput, v)
-		})
+		t.OnInput = func(v string) { ns.sink.Debounce(id, wire.EvInput, v, 150*time.Millisecond) }
 	}
 	if subscribed(p, wire.EvCommit) {
 		t.OnCommit = func(v string) { ns.sink.Event(id, wire.EvCommit, v) }
@@ -767,16 +764,4 @@ func construct(typ wire.Type) ui.Widget {
 	// subtree so the rest of the tree still works
 	log.Error().Msgf("caution: unknown node type %q, using panel", typ)
 	return ui.NewPanel()
-}
-
-// trailing, only the last value fires. for the input event, mirrors the
-// browser's 150ms debounce
-func debounce[T any](d time.Duration, fn func(T)) func(T) {
-	var timer *time.Timer
-	return func(v T) {
-		if timer != nil {
-			timer.Stop()
-		}
-		timer = time.AfterFunc(d, func() { fn(v) })
-	}
 }
