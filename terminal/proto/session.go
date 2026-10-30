@@ -31,6 +31,7 @@ type serverMsg struct {
 	Keys      []keySpec          `json:"keys"`
 	Resources *resourceSpec      `json:"resources"`
 	Motion    wire.Motion        `json:"motion"`
+	Cookies   []string           `json:"cookies"`
 	Ops       []patchOp          `json:"ops"`
 }
 
@@ -85,6 +86,7 @@ type patchOp struct {
 	Cmd     wire.Cmd           `json:"cmd"`
 	Value   string             `json:"value"`
 	Motion  wire.Motion        `json:"motion"`
+	Cookie  string             `json:"cookie"`
 }
 
 // one tree row's meta, parallel to its cells in a rows op
@@ -147,6 +149,9 @@ type Config struct {
 	PreloadSound func(src string)
 	Play         func(src string, loop bool)
 	Stop         func(src string)
+	// stores a Set-Cookie string for every later request to the server. nil
+	// ignores cookies
+	SetCookie func(raw string)
 }
 
 // protocol client: applies mount/patch, ships events, reconnects with
@@ -169,6 +174,7 @@ type Session struct {
 	preloadSound func(src string)
 	play         func(src string, loop bool)
 	stop         func(src string)
+	setCookie    func(raw string)
 	onMount      func(sid string)
 
 	queue chan func()
@@ -181,6 +187,9 @@ type Session struct {
 	fullscreen bool
 
 	mounted bool
+	// set by a denied message, under mu. the server refused us so retrying
+	// can't help
+	denied bool
 	// main thread only. once set the tree outlives the socket and disconnects
 	// show a banner instead of the status screen
 	everMounted bool
@@ -221,6 +230,7 @@ func NewSession(u *ui.UI, cfg Config) *Session {
 		preloadSound: cfg.PreloadSound,
 		play:         cfg.Play,
 		stop:         cfg.Stop,
+		setCookie:    cfg.SetCookie,
 		onMount:      cfg.OnMount,
 		sid:          cfg.SID,
 		queue:        make(chan func(), 256),
@@ -321,8 +331,9 @@ func (s *Session) readLoop(conn Conn) {
 			if current {
 				s.conn = nil
 			}
+			retry := current && !s.denied
 			s.mu.Unlock()
-			if current {
+			if retry {
 				s.scheduleRetry()
 			}
 			return
@@ -330,6 +341,17 @@ func (s *Session) readLoop(conn Conn) {
 		var msg serverMsg
 		if err := json.Unmarshal(data, &msg); err != nil {
 			log.Println("caution: bad server message:", err)
+			continue
+		}
+		if msg.T == wire.MsgDenied {
+			s.mu.Lock()
+			s.denied = true
+			s.mu.Unlock()
+			s.post(func() {
+				s.mounted = false
+				s.hideBanner()
+				s.showStatus("access denied")
+			})
 			continue
 		}
 		s.post(func() { s.handle(&msg) })
@@ -374,6 +396,11 @@ func (s *Session) handle(msg *serverMsg) {
 			s.applyKeys(msg.Keys)
 		}
 		s.ui.SetMotion(motion(msg.Motion)) // absent is system, replacing a resumed choice
+		if s.setCookie != nil {
+			for _, c := range msg.Cookies {
+				s.setCookie(c)
+			}
+		}
 		if msg.Resources != nil {
 			s.applyResources(msg.Resources.Images, msg.Resources.Sounds)
 		}
@@ -472,6 +499,10 @@ func (s *Session) applyOp(op *patchOp) bool {
 		s.applyKeys(op.Keys)
 	case wire.OpMotion:
 		s.ui.SetMotion(motion(op.Motion))
+	case wire.OpCookie:
+		if s.setCookie != nil {
+			s.setCookie(op.Cookie)
+		}
 	case wire.OpResource:
 		s.applyResources(op.Images, op.Sounds)
 	case wire.OpPlay:

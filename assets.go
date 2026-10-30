@@ -55,6 +55,13 @@ func ServeAssets(prefix, dir string) {
 // registers / (generated host page), /app.js and /term.wasm
 func ServeClient() {
 	ServeHostPage()
+	ServeTerminal()
+}
+
+// registers /app.js and /term.wasm and leaves / to the app, which can gate
+// the page load (redirect to a login, check a cookie) and then hand off to
+// HostPage
+func ServeTerminal() {
 	http.HandleFunc("/app.js", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
 		_, _ = w.Write(embeddedClient)
@@ -94,13 +101,14 @@ func wasmHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // registers / alone, /app.js is left to the caller
-func ServeHostPage() {
-	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/" {
-			http.NotFound(w, r)
-			return
-		}
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_, _ = w.Write([]byte(hostPage))
-	})
+func ServeHostPage() { http.HandleFunc("/", HostPage) }
+
+// the page that boots the browser terminal, 404 for any path but /
+func HostPage(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path != "/" {
+		http.NotFound(w, r)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	_, _ = w.Write([]byte(hostPage))
 }

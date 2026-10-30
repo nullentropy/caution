@@ -184,7 +184,7 @@ and always run.
 
 ```go
 s.SetMotion(caution.MotionReduced) // or MotionFull, or MotionSystem (default)
-messages := caution.Scroll().NoFade() // bulk inserts here appear at once
+list := caution.Scroll().NoFade() // inserts here appear at once
 ```
 
 `NoFade` covers inserts anywhere in the node's subtree and leaves the reflow
@@ -365,10 +365,48 @@ screen readers.
 
 - `Authorize(r) (identity, error)` runs on every connection, including
   resumes. A resumed session must present the same identity, so a leaked
-  resume token cannot adopt another user's session
+  resume token cannot adopt another user's session. A refused client shows
+  "access denied" and stops reconnecting
+- `ResumeGrace`, how long a disconnected session waits for its client
+  (60s by default)
 - `AllowedOrigins` (same-origin by default), `TLSCert`/`TLSKey`
 - mount, handlers, and `Update` closures run behind a recover barrier: a
   panicking handler logs a stack trace and shows an in-app crash dialog
+
+Sessions live in one process's memory, so several instances behind a load
+balancer need sticky routing. A client that reconnects to an instance that
+doesn't know its session gets a fresh mount.
+
+### Signing in
+
+Auth is app state. Mount a login tree, check credentials in its handler, then
+`SetRoot` to the real app. To stay signed in across reloads, issue your own
+token and store it on the client:
+
+```go
+s.SetCookie(&http.Cookie{Name: "login", Value: token, MaxAge: 30 * 86400})
+```
+
+The browser keeps it in its cookie jar and the native terminal in a file per
+app, and both send it on every later connection, so the next mount can read
+`s.Request().Cookie("login")` and skip the login tree. `Authorize` sees it too.
+A cookie set while the client is disconnected is delivered when it comes back.
+`MaxAge: -1` deletes it, and `s.Close()` ends the session so the client
+reconnects into a fresh mount, which together make sign-out.
+
+To gate the page load itself, for example to redirect to an SSO login, register
+the terminal's files with `ServeTerminal()` and own `/`:
+
+```go
+caution.ServeTerminal() // /app.js and /term.wasm
+http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+    if _, err := r.Cookie("login"); err != nil {
+        http.Redirect(w, r, "/login", http.StatusFound)
+        return
+    }
+    caution.HostPage(w, r)
+})
+```
 
 `ServeAssets(prefix, dir)` serves static files. `Image()` and `Play()` also
 accept `data:` URIs. `s.Preload(srcs...)` and `s.PreloadSounds(srcs...)` warm
@@ -417,6 +455,15 @@ plays through its own op:
 
 The mount carries `loops` alongside `sounds`, and a client stops everything it
 was playing before starting them.
+
+Cookies travel as Set-Cookie strings, in a mount's `cookies` list or one per
+op:
+
+```jsonc
+{"op": "cookie", "cookie": "login=abc; Path=/; Max-Age=2592000"}
+```
+
+A connection `Authorize` refuses gets `{"t": "denied"}` and is closed.
 
 ### Client to server
 

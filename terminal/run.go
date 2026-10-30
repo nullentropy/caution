@@ -213,8 +213,9 @@ func parseKeyChord(spec string) ui.Key {
 	return k
 }
 
-func transport(o Options) (wsURL string, dialer *websocket.Dialer, fetch func(string) ([]byte, error), err error) {
+func transport(o Options, jar http.CookieJar) (wsURL string, dialer *websocket.Dialer, fetch func(string) ([]byte, error), err error) {
 	d := *websocket.DefaultDialer
+	d.Jar = jar
 	var rt http.RoundTripper = http.DefaultTransport
 	base := ""
 
@@ -245,7 +246,7 @@ func transport(o Options) (wsURL string, dialer *websocket.Dialer, fetch func(st
 		base = scheme + "://" + u.Host
 	}
 
-	client := &http.Client{Transport: rt, Timeout: 15 * time.Second}
+	client := &http.Client{Transport: rt, Jar: jar, Timeout: 15 * time.Second}
 	fetch = func(src string) ([]byte, error) {
 		target := src
 		if strings.HasPrefix(src, "/") {
@@ -373,7 +374,8 @@ func Run(o Options) error {
 
 	// -- session mode ----------------------------------------------------------------
 
-	wsURL, dialer, fetch, err := transport(o)
+	jar := openCookieJar(appicon.Slug(appID + " " + o.URL))
+	wsURL, dialer, fetch, err := transport(o, jar)
 	if err != nil {
 		return err
 	}
@@ -457,6 +459,7 @@ func Run(o Options) error {
 			installMenu(menus, func(id int) { u.Sound("select"); pick(id) })
 		},
 		SetTitle:     win.SetTitle,
+		SetCookie:    jar.set,
 		Preload:      r.Images.Preload,
 		PreloadSound: preloadSound,
 		Play:         playSound,

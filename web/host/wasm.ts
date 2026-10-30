@@ -36,6 +36,8 @@ export interface HostCallbacks {
   invalidate(): void;
   setCursor(name: string): void;
   setTitle(title: string): void;
+  // a Set-Cookie string, document.cookie takes the same syntax
+  setCookie(raw: string): void;
   writeClipboard(text: string): void;
   preloadSound(src: string): void;
   play(src: string, loop: boolean): void;

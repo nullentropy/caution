@@ -93,6 +93,7 @@ const (
 	OpSounds   Op = "sounds"
 	OpCmd      Op = "cmd"
 	OpMotion   Op = "motion"
+	OpCookie   Op = "cookie"
 )
 
 // Session.SetMotion values, the mount's "motion" field and the motion op
@@ -120,4 +121,6 @@ const (
 	MsgPatch  Msg = "patch"
 	MsgResume Msg = "resume"
 	MsgEvent  Msg = "ev"
+	// Options.Authorize refused the connection, the client stops retrying
+	MsgDenied Msg = "denied"
 )

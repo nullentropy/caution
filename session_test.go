@@ -22,7 +22,12 @@ type testClient struct {
 
 func dialSession(t *testing.T, mount MountFunc) *testClient {
 	t.Helper()
-	srv := httptest.NewServer(wsHandler(mount, Options{}))
+	return dialSessionOpts(t, mount, Options{})
+}
+
+func dialSessionOpts(t *testing.T, mount MountFunc, opts Options) *testClient {
+	t.Helper()
+	srv := httptest.NewServer(wsHandler(mount, opts))
 	t.Cleanup(srv.Close)
 	url := "ws" + strings.TrimPrefix(srv.URL, "http") + "/ws?vw=800&vh=600"
 	c, _, err := websocket.DefaultDialer.Dial(url, nil)

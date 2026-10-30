@@ -157,6 +157,9 @@ export function hostCallbacks(canvas: HTMLCanvasElement): HostCallbacks & { bind
     setTitle(title) {
       document.title = title;
     },
+    setCookie(raw) {
+      document.cookie = raw;
+    },
     writeClipboard(text) {
       void navigator.clipboard.writeText(text).catch(() => {});
     },

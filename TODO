@@ -24,22 +24,8 @@ check credentials in the handler, SetRoot to the real app. Authorize is for
 apps that already have SSO or a proxy in front and want the socket refused
 before it opens.
 
-- client storage op. this is the gap that makes app-level auth incomplete:
-  after a page reload the app gets a fresh mount with no way to know this
-  browser was logged in a second ago, so the user signs in again. the only
-  thing the client stores today is the resume token in sessionStorage, good
-  for the 60s grace and nothing else. add a generic key/value op: the server
-  says remember this, the client keeps it in localStorage and presents what
-  it has at mount. the app issues its own token after login and checks it on
-  the next mount. not auth specific (ui prefs want the same thing), roughly
-  thirty lines on each side.
-- resumeGrace is a hardcoded 60s const in session.go. make it an option.
-- no way to end a session from outside. add s.Close() for when the app
-  decides a session is over.
-- document that sessions are a sync.Map in one process, so a deployment
-  behind a load balancer needs sticky routing. optionally sign resume
-  tokens so another instance can tell "not mine" from "expired" instead of
-  behaving oddly.
+- optionally sign resume tokens so another instance behind a load balancer
+  can tell "not mine" from "expired" instead of remounting silently.
 - moving a live session between instances is not possible in the go sdk and
   probably never will be: a session is a closure graph.
   the recovery path is remount, with the app rebuilding from its own store. the
@@ -53,9 +39,3 @@ before it opens.
   opaque random string today, and if an instance id were in it (or an app
   could supply a prefix) a load balancer could route on the query param
   alone. worth remembering whenever tokens get signed.
-- if an app does use Authorize: a rejected connection currently looks like
-  an outage. the 403 on the upgrade reaches the terminals as a connection
-  error they retry forever, so a signed-out user sees a network failure.
-  and gating the host page means owning "/", which ServeClient registers
-  along with /app.js and /term.wasm, so it needs splitting up before an
-  app can put its own check in front.

@@ -15,7 +15,7 @@ const (
 	cullH    = 300
 )
 
-// a chat-history shape: one scroll view holding far more rows than fit
+// one scroll view holding far more rows than fit
 func cullScene() (*UI, *ScrollView, []*Panel) {
 	u := fakeUi()
 	sv := NewScrollView()

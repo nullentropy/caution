@@ -26,8 +26,6 @@ import (
 
 type MountFunc func(s *Session) *Node
 
-const resumeGrace = 60 * time.Second
-
 // all widget mutation happens on the session goroutine: inside event
 // handlers, or via Update from anywhere else (tickers, watchers, queues)
 type Session struct {
@@ -42,6 +40,9 @@ type Session struct {
 	ops     []map[string]any
 	updates chan func()
 	done    chan struct{}
+	closing chan struct{}
+	closed  sync.Once
+	grace   time.Duration
 	mounted bool
 	theme   map[string]string
 	metrics map[string]float64
@@ -61,6 +62,10 @@ type Session struct {
 	soundPreloads []string
 	sounds        map[string]string
 	loops         []string
+
+	// Set-Cookie strings not yet on the wire. unlike ops they survive a
+	// disconnect, a resume can't rebuild them from the tree
+	cookies []string
 
 	// last node the app asked to focus, a mount names it so a reconnect that
 	// remounts puts focus back. focusPending queues the cmd for the next flush
@@ -95,6 +100,9 @@ type Options struct {
 	AllowedOrigins []string
 	// both set switches to ListenAndServeTLS
 	TLSCert, TLSKey string
+	// how long a disconnected session waits for its client to resume before it
+	// ends. 0 is 60s
+	ResumeGrace time.Duration
 }
 
 // reconnecting socket plus its reported viewport and the last seq the client
@@ -178,12 +186,16 @@ func ServeOpts(addr string, mount MountFunc, opts Options) error {
 func wsHandler(mount MountFunc, opts Options) http.HandlerFunc {
 	up := websocket.Upgrader{CheckOrigin: originChecker(opts.AllowedOrigins)}
 	return func(w http.ResponseWriter, r *http.Request) {
+		grace := opts.ResumeGrace
+		if grace == 0 {
+			grace = 60 * time.Second
+		}
 		var identity any
 		if opts.Authorize != nil {
 			id, err := opts.Authorize(r)
 			if err != nil {
 				log.Info().Msgf("caution: connection rejected (%s): %v", r.RemoteAddr, err)
-				http.Error(w, "forbidden", http.StatusForbidden)
+				deny(w, r, up)
 				return
 			}
 			identity = id
@@ -205,6 +217,8 @@ func wsHandler(mount MountFunc, opts Options) http.HandlerFunc {
 			nodes:    map[int]*Node{},
 			updates:  make(chan func(), 64),
 			done:     make(chan struct{}),
+			closing:  make(chan struct{}),
+			grace:    grace,
 			vw:       vw,
 			vh:       vh,
 			identity: identity,
@@ -214,6 +228,17 @@ func wsHandler(mount MountFunc, opts Options) http.HandlerFunc {
 		log.Info().Msgf("caution: session %d connected (%s)", s.sid, r.RemoteAddr)
 		go s.run(mount, conn)
 	}
+}
+
+// a browser can't see the status of a failed upgrade, so a plain 403 reads
+// as an outage it retries forever. upgrade, say why, hang up
+func deny(w http.ResponseWriter, r *http.Request, up websocket.Upgrader) {
+	conn, err := up.Upgrade(w, r, nil)
+	if err != nil {
+		return
+	}
+	_ = conn.WriteJSON(map[string]any{"t": wire.MsgDenied})
+	_ = conn.Close()
 }
 
 // hands a to the session named by ?resume= if it can
@@ -269,9 +294,13 @@ func (s *Session) Update(fn func()) {
 	}
 }
 
-// closed when the session ends (client gone past the resume grace)
+// closed when the session ends (client gone past the resume grace, or Close)
 // use it to stop tickers
 func (s *Session) Done() <-chan struct{} { return s.done }
+
+// ends the session now. the client reconnects into a fresh session and a
+// fresh mount. safe from any goroutine
+func (s *Session) Close() { s.closed.Do(func() { close(s.closing) }) }
 
 // last-reported window size in logical px, 0,0 if never reported
 // valid from mount on since the initial size rides the connect URL
@@ -334,6 +363,23 @@ func (s *Session) SetMotion(m Motion) {
 	if s.mounted {
 		s.ops = append(s.ops, map[string]any{"op": wire.OpMotion, "motion": m})
 	}
+}
+
+// kept by the browser, or in a per-app file natively, and sent on every later
+// connection so the next mount and Authorize see it. MaxAge < 0 deletes,
+// Path defaults to /, HttpOnly is dropped since a page can't set it
+func (s *Session) SetCookie(c *http.Cookie) {
+	cc := *c
+	cc.HttpOnly = false
+	if cc.Path == "" {
+		cc.Path = "/"
+	}
+	raw := cc.String()
+	if raw == "" {
+		log.Warn().Msgf("caution: session %d dropped invalid cookie %q", s.sid, c.Name)
+		return
+	}
+	s.cookies = append(s.cookies, raw)
 }
 
 // warms client resource caches ahead of first use, images (URLs or data:
@@ -475,6 +521,13 @@ func normalizeCombo(combo string) string {
 }
 
 func (s *Session) run(mount MountFunc, first *websocket.Conn) {
+	// runs last, so a client that reconnects on the close finds no session to
+	// resume
+	defer func() {
+		if s.conn != nil {
+			_ = s.conn.Close()
+		}
+	}()
 	defer close(s.done)
 	defer registry.Delete(s.token)
 	defer log.Info().Msgf("caution: session %d closed", s.sid)
@@ -534,6 +587,7 @@ func (s *Session) run(mount MountFunc, first *websocket.Conn) {
 			expire = nil
 			log.Info().Msgf("caution: session %d resumed", s.sid)
 			adopt(a.conn, a.seq)
+			s.flush() // cookies set while the client was away
 			// window may have changed size while the client was away
 			if a.vw > 0 && (a.vw != s.vw || a.vh != s.vh) {
 				s.vw, s.vh = a.vw, a.vh
@@ -548,9 +602,11 @@ func (s *Session) run(mount MountFunc, first *websocket.Conn) {
 			}
 			_ = s.conn.Close()
 			s.conn = nil
-			expire = time.After(resumeGrace)
-			log.Info().Msgf("caution: session %d disconnected - resumable for %s", s.sid, resumeGrace)
+			expire = time.After(s.grace)
+			log.Info().Msgf("caution: session %d disconnected - resumable for %s", s.sid, s.grace)
 		case <-expire:
+			return
+		case <-s.closing:
 			return
 		}
 	}
@@ -632,6 +688,9 @@ func (s *Session) sendMount() {
 	if s.keys != nil {
 		msg["keys"] = s.keys
 	}
+	if s.cookies != nil {
+		msg["cookies"] = s.cookies
+	}
 	if s.preloads != nil || s.soundPreloads != nil {
 		res := map[string]any{}
 		if s.preloads != nil {
@@ -644,7 +703,9 @@ func (s *Session) sendMount() {
 	}
 	if err := s.conn.WriteJSON(msg); err != nil {
 		log.Info().Msgf("caution: session %d mount write failed: %v", s.sid, err)
+		return
 	}
+	s.cookies = nil
 }
 
 // replaces the whole tree and remounts the client, for tree-as-data flows
@@ -926,7 +987,7 @@ func (s *Session) dispatch(m clientMsg) {
 
 func (s *Session) flush() {
 	s.queuePendingFocus()
-	if len(s.ops) == 0 {
+	if len(s.ops) == 0 && (len(s.cookies) == 0 || s.conn == nil) {
 		return
 	}
 	s.seq++
@@ -937,11 +998,16 @@ func (s *Session) flush() {
 		s.ops = nil
 		return
 	}
+	for _, c := range s.cookies {
+		s.ops = append(s.ops, map[string]any{"op": wire.OpCookie, "cookie": c})
+	}
 	msg := map[string]any{"t": wire.MsgPatch, "seq": s.seq, "ops": s.ops}
 	s.ops = nil
 	if err := s.conn.WriteJSON(msg); err != nil {
 		log.Info().Msgf("caution: session %d write failed: %v", s.sid, err)
+		return
 	}
+	s.cookies = nil
 }
 
 func (s *Session) attach(n *Node) {

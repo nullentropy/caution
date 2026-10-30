@@ -78,6 +78,7 @@ func main() {
 			u.SetMenubar(proto.MenubarSpec(menus), func(id int) { sess.Event(0, wire.EvMenu, id) })
 		},
 		SetTitle:     func(title string) { call("setTitle", title) },
+		SetCookie:    func(raw string) { call("setCookie", raw) },
 		Preload:      r.Images.Preload,
 		PreloadSound: func(src string) { call("preloadSound", src) },
 		Play:         func(src string, loop bool) { call("play", src, loop) },
