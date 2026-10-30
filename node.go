@@ -20,12 +20,13 @@ type Node struct {
 	// are dropped
 	born int
 
-	onClick  func()
-	onToggle func(bool)
-	onInput  func(string)
-	onCommit func(string)
-	onSubmit func(string)
-	onTab    func(shift bool, value string, caret int) bool
+	onClick     func()
+	onToggle    func(bool)
+	onInput     func(string)
+	onCommit    func(string)
+	onSubmit    func(string)
+	onTab       func(shift bool, value string, caret int) bool
+	onSpanClick func(action string)
 
 	onSelect      func(index int)
 	onDismiss     func()
@@ -424,9 +425,30 @@ func (n *Node) Clear() *Node {
 	return n
 }
 
+// Color and Bg are theme tokens. a non-empty Action makes the span clickable
+type Span struct {
+	Text   string `json:"text"`
+	Bold   bool   `json:"bold,omitempty"`
+	Italic bool   `json:"italic,omitempty"`
+	Mono   bool   `json:"mono,omitempty"`
+	Color  string `json:"color,omitempty"`
+	Bg     string `json:"bg,omitempty"`
+	Action string `json:"action,omitempty"`
+}
+
+// always wraps. FontSize sizes every span, Color is the default for spans
+// without their own
+func RichText(spans ...Span) *Node { return newNode(wire.RichText).set("spans", spans) }
+
 // -- events -------------------------------------------------------------------
 
 func (n *Node) OnClick(fn func()) *Node { n.onClick = fn; return n.subscribe(wire.EvClick) }
+
+// a click, not a selecting drag, on a span with an Action
+func (n *Node) OnSpanClick(fn func(action string)) *Node {
+	n.onSpanClick = fn
+	return n.subscribe(wire.EvSpanClick)
+}
 func (n *Node) OnToggle(fn func(bool)) *Node {
 	n.onToggle = fn
 	return n.subscribe(wire.EvToggle)
@@ -633,11 +655,12 @@ func (n *Node) Rows(lines int) *Node { return n.set("rows", lines) }
 
 // -- live updates -------------------------------------------------------------
 
-func (n *Node) SetText(s string) *Node     { return n.set("text", s) }
-func (n *Node) SetLabel(s string) *Node    { return n.set("label", s) }
-func (n *Node) SetChecked(b bool) *Node    { return n.set("checked", b) }
-func (n *Node) SetColor(c string) *Node    { return n.set("color", c) }
-func (n *Node) Placeholder(s string) *Node { return n.set("placeholder", s) }
+func (n *Node) SetText(s string) *Node       { return n.set("text", s) }
+func (n *Node) SetSpans(spans ...Span) *Node { return n.set("spans", spans) }
+func (n *Node) SetLabel(s string) *Node      { return n.set("label", s) }
+func (n *Node) SetChecked(b bool) *Node      { return n.set("checked", b) }
+func (n *Node) SetColor(c string) *Node      { return n.set("color", c) }
+func (n *Node) Placeholder(s string) *Node   { return n.set("placeholder", s) }
 
 // a field being edited ignores this until blur (the local-echo rule)
 func (n *Node) SetValue(s string) *Node { return n.set("value", s) }

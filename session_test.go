@@ -744,3 +744,21 @@ func TestTabHandlerKeepsOrReleasesTheKey(t *testing.T) {
 		t.Fatalf("server value = %v; want the echoed text", v)
 	}
 }
+
+func TestSpanClickDeliversTheAction(t *testing.T) {
+	fired := make(chan string, 8)
+	mount := func(s *Session) *Node {
+		return Panel().Kids(RichText(Span{Text: "see "}, Span{Text: "here", Bold: true, Action: "open"}).
+			OnSpanClick(func(a string) { fired <- a }))
+	}
+	tc := dialSession(t, mount)
+	m := tc.read()
+	root := m["root"].(map[string]any)
+	kid := root["kids"].([]any)[0].(map[string]any)
+	spans := kid["p"].(map[string]any)["spans"].([]any)
+	if got := spans[1].(map[string]any); got["text"] != "here" || got["bold"] != true || got["action"] != "open" {
+		t.Fatalf("second span on the wire is %v", got)
+	}
+	tc.eventValue(kidIDs(t, m)[0], "span-click", "open", seqOf(t, m))
+	expectFire(t, fired, "open")
+}

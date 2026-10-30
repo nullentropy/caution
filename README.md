@@ -98,6 +98,7 @@ local interaction, and declares which events it can send.
 |---|---|---|
 | `Panel` | background, border, clipping, corner radius | |
 | `Label` | wrapping, ellipsis, text selection, copy | |
+| `RichText` | spans with their own weight, italic, mono, colour and background; wrapping, selection, copy | `OnSpanClick` |
 | `Image` | async load, aspect fit, rounded corners | |
 | `Button` | hover/press/focus, keyboard activation | `OnClick` |
 | `TextField` | full editing: caret, selection, IME, undo, revert | `OnInput` (debounced), `OnCommit`, `OnSubmit`, `OnTab` |
@@ -115,6 +116,23 @@ local interaction, and declares which events it can send.
 
 Two props work on every widget: `Tip("...")` shows a tooltip after hover
 idle, and `Context(items)` attaches a right-click menu.
+
+`RichText` is one block of text whose spans carry their own style:
+
+```go
+caution.RichText(
+    caution.Span{Text: "The "},
+    caution.Span{Text: "quick", Bold: true},
+    caution.Span{Text: " fox ", Mono: true, Bg: "$panelInset"},
+    caution.Span{Text: "jumps", Italic: true, Color: "$accent", Action: "jump"},
+).FontSize(14).Selectable().OnSpanClick(func(action string) {})
+```
+
+It always wraps at its laid-out width, a word may straddle two spans, and
+selection and copy run across spans as one text. `FontSize` sets every span's
+size and `Color` is the default for spans without one. A span with an `Action`
+shows a pointer cursor, and a click on it (not a drag that selects) sends the
+action to `OnSpanClick`. `SetSpans` replaces the spans live.
 
 ## Layout
 

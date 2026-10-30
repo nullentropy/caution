@@ -34,6 +34,7 @@ var scenes = []scene{
 	{"layout-light", "Light", layoutScene, nil},
 	{"text-midnight", "Midnight", textScene, nil},
 	{"text-light", "Light", textScene, nil},
+	{"richtext-midnight", "Midnight", richTextScene, nil},
 	{"metrics-square", "Midnight", metricsScene, squareMetrics},
 }
 
@@ -298,6 +299,36 @@ func textScene(_ *caution.Session) *caution.Node {
 				Anchor(caution.A{Left: caution.Px(18), CenterY: caution.Px(0)}),
 		),
 		caution.Panel().Dock("fill").Kids(list),
+	)
+}
+
+// every face, colour and background a span can carry, with a break inside a
+// span and a word that straddles two
+func richTextScene(_ *caution.Session) *caution.Node {
+	body := caution.RichText(
+		caution.Span{Text: "Plain, "},
+		caution.Span{Text: "bold", Bold: true},
+		caution.Span{Text: ", "},
+		caution.Span{Text: "italic", Italic: true},
+		caution.Span{Text: " and "},
+		caution.Span{Text: "mono", Mono: true, Bg: "$panelInset"},
+		caution.Span{Text: " share one line, then a "},
+		caution.Span{Text: "clickable", Color: "$accent", Action: "go"},
+		caution.Span{Text: " span and a strad"},
+		caution.Span{Text: "dled word", Bold: true, Color: "$accent"},
+		caution.Span{Text: ".\nA second paragraph keeps the "},
+		caution.Span{Text: "base line height", Bold: true, Mono: true, Bg: "$edgeSoft"},
+		caution.Span{Text: " when faces mix, and dims "},
+		caution.Span{Text: "this run", Italic: true, Color: "$inkDim"},
+		caution.Span{Text: "."},
+	).FontSize(14).Selectable().
+		Anchor(caution.A{Left: caution.Px(16), Top: caution.Px(16), Right: caution.Px(16)})
+	return caution.DockPanel().Kids(
+		caution.Panel().Dock("top").H(40).Bg("$panelAlt").Kids(
+			caution.Label("Rich text - one block, many faces").FontSize(14).Weight(600).
+				Anchor(caution.A{Left: caution.Px(18), CenterY: caution.Px(0)}),
+		),
+		caution.Panel().Dock("fill").Kids(body),
 	)
 }
 

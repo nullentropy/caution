@@ -156,19 +156,22 @@ func (l *Label) wrappedLines(w float32) []text.Line {
 }
 
 // per-font constants, the advance adds 25% leading between lines
-func (l *Label) lineMetrics() (lineH, advance float32) {
-	m := l.UI.Measure(l.Font, "Mg")
+func lineMetrics(u *UI, f gfx.Font) (lineH, advance float32) {
+	m := u.Measure(f, "Mg")
 	lineH = m.Ascent + m.Descent
 	return lineH, lineH + float32(int(lineH*0.25+0.5))
+}
+
+func wrappedHeight(u *UI, f gfx.Font, lines int) float32 {
+	lineH, adv := lineMetrics(u, f)
+	return ceil32(lineH + float32(max(1, lines)-1)*adv)
 }
 
 func (l *Label) HeightForWidth(w float32) (float32, bool) {
 	if !l.Wrap {
 		return 0, false
 	}
-	n := max(1, len(l.wrappedLines(w)))
-	lineH, adv := l.lineMetrics()
-	return ceil32(lineH + float32(n-1)*adv), true
+	return wrappedHeight(l.UI, l.Font, len(l.wrappedLines(w))), true
 }
 
 func (l *Label) xInLine(lineText string, bo int) float32 {
@@ -184,18 +187,13 @@ func (l *Label) byteAtPoint(x, y float32) int {
 	if len(lines) == 0 {
 		return 0
 	}
-	_, adv := l.lineMetrics()
+	_, adv := lineMetrics(l.UI, l.Font)
 	li := clampInt(int((y-l.Bounds.Y)/adv), 0, len(lines)-1)
 	ln := lines[li]
 	lineText := l.Text[ln.Start:ln.End]
 	run := l.UI.Measure(l.Font, lineText)
 	xs := runeBoundaryXs(run, utf8.RuneCountInString(lineText))
-	best, bestD := 0, float32(math.Inf(1))
-	for i, bx := range xs {
-		if d := abs32((x - l.Bounds.X) - bx); d < bestD {
-			bestD, best = d, i
-		}
-	}
+	best := nearestBoundary(xs, x-l.Bounds.X)
 	// rune index within the line -> byte offset in the source
 	bo := ln.Start
 	for i := 0; i < best; i++ {
@@ -205,42 +203,82 @@ func (l *Label) byteAtPoint(x, y float32) int {
 	return bo
 }
 
-func (l *Label) wordRangeAtByte(bo int) (int, int) {
-	if len(l.Text) == 0 {
+func nearestBoundary(xs []float32, x float32) int {
+	best, bestD := 0, float32(math.Inf(1))
+	for i, bx := range xs {
+		if d := abs32(x - bx); d < bestD {
+			bestD, best = d, i
+		}
+	}
+	return best
+}
+
+func wordRangeAtByte(text string, bo int) (int, int) {
+	if len(text) == 0 {
 		return 0, 0
 	}
-	bo = clampInt(bo, 0, len(l.Text)-1)
+	bo = clampInt(bo, 0, len(text)-1)
 	// snap into the rune that covers bo
-	for bo > 0 && !utf8.RuneStart(l.Text[bo]) {
+	for bo > 0 && !utf8.RuneStart(text[bo]) {
 		bo--
 	}
-	r, _ := utf8.DecodeRuneInString(l.Text[bo:])
+	r, _ := utf8.DecodeRuneInString(text[bo:])
 	target := isWordRune(r)
 	s, e := bo, bo
 	for s > 0 {
-		pr, sz := utf8.DecodeLastRuneInString(l.Text[:s])
+		pr, sz := utf8.DecodeLastRuneInString(text[:s])
 		if isWordRune(pr) != target {
 			break
 		}
 		s -= sz
 	}
-	for e < len(l.Text) {
-		nr, sz := utf8.DecodeRuneInString(l.Text[e:])
+	for e < len(text) {
+		nr, sz := utf8.DecodeRuneInString(text[e:])
 		if isWordRune(nr) != target {
 			break
 		}
 		e += sz
 	}
 	if e == bo { // include at least the rune under the point
-		_, sz := utf8.DecodeRuneInString(l.Text[bo:])
+		_, sz := utf8.DecodeRuneInString(text[bo:])
 		e = bo + sz
 	}
 	return s, e
 }
 
+// highlight for the part of [s, e) that falls on one wrapped line. xAt maps a
+// source byte offset on the line to an x offset from the line origin
+func paintSelectionBand(dl *gfx.DisplayList, s, e int, ln text.Line, xAt func(bo int) float32, x, y, lineH float32) {
+	a := max(s, ln.Start)
+	b := min(e, ln.End)
+	if b > a || (ln.Start == ln.End && s <= ln.Start && e > ln.End) {
+		x0 := xAt(max(ln.Start, a))
+		x1 := x0 + 4 // stub marks empty lines inside the range
+		if b > a {
+			x1 = xAt(b)
+		}
+		dl.Fill(gfx.R(x+x0-1, y-1, x1-x0+2, lineH+2),
+			gfx.WithAlpha(*Theme["accent"], 0.35), gfx.CornerRadius(2))
+	}
+}
+
+// press on wrapped text: triple-click takes everything, double the word, a
+// single press collapses the selection at the byte under the pointer
+func pressSelection(u *UI, w selectionOwner, text string, bo, detail int) {
+	switch {
+	case detail >= 3:
+		u.setSelection(w, 0, len(text))
+	case detail == 2:
+		s, e := wordRangeAtByte(text, bo)
+		u.setSelection(w, s, e)
+	default:
+		u.setSelection(w, bo, bo)
+	}
+}
+
 func (l *Label) paintWrapped(dl *gfx.DisplayList) {
 	lines := l.wrappedLines(l.Bounds.W)
-	lineH, adv := l.lineMetrics()
+	lineH, adv := lineMetrics(l.UI, l.Font)
 	sel := l.UI.selectionFor(l)
 	var s, e int
 	if sel != nil {
@@ -250,17 +288,7 @@ func (l *Label) paintWrapped(dl *gfx.DisplayList) {
 		y := l.Bounds.Y + float32(i)*adv
 		t := l.Text[ln.Start:ln.End]
 		if sel != nil && e > s {
-			a := max(s, ln.Start)
-			b := min(e, ln.End)
-			if b > a || (ln.Start == ln.End && s <= ln.Start && e > ln.End) {
-				x0 := l.xInLine(t, max(0, a-ln.Start))
-				x1 := x0 + 4 // stub marks empty lines inside the range
-				if b > a {
-					x1 = l.xInLine(t, b-ln.Start)
-				}
-				dl.Fill(gfx.R(l.Bounds.X+x0-1, y-1, x1-x0+2, lineH+2),
-					gfx.WithAlpha(*Theme["accent"], 0.35), gfx.CornerRadius(2))
-			}
+			paintSelectionBand(dl, s, e, ln, func(bo int) float32 { return l.xInLine(t, bo-ln.Start) }, l.Bounds.X, y, lineH)
 		}
 		dl.Text(t, l.Bounds.X, y, l.Font, *l.Color)
 	}
@@ -375,16 +403,7 @@ func (l *Label) OnPointerDown(x, y float32, detail int) {
 		return
 	}
 	if l.Wrap {
-		switch {
-		case detail >= 3:
-			l.UI.setSelection(l, 0, len(l.Text))
-		case detail == 2:
-			s, e := l.wordRangeAtByte(l.byteAtPoint(x, y))
-			l.UI.setSelection(l, s, e)
-		default:
-			i := l.byteAtPoint(x, y)
-			l.UI.setSelection(l, i, i)
-		}
+		pressSelection(l.UI, l, l.Text, l.byteAtPoint(x, y), detail)
 		return
 	}
 	switch {

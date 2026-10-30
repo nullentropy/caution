@@ -12,11 +12,18 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-// drag selection over a Label's glyph boundaries
+// drag selection over a text widget's boundaries (glyph indices for a
+// single-line label, source byte offsets for wrapped text)
 // Start may exceed End while dragging backwards
 type TextSelection struct {
-	Label      *Label
+	Owner      selectionOwner
 	Start, End int
+}
+
+type selectionOwner interface {
+	Widget
+	// text between two selection boundaries, in either order
+	GlyphText(start, end int) string
 }
 
 // client runtime shell: owns the root widget and all generic interaction
@@ -1126,20 +1133,20 @@ func (u *UI) scrollTargetAt(w Widget, x, y float32) ScrollTarget {
 
 // -- selection --------------------------------------------------------------
 
-func (u *UI) selectionFor(l *Label) *TextSelection {
-	if u.sel != nil && u.sel.Label == l {
+func (u *UI) selectionFor(w selectionOwner) *TextSelection {
+	if u.sel != nil && u.sel.Owner == w {
 		return u.sel
 	}
 	return nil
 }
 
-func (u *UI) setSelection(l *Label, start, end int) {
-	u.sel = &TextSelection{Label: l, Start: start, End: end}
+func (u *UI) setSelection(w selectionOwner, start, end int) {
+	u.sel = &TextSelection{Owner: w, Start: start, End: end}
 	u.Invalidate()
 }
 
-func (u *UI) moveSelectionEnd(l *Label, end int) {
-	if u.sel != nil && u.sel.Label == l && u.sel.End != end {
+func (u *UI) moveSelectionEnd(w selectionOwner, end int) {
+	if u.sel != nil && u.sel.Owner == w && u.sel.End != end {
 		u.sel.End = end
 		u.Invalidate()
 	}
@@ -1156,7 +1163,7 @@ func (u *UI) SelectedText() string {
 	if u.sel == nil {
 		return ""
 	}
-	return u.sel.Label.GlyphText(u.sel.Start, u.sel.End)
+	return u.sel.Owner.GlyphText(u.sel.Start, u.sel.End)
 }
 
 func hypot32(a, b float32) float32 {

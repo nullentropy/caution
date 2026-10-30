@@ -5,6 +5,7 @@ type Type string
 const (
 	Panel     Type = "panel"
 	Label     Type = "label"
+	RichText  Type = "richtext"
 	Button    Type = "button"
 	Checkbox  Type = "checkbox"
 	TextField Type = "textfield"
@@ -33,7 +34,7 @@ const (
 )
 
 var Types = []Type{
-	Panel, Label, Button, Checkbox, TextField, TextArea,
+	Panel, Label, RichText, Button, Checkbox, TextField, TextArea,
 	VStack, HStack, Dock, Scroll, Grid, Split,
 	Table, Tree,
 	Select, Progress, Slider, Radio, Tabs,
@@ -59,6 +60,7 @@ const (
 	EvSplitResize  Event = "split-resize"
 	EvVisibleRange Event = "visible-range"
 	EvContext      Event = "context"
+	EvSpanClick    Event = "span-click"
 
 	// glass pointer gestures, left button then right
 	EvPick  Event = "pick"

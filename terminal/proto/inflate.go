@@ -256,6 +256,27 @@ func contextItems(v any) []ui.ContextItem {
 	return out
 }
 
+func spans(v any) []ui.Span {
+	arr, ok := v.([]any)
+	if !ok {
+		return nil
+	}
+	out := make([]ui.Span, 0, len(arr))
+	for _, iv := range arr {
+		o, _ := iv.(props)
+		var s ui.Span
+		s.Text, _ = str(o["text"])
+		s.Bold, _ = boolean(o["bold"])
+		s.Italic, _ = boolean(o["italic"])
+		s.Mono, _ = boolean(o["mono"])
+		s.Color = color(o["color"])
+		s.Bg = color(o["bg"])
+		s.Action, _ = str(o["action"])
+		out = append(out, s)
+	}
+	return out
+}
+
 func applyLabelFont(l *ui.Label, p props) {
 	prev := l.Font
 	size := prev.Size
@@ -374,6 +395,24 @@ func (ns *NodeStore) Apply(w ui.Widget, id int, p props) {
 		}
 		set(p, "selectable", &t.Selectable)
 		set(p, "wrap", &t.Wrap)
+	case *ui.RichText:
+		if v, ok := p["spans"]; ok {
+			t.SetSpans(spans(v))
+		}
+		if f, ok := num(p["size"]); ok {
+			t.Font = gfx.NewFont(f, gfx.FontOpts{})
+		}
+		if v, ok := p["color"]; ok {
+			if c := color(v); c != nil {
+				t.Color = c
+			} else {
+				t.Color = ui.Tok("ink")
+			}
+		}
+		set(p, "selectable", &t.Selectable)
+		if subscribed(p, wire.EvSpanClick) {
+			t.OnSpanClick = func(action string) { ns.sink.Event(id, wire.EvSpanClick, action) }
+		}
 	case *ui.Button:
 		set(p, "label", &t.Label)
 		set(p, "primary", &t.Primary)
@@ -679,6 +718,7 @@ func (ns *NodeStore) Remove(id int) {
 var widgets = map[wire.Type]func() ui.Widget{
 	wire.Panel:     func() ui.Widget { return ui.NewPanel() },
 	wire.Label:     func() ui.Widget { return ui.NewLabel("", gfx.NewFont(13, gfx.FontOpts{}), nil) },
+	wire.RichText:  func() ui.Widget { return ui.NewRichText(gfx.NewFont(13, gfx.FontOpts{}), nil) },
 	wire.Button:    func() ui.Widget { return ui.NewButton("") },
 	wire.Checkbox:  func() ui.Widget { return ui.NewCheckbox("") },
 	wire.TextField: func() ui.Widget { return ui.NewTextField() },

@@ -851,6 +851,11 @@ func (s *Session) dispatch(m clientMsg) {
 		if n.onClick != nil {
 			n.onClick()
 		}
+	case wire.EvSpanClick:
+		if n.onSpanClick != nil {
+			action, _ := m.Value.(string)
+			n.onSpanClick(action)
+		}
 	case wire.EvToggle:
 		if v, ok := m.Value.(map[string]any); ok {
 			// tree disclosure {row, key}. the node owns expansion: flip, reflatten,

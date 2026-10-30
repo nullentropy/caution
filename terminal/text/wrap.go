@@ -13,6 +13,11 @@ type Line struct{ Start, End int }
 // greedy, honors '\n'. measure must be monotonic in prefix length (it's an
 // advance sum, so it is)
 func Wrap(measure func(string) float32, s string, maxW float32) []Line {
+	return WrapRanges(func(start, end int) float32 { return measure(s[start:end]) }, s, maxW)
+}
+
+// measure takes byte offsets into s, for text whose font changes partway
+func WrapRanges(measure func(start, end int) float32, s string, maxW float32) []Line {
 	var out []Line
 	p := 0
 	for {
@@ -30,7 +35,7 @@ func Wrap(measure func(string) float32, s string, maxW float32) []Line {
 	return out
 }
 
-func wrapPara(measure func(string) float32, s string, start, end int, maxW float32, out *[]Line) {
+func wrapPara(measure func(start, end int) float32, s string, start, end int, maxW float32, out *[]Line) {
 	if start >= end {
 		*out = append(*out, Line{start, start}) // empty line (blank paragraph, trailing \n)
 		return
@@ -51,7 +56,7 @@ func wrapPara(measure func(string) float32, s string, start, end int, maxW float
 		lo, hi := i+1, n
 		for lo < hi {
 			mid := (lo + hi + 1) >> 1
-			if measure(s[bounds[i]:bounds[mid]]) <= maxW {
+			if measure(bounds[i], bounds[mid]) <= maxW {
 				lo = mid
 			} else {
 				hi = mid - 1
