@@ -61,3 +61,17 @@ func TestAnimationIsInvisible(t *testing.T) {
 		t.Fatal("a frame with geometric animation mid-flight must not be skipped")
 	}
 }
+
+func TestCachingALayerAgainReturnsTheOldTexture(t *testing.T) {
+	r := &Renderer{layerPool: map[string][]*pooledLayer{}, layerCache: map[int]target{}}
+	first := &pooledLayer{key: "10x10", bytes: 400}
+	second := &pooledLayer{key: "10x10", bytes: 400}
+	r.cacheLayer(3, target{pooled: first})
+	r.cacheLayer(3, target{pooled: second})
+	if r.layerCache[3].pooled != second {
+		t.Fatal("the newer texture isn't the cached one")
+	}
+	if pool := r.layerPool["10x10"]; len(pool) != 1 || pool[0] != first || r.poolBytes != 400 {
+		t.Fatalf("pool = %v (%d bytes), want the replaced texture back in it", pool, r.poolBytes)
+	}
+}

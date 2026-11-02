@@ -403,6 +403,18 @@ func (r *Renderer) execRange(cmds []gfx.Cmd, start, end int, targets *[]target, 
 		case gfx.CmdText:
 			r.emitText(cmd, dpr)
 		case gfx.CmdLayerBegin:
+			if span, ok := r.plan.Layers[i]; ok && span.Cacheable {
+				if cached, hit := r.layerCache[i]; hit {
+					// a frame-invariant layer nested in one that re-renders,
+					// such as a static effect inside an animated one. composite
+					// the texture it already has instead of rendering it again
+					parent := (*targets)[len(*targets)-1]
+					r.flushBatch(parent, 0)
+					r.drawComposite(&cmds[span.End], cached, parent)
+					i = span.End
+					continue
+				}
+			}
 			r.flushBatch((*targets)[len(*targets)-1], 0)
 			t := r.acquireLayer(cmd.Rect, dpr)
 			*targets = append(*targets, t)
@@ -424,7 +436,7 @@ func (r *Renderer) execRange(cmds []gfx.Cmd, start, end int, targets *[]target, 
 			r.drawComposite(cmd, layer, parent)
 			if layer.pooled != nil {
 				if begin >= 0 && r.plan.Layers[begin].Cacheable {
-					r.layerCache[begin] = layer
+					r.cacheLayer(begin, layer)
 				} else {
 					r.releaseLayer(layer.pooled)
 				}
@@ -595,6 +607,13 @@ func (r *Renderer) blit(fr Frame) {
 	glx.BindFramebuffer(glx.DRAW_FRAMEBUFFER, fr.FBO)
 	glx.BlitFramebuffer(0, 0, r.scene.devW, r.scene.devH, 0, 0, fr.DevW, fr.DevH, glx.COLOR_BUFFER_BIT, glx.NEAREST)
 	glx.BindFramebuffer(glx.FRAMEBUFFER, fr.FBO)
+}
+
+func (r *Renderer) cacheLayer(begin int, t target) {
+	if old, ok := r.layerCache[begin]; ok && old.pooled != nil && old.pooled != t.pooled {
+		r.releaseLayer(old.pooled)
+	}
+	r.layerCache[begin] = t
 }
 
 // the retained list they were rendered for is going away
