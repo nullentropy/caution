@@ -944,6 +944,10 @@ func (s *Session) dispatch(m clientMsg) {
 		if n.onSubmit != nil {
 			n.onSubmit(v)
 		}
+	case wire.EvNav:
+		if n.onNav != nil {
+			n.onNav(toInt(m.Value))
+		}
 	case wire.EvTab:
 		v, _ := m.Value.(map[string]any)
 		text, _ := v["value"].(string)

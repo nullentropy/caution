@@ -57,6 +57,7 @@ const (
 	EvCommit       Event = "commit"
 	EvSubmit       Event = "submit"
 	EvTab          Event = "tab"
+	EvNav          Event = "nav"
 	EvSelect       Event = "select"
 	EvDismiss      Event = "dismiss"
 	EvSort         Event = "sort"

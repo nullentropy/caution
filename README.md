@@ -101,7 +101,7 @@ local interaction, and declares which events it can send.
 | `RichText` | spans with their own weight, italic, mono, colour and background; wrapping, selection, copy | `OnSpanClick` |
 | `Image` | async load, aspect fit, rounded corners | |
 | `Button` | hover/press/focus, keyboard activation | `OnClick` |
-| `TextField` | full editing: caret, selection, IME, undo, revert | `OnInput` (debounced), `OnCommit`, `OnSubmit`, `OnTab` |
+| `TextField` | full editing: caret, selection, IME, undo, revert | `OnInput` (debounced), `OnCommit`, `OnSubmit`, `OnTab`, `OnNav` |
 | `Textarea` | multi-line editing, soft wrap | `OnInput`, `OnCommit`, `OnSubmit`, `OnTab` |
 | `Checkbox`, `Radio` | toggle | `OnToggle`, `OnSelect` |
 | `Slider` | drag and keyboard adjust, stepping | `OnSlide`, `OnSlideEnd` |
@@ -179,6 +179,9 @@ Shift+Tab in a focused field or text area, with the text and the caret as a
 rune index. Return true to keep the key. Return false and focus moves as it
 would have. `SetValueNow(v)` replaces the text from the handler and leaves the
 caret at the end.
+
+`OnNav(func(dir int))` takes plain Up and Down from a single-line field, -1
+and +1, instead of moving the caret. 
 
 ## Styling: two token tables
 

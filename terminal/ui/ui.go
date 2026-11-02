@@ -903,6 +903,16 @@ func (u *UI) keyDown(k Key) bool {
 		u.moveFocus(dir)
 		return true
 	}
+	if tf, ok := u.focused.(*TextField); ok && tf.OnNav != nil && !k.Meta && !k.Ctrl && !k.Alt && !k.Shift {
+		switch k.Name {
+		case "Up":
+			tf.OnNav(-1)
+			return true
+		case "Down":
+			tf.OnNav(1)
+			return true
+		}
+	}
 	if u.focused != nil && u.focused.OnKey(k) {
 		return true
 	}

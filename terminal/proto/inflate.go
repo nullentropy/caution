@@ -685,6 +685,9 @@ func (ns *NodeStore) applyText(t *ui.TextField, id int, p props) {
 	if subscribed(p, wire.EvSubmit) {
 		t.OnSubmit = func(v string) { ns.sink.Event(id, wire.EvSubmit, v) }
 	}
+	if subscribed(p, wire.EvNav) {
+		t.OnNav = func(dir int) { ns.sink.Event(id, wire.EvNav, dir) }
+	}
 	if subscribed(p, wire.EvTab) {
 		t.OnTab = func(shift bool, v string, caret int) {
 			ns.sink.Event(id, wire.EvTab, map[string]any{"shift": shift, "value": v, "caret": caret})

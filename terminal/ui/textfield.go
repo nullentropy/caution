@@ -32,6 +32,9 @@ type TextField struct {
 	OnSubmit func(v string)
 	// set, Tab stays here instead of moving focus
 	OnTab func(shift bool, value string, caret int)
+	// set on a single-line field, plain Up and Down go here (-1 and +1)
+	// instead of moving the caret, for a list the field drives
+	OnNav func(dir int)
 
 	// selEnd is the caret, selStart pins the other end
 	selStart, selEnd int
