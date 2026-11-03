@@ -119,16 +119,35 @@ func TestDefaultsApplyToTextNamingNoFamily(t *testing.T) {
 	s := NewShaper(reg)
 	plain, mono := gfx.NewFont(14, gfx.FontOpts{}), gfx.NewFont(14, gfx.FontOpts{Mono: true})
 	before, monoBefore := width(s, plain, sample), width(s, mono, sample)
-	reg.SetDefaults("var", "")
+	reg.SetDefaults("var", "", nil)
 	if got := width(s, plain, sample); got == before || got != width(s, gfx.NewFont(14, gfx.FontOpts{Family: "var"}), sample) {
 		t.Fatalf("after SetDefaults plain text shaped at %v, want the family's width", got)
 	}
 	if width(s, mono, sample) != monoBefore {
 		t.Fatal("a ui default must leave mono text on its own default")
 	}
-	reg.SetDefaults("", "")
+	reg.SetDefaults("", "", nil)
 	if width(s, plain, sample) != before {
 		t.Fatal("clearing the default must restore the built-in face")
+	}
+}
+
+func TestFallbackFamiliesFillRunesTheDefaultFaceLacks(t *testing.T) {
+	reg := NewRegistry()
+	reg.Add("var", variableTestFont(t))
+	s := NewShaper(reg)
+	plain := gfx.NewFont(14, gfx.FontOpts{})
+	// the test font has Arabic, the Go and emoji faces don't
+	if run := s.Shape(plain, 2, "aب"); run.Glyphs[1].GID != 0 {
+		t.Fatal("without a fallback the Arabic letter should be tofu")
+	}
+	reg.SetDefaults("", "", []string{"var"})
+	run := s.Shape(plain, 2, "aب")
+	if run.Glyphs[0].Face != goFace(plain) {
+		t.Fatal("a rune the default face covers must stay on it")
+	}
+	if run.Glyphs[1].Face == goFace(plain) || run.Glyphs[1].GID == 0 {
+		t.Fatalf("the Arabic letter must shape with the fallback family, got face=%p gid=%d", run.Glyphs[1].Face, run.Glyphs[1].GID)
 	}
 }
 

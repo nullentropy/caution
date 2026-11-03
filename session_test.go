@@ -802,7 +802,7 @@ func TestFontsRideMountAndPatchLive(t *testing.T) {
 
 	sess.Update(func() {
 		sess.AddFont("Body", "/fonts/body.ttf", "/fonts/body-bold.ttf")
-		sess.SetFonts("Body", "Code")
+		sess.SetFonts("Body", "Code", "CJK")
 	})
 	p := tc.read()
 	ops, _ := p["ops"].([]any)
@@ -817,7 +817,8 @@ func TestFontsRideMountAndPatchLive(t *testing.T) {
 		t.Fatalf("live font op = %v; want resource with only the new src", op)
 	}
 	op, _ = ops[1].(map[string]any)
-	if op["op"] != "fonts" || op["ui"] != "Body" || op["mono"] != "Code" {
-		t.Fatalf("live defaults op = %v; want fonts with ui Body, mono Code", op)
+	fallback, _ := op["fallback"].([]any)
+	if op["op"] != "fonts" || op["ui"] != "Body" || op["mono"] != "Code" || len(fallback) != 1 || fallback[0] != "CJK" {
+		t.Fatalf("live defaults op = %v; want fonts with ui Body, mono Code, fallback CJK", op)
 	}
 }

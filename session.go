@@ -69,6 +69,7 @@ type Session struct {
 	fonts         []fontFamily
 	fontUI        string
 	fontMono      string
+	fontFallback  []string
 	sounds        map[string]string
 	loops         []string
 
@@ -445,11 +446,12 @@ func (s *Session) AddFont(family string, srcs ...string) {
 }
 
 // default families for text that names none: ui for normal text, mono for
-// Mono text. "" is the built-in Go face
-func (s *Session) SetFonts(ui, mono string) {
-	s.fontUI, s.fontMono = ui, mono
+// Mono text. "" is the built-in Go face. fallback families supply the glyphs
+// the default and named families lack, tried in order before the Go face
+func (s *Session) SetFonts(ui, mono string, fallback ...string) {
+	s.fontUI, s.fontMono, s.fontFallback = ui, mono, fallback
 	if s.mounted {
-		s.ops = append(s.ops, map[string]any{"op": wire.OpFonts, "ui": ui, "mono": mono})
+		s.ops = append(s.ops, map[string]any{"op": wire.OpFonts, "ui": ui, "mono": mono, "fallback": fallback})
 	}
 }
 
@@ -754,8 +756,8 @@ func (s *Session) sendMount() {
 	if s.cookies != nil {
 		msg["cookies"] = s.cookies
 	}
-	if s.fontUI != "" || s.fontMono != "" {
-		msg["fonts"] = map[string]any{"ui": s.fontUI, "mono": s.fontMono}
+	if s.fontUI != "" || s.fontMono != "" || len(s.fontFallback) > 0 {
+		msg["fonts"] = map[string]any{"ui": s.fontUI, "mono": s.fontMono, "fallback": s.fontFallback}
 	}
 	if s.preloads != nil || s.soundPreloads != nil || s.fonts != nil {
 		res := map[string]any{}

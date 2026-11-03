@@ -56,8 +56,9 @@ type fontSpec struct {
 
 // the mount's "fonts" field and the `fonts` op. "" is the built-in face
 type fontDefaults struct {
-	UI   string `json:"ui"`
-	Mono string `json:"mono"`
+	UI       string   `json:"ui"`
+	Mono     string   `json:"mono"`
+	Fallback []string `json:"fallback"`
 }
 
 type keySpec struct {
@@ -93,22 +94,23 @@ type patchOp struct {
 	Tokens map[string]string `json:"tokens"`
 	// metric-theme tokens. not "tokens" because theme already owns that key in
 	// this union, with string values
-	Metrics map[string]float64 `json:"metrics"`
-	Menu    []MenuSpec         `json:"menu"`
-	Title   string             `json:"title"`
-	Keys    []keySpec          `json:"keys"`
-	Images  []string           `json:"images"`
-	Sounds  []string           `json:"sounds"`
-	Fonts   []fontSpec         `json:"fonts"`
-	UI      string             `json:"ui"`
-	Mono    string             `json:"mono"`
-	Src     string             `json:"src"`
-	Loop    bool               `json:"loop"`
-	Meta    []metaSpec         `json:"meta"`
-	Cmd     wire.Cmd           `json:"cmd"`
-	Value   string             `json:"value"`
-	Motion  wire.Motion        `json:"motion"`
-	Cookie  string             `json:"cookie"`
+	Metrics  map[string]float64 `json:"metrics"`
+	Menu     []MenuSpec         `json:"menu"`
+	Title    string             `json:"title"`
+	Keys     []keySpec          `json:"keys"`
+	Images   []string           `json:"images"`
+	Sounds   []string           `json:"sounds"`
+	Fonts    []fontSpec         `json:"fonts"`
+	UI       string             `json:"ui"`
+	Mono     string             `json:"mono"`
+	Fallback []string           `json:"fallback"`
+	Src      string             `json:"src"`
+	Loop     bool               `json:"loop"`
+	Meta     []metaSpec         `json:"meta"`
+	Cmd      wire.Cmd           `json:"cmd"`
+	Value    string             `json:"value"`
+	Motion   wire.Motion        `json:"motion"`
+	Cookie   string             `json:"cookie"`
 }
 
 // one tree row's meta, parallel to its cells in a rows op
@@ -583,7 +585,7 @@ func (s *Session) applyOp(op *patchOp) bool {
 	case wire.OpResource:
 		s.applyResources(&resourceSpec{Images: op.Images, Sounds: op.Sounds, Fonts: op.Fonts})
 	case wire.OpFonts:
-		s.setFonts(fontDefaults{UI: op.UI, Mono: op.Mono})
+		s.setFonts(fontDefaults{UI: op.UI, Mono: op.Mono, Fallback: op.Fallback})
 	case wire.OpPlay:
 		if s.play != nil {
 			s.play(op.Src, op.Loop)
@@ -705,7 +707,7 @@ func (s *Session) setFonts(d fontDefaults) {
 		return
 	}
 	gen := s.fonts.Gen()
-	s.fonts.SetDefaults(d.UI, d.Mono)
+	s.fonts.SetDefaults(d.UI, d.Mono, d.Fallback)
 	if s.fonts.Gen() != gen {
 		s.ui.Remeasure()
 	}

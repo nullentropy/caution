@@ -2,6 +2,7 @@ package text
 
 import (
 	"bytes"
+	"slices"
 	"sync"
 
 	"github.com/nullentropy/caution/terminal/gfx"
@@ -155,6 +156,9 @@ func (ff *FontFile) distance(weight int) int {
 type Registry struct {
 	families map[string][]*FontFile
 	ui, mono string
+	// families tried after the app face and before the Go faces, for runes
+	// the app's own font lacks
+	fallback []string
 	// bumped whenever a lookup could resolve differently. the shaper and
 	// atlas compare against it and drop their caches
 	gen int
@@ -170,11 +174,11 @@ func (r *Registry) Add(family string, f *FontFile) {
 }
 
 // "" means the built-in Go faces
-func (r *Registry) SetDefaults(ui, mono string) {
-	if r.ui == ui && r.mono == mono {
+func (r *Registry) SetDefaults(ui, mono string, fallback []string) {
+	if r.ui == ui && r.mono == mono && slices.Equal(r.fallback, fallback) {
 		return
 	}
-	r.ui, r.mono = ui, mono
+	r.ui, r.mono, r.fallback = ui, mono, slices.Clone(fallback)
 	r.gen++
 }
 
@@ -191,6 +195,10 @@ func (r *Registry) appFace(f gfx.Font) *font.Face {
 			family = r.mono
 		}
 	}
+	return r.familyFace(family, f)
+}
+
+func (r *Registry) familyFace(family string, f gfx.Font) *font.Face {
 	files := r.families[family]
 	if len(files) == 0 {
 		return nil
@@ -209,12 +217,21 @@ func (r *Registry) appFace(f gfx.Font) *font.Face {
 	return best.at(f.Weight)
 }
 
-// per-rune fallback order: the app face if any, the Go face for the same
-// style, then emoji
+// per-rune fallback order: the app face, or the Go face when there is none,
+// then the fallback families, then the Go face, then emoji
 func (r *Registry) chain(f gfx.Font) []*font.Face {
-	chain := make([]*font.Face, 0, 3)
-	if face := r.appFace(f); face != nil {
-		chain = append(chain, face)
+	primary := r.appFace(f)
+	if primary == nil {
+		primary = goFace(f)
 	}
-	return append(chain, goFace(f), emojiFace)
+	chain := append(make([]*font.Face, 0, 3+len(r.fallback)), primary)
+	for _, family := range r.fallback {
+		if face := r.familyFace(family, f); face != nil {
+			chain = append(chain, face)
+		}
+	}
+	if primary != goFace(f) {
+		chain = append(chain, goFace(f))
+	}
+	return append(chain, emojiFace)
 }
