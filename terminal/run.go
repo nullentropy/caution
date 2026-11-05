@@ -78,6 +78,12 @@ type Options struct {
 	// not system fullscreen (green button), that one is Session.OnFullscreen
 	Fullscreen bool
 	HideCursor bool
+
+	// opens the window maximized (zoomed on macOS) at W x H restored size
+	Maximized bool
+	// reports the window's size in logical px and if it's maximized when
+	// they change so the app can reopen remembering the user's preference
+	OnWindow func(w, h int, maximized bool)
 	// for screensavers and kiosks. ignores the launch input burst, and the
 	// mouse has to travel a few pixels before it counts
 	ExitOnInput bool
@@ -316,6 +322,8 @@ func Run(o Options) error {
 	glfw.WindowHintString(glfw.X11InstanceName, appID)
 	if o.Shot != "" {
 		glfw.WindowHint(glfw.Visible, glfw.False)
+	} else if o.Maximized && !o.Fullscreen {
+		glfw.WindowHint(glfw.Maximized, glfw.True)
 	}
 
 	// matching the current mode's depth and refresh avoids a mode switch
@@ -467,7 +475,20 @@ func Run(o Options) error {
 		Fonts:        r.Fonts,
 		Fetch:        fetch,
 	})
-	watchFullscreen(win, sess.NoteFullscreen)
+	systemFullscreen := false
+	noteWindow := func() {
+		if o.OnWindow == nil || o.Shot != "" || o.Fullscreen || systemFullscreen {
+			return
+		}
+		w, h := win.GetSize()
+		o.OnWindow(w, h, win.GetAttrib(glfw.Maximized) == glfw.True)
+	}
+	win.SetMaximizeCallback(func(*glfw.Window, bool) { noteWindow() })
+	watchFullscreen(win, func(on bool) {
+		systemFullscreen = on
+		noteWindow()
+		sess.NoteFullscreen(on)
+	})
 	watchFileDrag(win, sess.NoteFileDrag)
 
 	// grace period swallows the launch burst (the key or click that started the
@@ -667,6 +688,7 @@ func Run(o Options) error {
 	var liveDraw func()
 	win.SetSizeCallback(func(_ *glfw.Window, w, h int) {
 		sess.NoteResize(w, h)
+		noteWindow()
 		dirty = true
 		if liveDraw != nil {
 			liveDraw()

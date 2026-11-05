@@ -54,6 +54,10 @@ type Options struct {
 	HideCursor  bool
 	ExitOnInput bool
 
+	// window state to restore
+	Maximized bool
+	OnWindow  func(w, h int, maximized bool)
+
 	// passed to the terminal's headless verification mode (render offscreen to
 	// PNG and exit)
 	Shot     string
@@ -83,6 +87,8 @@ func Run(mount caution.MountFunc, o Options) error {
 		Fullscreen:     o.Fullscreen,
 		HideCursor:     o.HideCursor,
 		ExitOnInput:    o.ExitOnInput,
+		Maximized:      o.Maximized,
+		OnWindow:       o.OnWindow,
 		Shot:           o.Shot,
 		SettleMs:       o.SettleMs,
 		Clicks:         o.Clicks,
