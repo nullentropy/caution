@@ -87,8 +87,9 @@ period and a reload reattaches to the same session.
 
 Frame render when something changes. The renderer diffs against the retained
 frame and repaints only the damaged rectangles. Animated shaders repaint
-continuously while on screen. They stop when the native window is minimized,
-hidden, or fully covered.
+continuously while on screen. When the native window is minimized, hidden, or
+fully covered, nothing repaints: animation stops and patches apply to the tree
+but wait to be drawn until the window shows again.
 
 ## Widgets
 

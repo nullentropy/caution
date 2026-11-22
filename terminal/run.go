@@ -892,7 +892,8 @@ func Run(o Options) error {
 		// animation fully off-screen paints nothing, idle until input or a patch
 		// brings it back into view
 		paint := animating && !hidden && !r.AnimationIsInvisible()
-		if dirty {
+		// a hidden window keeps dirty and draws once when it shows again
+		if dirty && !hidden {
 			dirty = false
 			fullDraw()
 		} else if paint {
@@ -932,7 +933,7 @@ func Run(o Options) error {
 			} else {
 				glfw.PollEvents()
 			}
-		} else if tick := u.TickIn(); tick > 0 {
+		} else if tick := u.TickIn(); tick > 0 && !hidden {
 			// sleep until the next tick. frameStep checks nextTick so an early
 			// wake isn't mistaken for one
 			glfw.WaitEventsTimeout(tick.Seconds())

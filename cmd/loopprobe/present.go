@@ -100,6 +100,9 @@ func runPresent(fullscreen bool, seconds float64) error {
 		{
 			name: "hidden", lo: 0, hi: 3, dur: dur, visible: &no,
 			drive: func(*presentScene) { setAppHidden(true) },
+			tick: func(sc *presentScene, i int) {
+				sc.clock.SetText(fmt.Sprintf("hidden: %d", i))
+			},
 		},
 		{
 			name: "shown", lo: 0, hi: 0, dur: dur, visible: &yes,
