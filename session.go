@@ -59,6 +59,8 @@ type Session struct {
 	fullscreen   bool
 	onFocus      func(focused bool)
 	unfocused    bool
+	onVisible    func(visible bool)
+	hidden       bool
 	onFileDrop   func(files []File, x, y float64)
 	onFileDrag   func(over bool)
 	drop         dropAssembly
@@ -547,6 +549,10 @@ func (s *Session) OnFocus(fn func(focused bool)) { s.onFocus = fn }
 // last known client state, true until the client says otherwise
 func (s *Session) Focused() bool { return !s.unfocused }
 
+func (s *Session) OnVisible(fn func(visible bool)) { s.onVisible = fn }
+
+func (s *Session) Visible() bool { return !s.hidden }
+
 // canonical modifier order and case so the client's event-derived string
 // always matches: cmd+ctrl+alt+shift+<key>
 func normalizeCombo(combo string) string {
@@ -861,6 +867,12 @@ func (s *Session) dispatch(m clientMsg) {
 			s.unfocused = !focused
 			if s.onFocus != nil {
 				s.onFocus(focused)
+			}
+		case wire.EvVisible:
+			visible, _ := m.Value.(bool)
+			s.hidden = !visible
+			if s.onVisible != nil {
+				s.onVisible(visible)
 			}
 		case wire.EvFileDrag:
 			over, _ := m.Value.(bool)

@@ -87,7 +87,8 @@ period and a reload reattaches to the same session.
 
 Frame render when something changes. The renderer diffs against the retained
 frame and repaints only the damaged rectangles. Animated shaders repaint
-continuously while visible.
+continuously while on screen. They stop when the native window is minimized,
+hidden, or fully covered.
 
 ## Widgets
 
@@ -291,6 +292,9 @@ s.OnFullscreen(func(on bool) {
 `s.OnFocus(func(focused bool))` reports the window gaining and losing focus.
 A hidden browser tab counts as unfocused. `s.Focused()` holds the last known
 state.
+
+`s.OnVisible(func(visible bool))` reports the native window being visible 
+or hidden (different space, under other windows, minimized, etc).
 
 ## File drops
 

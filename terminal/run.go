@@ -490,6 +490,23 @@ func Run(o Options) error {
 		sess.NoteFullscreen(on)
 	})
 	watchFileDrag(win, sess.NoteFileDrag)
+	var iconified, occluded, hidden bool
+	noteVisible := func() {
+		if h := iconified || occluded; h != hidden {
+			hidden = h
+			sess.NoteVisible(!h)
+			gate.wake()
+		}
+	}
+	win.SetIconifyCallback(func(_ *glfw.Window, on bool) {
+		iconified = on
+		noteVisible()
+	})
+	occluded = !watchOcclusion(win, func(visible bool) {
+		occluded = !visible
+		noteVisible()
+	})
+	noteVisible()
 
 	// grace period swallows the launch burst (the key or click that started the
 	// app, a cursor already crossing the window)
@@ -874,7 +891,7 @@ func Run(o Options) error {
 		}
 		// animation fully off-screen paints nothing, idle until input or a patch
 		// brings it back into view
-		paint := animating && !r.AnimationIsInvisible()
+		paint := animating && !hidden && !r.AnimationIsInvisible()
 		if dirty {
 			dirty = false
 			fullDraw()
@@ -900,7 +917,7 @@ func Run(o Options) error {
 	pacerArmed := false
 	for !win.ShouldClose() {
 		frameStep()
-		paint := animating && !r.AnimationIsInvisible()
+		paint := animating && !hidden && !r.AnimationIsInvisible()
 		if paint != pacerArmed {
 			pacerArmed = paint
 			if paint {

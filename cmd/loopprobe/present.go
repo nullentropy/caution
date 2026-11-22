@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"slices"
 	"time"
 
 	caution "github.com/nullentropy/caution"
@@ -32,8 +33,9 @@ type presentPhase struct {
 	stepsHi int
 	dur     time.Duration
 	// both run on the session goroutine, tick every 100ms
-	drive func(sc *presentScene)
-	tick  func(sc *presentScene, i int)
+	drive   func(sc *presentScene)
+	tick    func(sc *presentScene, i int)
+	visible *bool
 }
 
 type presentScene struct {
@@ -42,6 +44,8 @@ type presentScene struct {
 }
 
 const presentFPS = 30
+
+var yes, no = true, false
 
 func runPresent(fullscreen bool, seconds float64) error {
 	dur := time.Duration(seconds * float64(time.Second))
@@ -94,6 +98,14 @@ func runPresent(fullscreen bool, seconds float64) error {
 			drive: func(sc *presentScene) { paneOffscreen(sc, false) },
 		},
 		{
+			name: "hidden", lo: 0, hi: 3, dur: dur, visible: &no,
+			drive: func(*presentScene) { setAppHidden(true) },
+		},
+		{
+			name: "shown", lo: 0, hi: 0, dur: dur, visible: &yes,
+			drive: func(*presentScene) { setAppHidden(false) },
+		},
+		{
 			name: "offscreen", lo: 0, hi: 3, dur: dur,
 			drive: func(sc *presentScene) { paneOffscreen(sc, true) },
 		},
@@ -102,17 +114,28 @@ func runPresent(fullscreen bool, seconds float64) error {
 			drive: func(sc *presentScene) { sc.field.Focus() },
 		},
 	}
+	if !hideSupported {
+		phases = slices.DeleteFunc(phases, func(p presentPhase) bool { return p.name == "hidden" || p.name == "shown" })
+	}
+	phase := func(name string) *presentPhase {
+		return &phases[slices.IndexFunc(phases, func(p presentPhase) bool { return p.name == name })]
+	}
 	// one frame per patch, the loop follows the server not the display
 	ticks := int(dur / (100 * time.Millisecond))
-	phases[1].lo, phases[1].hi = ticks*3/4, ticks*2
+	phase("patch").lo, phase("patch").hi = ticks*3/4, ticks*2
 	// a display slower than the cap presents fewer, so the floor is generous
 	// and the ceiling is the real gate
 	capped := int(dur.Seconds() * presentFPS)
-	phases[2].lo, phases[2].hi = capped/2, capped*5/4
+	for _, name := range []string{"animate", "shown"} {
+		if i := slices.IndexFunc(phases, func(p presentPhase) bool { return p.name == name }); i >= 0 {
+			phases[i].lo, phases[i].hi = capped/2, capped*5/4
+		}
+	}
 	// 530ms blink half period. one wake and one frame per flip, extra wakes
 	// show up in the steps
 	blinks := int(dur / (530 * time.Millisecond))
-	phases[4].lo, phases[4].hi, phases[4].stepsHi = blinks/2, blinks+2, blinks*3+6
+	caret := phase("caret")
+	caret.lo, caret.hi, caret.stepsHi = blinks/2, blinks+2, blinks*3+6
 
 	go func() {
 		sc := <-scenes
@@ -138,6 +161,15 @@ func runPresent(fullscreen bool, seconds float64) error {
 			verdict := "ok"
 			if st.Presented < p.lo || st.Presented > p.hi || (p.stepsHi > 0 && st.Steps > p.stepsHi) {
 				verdict = "FAIL"
+			}
+			if p.visible != nil {
+				seen := make(chan bool)
+				sc.s.Update(func() { seen <- sc.s.Visible() })
+				if v := <-seen; v != *p.visible {
+					verdict = fmt.Sprintf("FAIL (session visible %v)", v)
+				}
+			}
+			if verdict != "ok" {
 				bad++
 			}
 			fmt.Printf("%-10s %8d %8d   %d..%d %s\n", p.name, st.Steps, st.Presented, p.lo, p.hi, verdict)

@@ -85,6 +85,7 @@ const (
 	EvAux        Event = "aux"
 	EvFullscreen Event = "fullscreen"
 	EvFocus      Event = "focus"
+	EvVisible    Event = "visible"
 	// a file drag entering or leaving the window, value is a bool
 	EvFileDrag Event = "filedrag"
 	// a drop's contents in DropPhase messages, see Session.OnFileDrop

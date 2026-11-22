@@ -232,6 +232,7 @@ type Session struct {
 
 	fullscreen bool
 	unfocused  bool
+	hidden     bool
 	fileCap    int64
 	// debounced events waiting out their quiet period, in arrival order, under mu
 	pending []*pendingEvent
@@ -494,7 +495,7 @@ func (s *Session) handle(msg *serverMsg) {
 			}
 		}
 		s.mu.Lock()
-		fs, unfocused := s.fullscreen, s.unfocused
+		fs, unfocused, hidden := s.fullscreen, s.unfocused, s.hidden
 		s.mu.Unlock()
 		if fs {
 			s.Event(0, wire.EvFullscreen, true)
@@ -502,6 +503,9 @@ func (s *Session) handle(msg *serverMsg) {
 		// a server assumes focused, so only the exception needs saying
 		if unfocused {
 			s.Event(0, wire.EvFocus, false)
+		}
+		if hidden {
+			s.Event(0, wire.EvVisible, false)
 		}
 	case wire.MsgResume:
 		// nothing changed while we were away, keep everything
@@ -893,6 +897,16 @@ func (s *Session) NoteFocus(focused bool) {
 	s.mu.Unlock()
 	if changed {
 		s.Event(0, wire.EvFocus, focused)
+	}
+}
+
+func (s *Session) NoteVisible(visible bool) {
+	s.mu.Lock()
+	changed := s.hidden == visible
+	s.hidden = !visible
+	s.mu.Unlock()
+	if changed {
+		s.Event(0, wire.EvVisible, visible)
 	}
 }
 
