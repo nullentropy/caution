@@ -323,7 +323,7 @@ func Run(o Options) error {
 	if o.Shot != "" {
 		glfw.WindowHint(glfw.Visible, glfw.False)
 	} else if o.Maximized && !o.Fullscreen {
-		glfw.WindowHint(glfw.Maximized, glfw.True)
+		glfw.WindowHint(glfw.Visible, glfw.False)
 	}
 
 	// matching the current mode's depth and refresh avoids a mode switch
@@ -348,6 +348,10 @@ func Run(o Options) error {
 	}
 	if o.CustomTitlebar && o.Shot == "" && !o.Fullscreen {
 		applyCustomTitlebar(win, o.TitlebarStyle)
+	}
+	if o.Maximized && o.Shot == "" && !o.Fullscreen {
+		win.Maximize()
+		win.Show()
 	}
 	if err := glSetup(win, o.Shot != "", o.W, o.H); err != nil {
 		return err
