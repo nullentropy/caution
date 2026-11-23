@@ -200,7 +200,7 @@ func (a *TextArea) hostKey(k Key) bool {
 		a.Submit()
 		return true
 	case k.Name == "Escape":
-		return a.revert()
+		return !a.EnterSends && a.revert()
 	}
 	return false
 }
@@ -320,7 +320,7 @@ func (a *TextArea) OnKey(k Key) bool {
 			return true
 		}
 	case "Escape":
-		return a.revert() // clean field: let Escape bubble
+		return !a.EnterSends && a.revert() // clean field: let Escape bubble
 	}
 	return false
 }

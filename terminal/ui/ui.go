@@ -960,6 +960,10 @@ func (u *UI) keyDown(k Key) bool {
 			d.OnDismiss()
 			return true
 		}
+		if u.focusedText() != nil {
+			u.setFocus(nil, false)
+			return true
+		}
 		u.clearSelection()
 		return true
 	}
