@@ -669,6 +669,7 @@ func (n *Node) Context(items ...ContextItem) *Node {
 
 // textarea visible line count (its intrinsic height)
 func (n *Node) Rows(lines int) *Node { return n.set("rows", lines) }
+func (n *Node) EnterSends() *Node    { return n.set("enterSends", true) }
 
 // -- live updates -------------------------------------------------------------
 

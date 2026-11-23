@@ -442,6 +442,7 @@ func (ns *NodeStore) Apply(w ui.Widget, id int, p props) {
 	case *ui.TextArea:
 		ns.applyText(&t.TextField, id, p)
 		setOr(p, "rows", &t.Rows, 4)
+		set(p, "enterSends", &t.EnterSends)
 	case *ui.Stack:
 		set(p, "padding", &t.Padding)
 		setOr(p, "spacing", &t.Spacing, 8)

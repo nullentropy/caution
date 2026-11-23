@@ -13,7 +13,8 @@ const taPadY = 8
 type TextArea struct {
 	TextField
 	// visible line count for the intrinsic height (`rows` prop)
-	Rows int
+	Rows       int
+	EnterSends bool
 
 	scrollY float32
 	goalX   *float32
@@ -195,7 +196,7 @@ func (a *TextArea) hostKey(k Key) bool {
 	case k.Name == "Down" && plain:
 		a.verticalMove(1, k.Shift)
 		return true
-	case k.Name == "Enter" && (k.Meta || k.Ctrl):
+	case k.Name == "Enter" && (k.Meta || k.Ctrl || a.EnterSends && plain && !k.Shift):
 		a.Submit()
 		return true
 	case k.Name == "Escape":
@@ -217,7 +218,7 @@ func (a *TextArea) OnKey(k Key) bool {
 	}
 	switch k.Name {
 	case "Enter":
-		if cmdish {
+		if cmdish || a.EnterSends && !k.Shift && !k.Alt {
 			a.Submit() // Cmd+Enter submits without leaving the field
 			return true
 		}
