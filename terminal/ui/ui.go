@@ -5,6 +5,7 @@ import (
 	"runtime/debug"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/nullentropy/caution/terminal/gfx"
 	"github.com/nullentropy/caution/terminal/text"
@@ -830,6 +831,16 @@ func (u *UI) paintTip(dl *gfx.DisplayList, vw, vh float32) {
 // -- keyboard ------------------------------------------------------------------------
 
 func (u *UI) charInput(r rune) {
+	if u.OnKeyCombo != nil && u.focusedText() == nil && u.Overlay == nil && lastDialog(u.Root) == nil {
+		combo := string(r)
+		if unicode.IsUpper(r) {
+			combo = "shift+" + string(unicode.ToLower(r))
+		}
+		if id, ok := u.KeyCombos[combo]; ok {
+			u.OnKeyCombo(id)
+			return
+		}
+	}
 	if u.focused != nil {
 		u.focused.OnChar(r)
 	}
