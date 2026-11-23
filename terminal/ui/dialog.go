@@ -31,10 +31,17 @@ func (d *Dialog) cardRect() gfx.Rect {
 	return gfx.R(b.X+(b.W-d.CardW)/2, b.Y+(b.H-d.CardH)/2, d.CardW, d.CardH)
 }
 
+func (d *Dialog) titleH() float32 {
+	if d.Title == "" {
+		return 0
+	}
+	return dialogTitleH()
+}
+
 func (d *Dialog) LayoutChildren() {
 	d.adopt()
 	card := d.cardRect()
-	d.LayoutInto(gfx.R(card.X, card.Y+dialogTitleH(), card.W, card.H-dialogTitleH()))
+	d.LayoutInto(gfx.R(card.X, card.Y+d.titleH(), card.W, card.H-d.titleH()))
 }
 
 func (d *Dialog) PaintSelf(dl *gfx.DisplayList) {
@@ -44,6 +51,9 @@ func (d *Dialog) PaintSelf(dl *gfx.DisplayList) {
 	dl.Rect(card, *Theme["panel"], gfx.RectOpts{
 		Radius: gfx.CornerRadius(Metrics.RadiusPanel), BorderWidth: Metrics.BorderWidth, BorderColor: Theme["edge"],
 	})
+	if d.Title == "" {
+		return
+	}
 	m := d.UI.Measure(dialogTitleFont, d.Title)
 	dl.Text(d.Title, card.X+20, card.Y+(dialogTitleH()-(m.Ascent+m.Descent))/2, dialogTitleFont, *Theme["ink"])
 	hair := Metrics.BorderWidth

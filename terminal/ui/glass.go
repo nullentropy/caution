@@ -28,7 +28,9 @@ type Glass struct {
 	OnRDragTo func(x, y float32)
 	OnRDropAt func(x, y float32)
 	// server node id (0 = none), injected by the inflater which owns the id map
-	IdOf func(w Widget) int
+	IdOf      func(w Widget) int
+	HoverFill *gfx.Color
+	hovered   bool
 
 	dragging  bool
 	lastSent  time.Time
@@ -162,4 +164,15 @@ func (g *Glass) deepestAt(w Widget, x, y float32) Widget {
 }
 
 // invisible by contract
-func (g *Glass) PaintSelf(_ *gfx.DisplayList) {}
+func (g *Glass) PaintSelf(dl *gfx.DisplayList) {
+	if g.hovered && g.HoverFill != nil {
+		dl.Fill(g.Bounds, *g.HoverFill, gfx.Corners{})
+	}
+}
+
+func (g *Glass) OnHoverChange(h bool) {
+	if g.HoverFill != nil && g.hovered != h {
+		g.hovered = h
+		g.Invalidate()
+	}
+}

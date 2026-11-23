@@ -16,6 +16,14 @@ func TestWrapSingleLineFits(t *testing.T) {
 	}
 }
 
+func TestWrapKeepsTrailingSpacesOnALineThatFits(t *testing.T) {
+	got := Wrap(meas, "ab \ncd  ", 100)
+	want := []Line{{0, 3}, {4, 8}}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("got %v want %v", got, want)
+	}
+}
+
 func TestWrapBreaksAtWordBoundary(t *testing.T) {
 	// 19 runes, 14 fit (98px <= 100). the fitted prefix ends at a word
 	// end so the break happens there

@@ -609,6 +609,9 @@ func (ns *NodeStore) Apply(w ui.Widget, id int, p props) {
 		// the glass resolves pick targets through the store's id map
 		// (deepest widget -> nearest server-known ancestor)
 		t.IdOf = func(w ui.Widget) int { return ns.idOf[w] }
+		if v, ok := p["hoverFill"]; ok {
+			t.HoverFill = color(v)
+		}
 		if subscribed(p, wire.EvPick) {
 			t.OnPick = func(x, y float32, target int) {
 				ns.sink.Event(id, wire.EvPick, map[string]any{"x": x, "y": y, "target": target})

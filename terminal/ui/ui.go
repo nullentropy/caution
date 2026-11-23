@@ -925,7 +925,8 @@ func (u *UI) keyDown(k Key) bool {
 		}
 	}
 	// app combos next, before shell built-ins (an app may deliberately claim Cmd+C)
-	if u.OnKeyCombo != nil && (k.Meta || k.Ctrl || k.Alt) {
+	bare := !k.Meta && !k.Ctrl && !k.Alt
+	if u.OnKeyCombo != nil && (!bare || u.focusedText() == nil && u.Overlay == nil && lastDialog(u.Root) == nil) {
 		if id, ok := u.KeyCombos[comboString(k)]; ok {
 			u.OnKeyCombo(id)
 			return true

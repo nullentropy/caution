@@ -79,7 +79,7 @@ func wrapPara(measure func(start, end int) float32, s string, start, end int, ma
 		}
 		// line ends before its trailing spaces, the next starts after them
 		lineEnd := brk
-		for lineEnd > i && s[bounds[lineEnd]-1] == ' ' {
+		for brk < n && lineEnd > i && s[bounds[lineEnd]-1] == ' ' {
 			lineEnd--
 		}
 		le := bounds[lineEnd]

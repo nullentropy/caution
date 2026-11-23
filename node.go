@@ -202,6 +202,8 @@ func Shader(fx FX) *Node {
 // widgets underneath keep animating and patching but get no input
 func Glass() *Node { return newNode(wire.Glass) }
 
+func (n *Node) HoverFill(c string) *Node { return n.set("hoverFill", c) }
+
 // target is the deepest session node under the point (resolved client-side
 // where layout lives), nil over dead space
 func (n *Node) OnPick(fn func(x, y float64, target *Node)) *Node {
@@ -353,6 +355,9 @@ func colSpecs(cols []Col) []map[string]any {
 
 // a live subtree sends an insert op carrying the fully built child
 func (n *Node) Add(child *Node) *Node {
+	if child.parent != nil {
+		child.Remove()
+	}
 	child.parent = n
 	n.kids = append(n.kids, child)
 	if n.sess != nil {
