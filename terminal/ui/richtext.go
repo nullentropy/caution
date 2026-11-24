@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"strings"
 	"unicode/utf8"
 
 	"github.com/nullentropy/caution/terminal/gfx"
@@ -52,6 +53,7 @@ type fragment struct {
 	span       int
 	start, end int
 	x, w       float32
+	tab        bool
 }
 
 type richLine struct {
@@ -110,24 +112,41 @@ func (r *RichText) spanFont(s Span) gfx.Font {
 // width of text[a:b] with each span's own face
 func (r *RichText) measureRange(fonts []gfx.Font, a, b int) float32 {
 	var w float32
-	for i := range r.spans {
-		lo, hi := max(a, r.offs[i]), min(b, r.offs[i+1])
-		if hi > lo {
-			w += r.UI.Measure(fonts[i], r.text[lo:hi]).Width
-		}
+	for _, f := range r.pieces(fonts, a, b) {
+		w += f.w
 	}
 	return w
 }
 
 func (r *RichText) fragments(fonts []gfx.Font, ln text.Line) []fragment {
+	return r.pieces(fonts, ln.Start, ln.End)
+}
+
+func (r *RichText) pieces(fonts []gfx.Font, a, b int) []fragment {
 	var out []fragment
 	var x float32
+	stop := float32(-1)
 	for i := range r.spans {
-		lo, hi := max(ln.Start, r.offs[i]), min(ln.End, r.offs[i+1])
-		if hi > lo {
-			w := r.UI.Measure(fonts[i], r.text[lo:hi]).Width
-			out = append(out, fragment{span: i, start: lo, end: hi, x: x, w: w})
+		lo, hi := max(a, r.offs[i]), min(b, r.offs[i+1])
+		for lo < hi {
+			if r.text[lo] == '\t' {
+				if stop < 0 {
+					stop = r.UI.Measure(r.Font, " ").Width * text.TabSize
+				}
+				w := text.NextTabStop(x, stop) - x
+				out = append(out, fragment{span: i, start: lo, end: lo + 1, x: x, w: w, tab: true})
+				x += w
+				lo++
+				continue
+			}
+			end := hi
+			if t := strings.IndexByte(r.text[lo:hi], '\t'); t >= 0 {
+				end = lo + t
+			}
+			w := r.UI.Measure(fonts[i], r.text[lo:end]).Width
+			out = append(out, fragment{span: i, start: lo, end: end, x: x, w: w})
 			x += w
+			lo = end
 		}
 	}
 	return out
@@ -175,6 +194,11 @@ func (r *RichText) HeightForWidth(w float32) (float32, bool) {
 // it maps to, ascending
 func (r *RichText) lineBoundaries(l *richLayout, ln richLine) (xs []float32, bos []int) {
 	for _, f := range ln.frags {
+		if f.tab {
+			xs = append(xs, f.x)
+			bos = append(bos, f.start)
+			continue
+		}
 		s := r.text[f.start:f.end]
 		n := utf8.RuneCountInString(s)
 		rx := runeBoundaryXs(r.UI.Measure(l.fonts[f.span], s), n)
@@ -304,6 +328,9 @@ func (r *RichText) PaintSelf(dl *gfx.DisplayList) {
 			paintSelectionBand(dl, s, e, ln.Line, func(bo int) float32 { return r.xAtByte(l, ln, bo) }, r.Bounds.X, y, lineH)
 		}
 		for _, f := range ln.frags {
+			if f.tab {
+				continue
+			}
 			sp := r.spans[f.span]
 			color := r.Color
 			if sp.Color != nil {

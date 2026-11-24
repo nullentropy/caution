@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/nullentropy/caution/terminal/gfx"
@@ -160,5 +161,36 @@ func TestRichTextClickWorksWithoutSelection(t *testing.T) {
 	u.PointerUp(5, 5)
 	if len(fired) != 1 || fired[0] != "run" {
 		t.Fatalf("fired %v, want [run]", fired)
+	}
+}
+
+func TestRichTextTabsAlignAcrossSpansAndLines(t *testing.T) {
+	u := richUi()
+	r := mountRich(u, 500,
+		Span{Text: "a\tx\n"},
+		Span{Text: "ab", Bold: true}, Span{Text: "cd\ty\n", Mono: true},
+		Span{Text: "abcdefghi\tz"})
+	dl := &gfx.DisplayList{}
+	r.PaintSelf(dl)
+	stop := float32(7 * text.TabSize)
+	want := map[string]placedText{
+		"x": {"x", stop, 0},
+		"y": {"y", stop, 16},
+		"z": {"z", 2 * stop, 32},
+	}
+	seen := 0
+	for _, p := range paintedText(dl) {
+		if strings.Contains(p.s, "\t") {
+			t.Fatalf("tab reached the shaper: %q", p.s)
+		}
+		if w, ok := want[p.s]; ok {
+			if p != w {
+				t.Fatalf("painted %v, want %v", p, w)
+			}
+			seen++
+		}
+	}
+	if seen != len(want) {
+		t.Fatalf("painted %v, want x, y and z on their own", paintedText(dl))
 	}
 }

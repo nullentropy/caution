@@ -31,6 +31,16 @@ type Placed struct {
 	Face *font.Face
 }
 
+// the CSS tab-size default
+const TabSize = 8
+
+func NextTabStop(x, stop float32) float32 {
+	if stop <= 0 {
+		return x
+	}
+	return (float32(int(x/stop)) + 1) * stop
+}
+
 type Run struct {
 	Glyphs  []Placed
 	Width   float32
@@ -195,10 +205,27 @@ func (s *Shaper) Shape(f gfx.Font, dpr float32, textStr string) *Run {
 		run.Descent = max(run.Descent, d)
 	}
 
+	var space *Run
 	pen := fixed.Int26_6(0)
 	run.Glyphs = make([]Placed, 0, total)
 	for _, li := range visualOrder(inputs, di.DirectionLTR) {
 		for _, g := range outs[li].Glyphs {
+			if runes[g.ClusterIndex] == '\t' {
+				// fonts have no tab glyph and harfbuzz would draw .notdef. the
+				// blank space glyph still carries the cluster for caret math
+				if space == nil {
+					space = s.Shape(f, dpr, " ")
+				}
+				x := fixed2f(pen) / dpr
+				run.Glyphs = append(run.Glyphs, Placed{
+					GID:     space.Glyphs[0].GID,
+					X:       x,
+					Cluster: g.ClusterIndex,
+					Face:    space.Glyphs[0].Face,
+				})
+				pen = fixed.Int26_6(NextTabStop(x, space.Width*TabSize)*dpr*64 + 0.5)
+				continue
+			}
 			run.Glyphs = append(run.Glyphs, Placed{
 				GID:     g.GlyphID,
 				X:       fixed2f(pen+g.XOffset) / dpr,

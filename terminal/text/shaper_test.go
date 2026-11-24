@@ -162,3 +162,41 @@ func TestEveryStyleHasItsOwnFace(t *testing.T) {
 		}
 	}
 }
+
+func TestShapeTabAdvancesToNextStop(t *testing.T) {
+	s := NewShaper(NewRegistry())
+	f := gfx.NewFont(14, gfx.FontOpts{})
+	space := s.Shape(f, 2, " ")
+	stop := space.Width * TabSize
+	for _, tc := range []struct {
+		text  string
+		after int
+		want  float32
+	}{
+		{"a\tb", 2, stop},
+		{"abc\td", 4, stop},
+		{"\tx", 1, stop},
+		{"a\t\tb", 3, 2 * stop},
+	} {
+		run := s.Shape(f, 2, tc.text)
+		var got float32 = -1
+		for _, g := range run.Glyphs {
+			if g.Cluster == tc.after {
+				got = g.X
+			}
+			if []rune(tc.text)[g.Cluster] == '\t' && g.GID != space.Glyphs[0].GID {
+				t.Fatalf("%q: tab drew glyph %d, want the blank space glyph %d", tc.text, g.GID, space.Glyphs[0].GID)
+			}
+		}
+		if abs(got-tc.want) > 0.01 {
+			t.Fatalf("%q: rune %d at x=%v, want %v", tc.text, tc.after, got, tc.want)
+		}
+	}
+}
+
+func abs(v float32) float32 {
+	if v < 0 {
+		return -v
+	}
+	return v
+}
