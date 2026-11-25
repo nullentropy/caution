@@ -23,3 +23,25 @@ func TestTextAreaPastesImageOnlyWhenClipboardHasNoText(t *testing.T) {
 		t.Fatalf("without text: value %q, images %d; want one image paste", ta.Value, images)
 	}
 }
+
+func TestTextFieldPastesImageOnlyWhenClipboardHasNoText(t *testing.T) {
+	u := realUi()
+	tf := NewTextField()
+	u.Root = tf
+	tf.UI = u
+	u.FocusWidget(tf)
+	clip := "hello"
+	u.ReadClipboard = func() string { return clip }
+	images := 0
+	u.PasteImage = func(x, y float32) bool { images++; return true }
+
+	u.KeyDown(Key{Name: "v", Meta: true})
+	if tf.Value != "hello" || images != 0 {
+		t.Fatalf("with text: value %q, images %d; want the text and no image", tf.Value, images)
+	}
+	clip = ""
+	u.KeyDown(Key{Name: "v", Meta: true})
+	if tf.Value != "hello" || images != 1 {
+		t.Fatalf("without text: value %q, images %d; want one image paste", tf.Value, images)
+	}
+}

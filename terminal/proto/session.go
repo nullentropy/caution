@@ -940,6 +940,26 @@ func (s *Session) flushResize() {
 // client-owned pill over the live tree while reconnecting. the tree keeps
 // working locally and the banner never takes input
 func (s *Session) showBanner(text string) {
+	s.ui.Banner = s.pill(text)
+	s.ui.Invalidate()
+}
+
+func (s *Session) notice(text string) {
+	prev := s.ui.Banner
+	n := s.pill(text)
+	s.ui.Banner = n
+	s.ui.Invalidate()
+	time.AfterFunc(4*time.Second, func() {
+		s.post(func() {
+			if s.ui.Banner == n {
+				s.ui.Banner = prev
+				s.ui.Invalidate()
+			}
+		})
+	})
+}
+
+func (s *Session) pill(text string) ui.Widget {
 	f := gfx.NewFont(12, gfx.FontOpts{Weight: 500})
 	m := s.ui.Measure(f, text)
 	const padL, dot, gap, padR = 12, 8, 8, 14
@@ -963,8 +983,7 @@ func (s *Session) showBanner(text string) {
 	label := ui.NewLabel(text, f, ui.Tok("inkDim"))
 	pill.Add(label)
 	label.Anchors = &ui.Anchors{Left: f32p(padL + dot + gap), CenterY: f32p(0)}
-	s.ui.Banner = root
-	s.ui.Invalidate()
+	return root
 }
 
 func (s *Session) hideBanner() {

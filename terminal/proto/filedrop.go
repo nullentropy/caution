@@ -2,6 +2,7 @@ package proto
 
 import (
 	"encoding/base64"
+	"fmt"
 	"log"
 
 	"github.com/nullentropy/caution/wire"
@@ -52,3 +53,13 @@ func (s *Session) NoteFileDrop(files []DropFile, x, y float64) {
 	}
 	send(map[string]any{"p": wire.DropEnd})
 }
+
+func (s *Session) PasteImage(data []byte, x, y float64) {
+	if c := s.FileDropCap(); int64(len(data)) > c {
+		s.notice(fmt.Sprintf("image not pasted: %s is over the %s upload limit", megabytes(int64(len(data))), megabytes(c)))
+		return
+	}
+	go s.NoteFileDrop([]DropFile{{Name: "image.png", Type: "image/png", Data: data}}, x, y)
+}
+
+func megabytes(n int64) string { return fmt.Sprintf("%.1f MB", float64(n)/(1<<20)) }

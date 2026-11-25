@@ -460,6 +460,14 @@ func (t *TextField) paste() {
 	if t.UI.ReadClipboard == nil {
 		return
 	}
+	raw := t.UI.ReadClipboard()
+	if raw == "" {
+		if t.UI.PasteImage != nil {
+			b := t.Bounds
+			t.UI.PasteImage(b.X+b.W/2, b.Y+b.H/2)
+		}
+		return
+	}
 	// single line: newlines flatten to spaces, other control runes drop
 	clip := strings.Map(func(r rune) rune {
 		switch {
@@ -469,7 +477,7 @@ func (t *TextField) paste() {
 			return -1
 		}
 		return r
-	}, t.UI.ReadClipboard())
+	}, raw)
 	if clip == "" {
 		return
 	}
