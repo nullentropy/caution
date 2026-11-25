@@ -125,14 +125,11 @@ func (r *RichText) fragments(fonts []gfx.Font, ln text.Line) []fragment {
 func (r *RichText) pieces(fonts []gfx.Font, a, b int) []fragment {
 	var out []fragment
 	var x float32
-	stop := float32(-1)
 	for i := range r.spans {
 		lo, hi := max(a, r.offs[i]), min(b, r.offs[i+1])
 		for lo < hi {
 			if r.text[lo] == '\t' {
-				if stop < 0 {
-					stop = r.UI.Measure(r.Font, " ").Width * text.TabSize
-				}
+				stop := r.UI.Measure(fonts[i], " ").Width * text.TabSize
 				w := text.NextTabStop(x, stop) - x
 				out = append(out, fragment{span: i, start: lo, end: lo + 1, x: x, w: w, tab: true})
 				x += w

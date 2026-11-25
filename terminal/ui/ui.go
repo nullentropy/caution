@@ -60,6 +60,8 @@ type UI struct {
 	// no key focus, so the focused editor shows no caret and asks for no blink ticks
 	windowInactive bool
 	sel            *TextSelection
+	edgeScroll     *ScrollView
+	dragX, dragY   float32
 	// glass that captured the in-flight right-button gesture
 	// nil means right-click keeps its context-menu meaning
 	rightGlass *Glass
@@ -651,6 +653,7 @@ func (u *UI) pointerDown(x, y float32) {
 	// OnPointerDown) or clears the old one
 	u.clearSelection()
 	u.clearTip()
+	u.edgeScroll = nil
 	if u.Overlay != nil {
 		hit := u.Overlay.HitTest(x, y)
 		if hit == nil {
@@ -700,6 +703,8 @@ func (u *UI) pointerMove(x, y float32) {
 	}
 	if u.active != nil {
 		u.active.OnPointerDrag(x, y)
+		u.dragX, u.dragY = x, y
+		u.edgeScroll = u.selectionEdgeScroll()
 		return
 	}
 	var hit Widget
@@ -737,6 +742,7 @@ func (u *UI) pointerMove(x, y float32) {
 }
 
 func (u *UI) pointerUp(x, y float32) {
+	u.edgeScroll = nil
 	if u.active != nil {
 		u.active.OnPointerUp(x, y)
 		u.active = nil
@@ -869,6 +875,9 @@ func (u *UI) TickIn() time.Duration {
 			tick = frame
 		}
 	}
+	if u.edgeScroll != nil && (tick == 0 || edgeScrollTick < tick) {
+		tick = edgeScrollTick
+	}
 	return tick
 }
 
@@ -878,6 +887,7 @@ func (u *UI) NoteTick() {
 	if tf := u.focusedText(); tf != nil {
 		tf.markDirty()
 	}
+	u.stepEdgeScroll()
 }
 
 func (u *UI) SetWindowActive(active bool) {
@@ -1181,6 +1191,45 @@ func (u *UI) moveSelectionEnd(w selectionOwner, end int) {
 	if u.sel != nil && u.sel.Owner == w && u.sel.End != end {
 		u.sel.End = end
 		u.Invalidate()
+	}
+}
+
+const edgeScrollTick = 16 * time.Millisecond
+
+func (u *UI) selectionEdgeScroll() *ScrollView {
+	if u.sel == nil || u.sel.Owner != u.active {
+		return nil
+	}
+	for w := u.active.Base().Parent; w != nil; w = w.Base().Parent {
+		sv, ok := w.(*ScrollView)
+		if !ok || !sv.Scrollable() {
+			continue
+		}
+		if b := sv.Bounds; u.dragY < b.Y || u.dragY > b.Y+b.H {
+			return sv
+		}
+		return nil
+	}
+	return nil
+}
+
+func (u *UI) stepEdgeScroll() {
+	sv := u.edgeScroll
+	if sv == nil || u.active == nil {
+		return
+	}
+	past := u.dragY - (sv.Bounds.Y + sv.Bounds.H)
+	if u.dragY < sv.Bounds.Y {
+		past = u.dragY - sv.Bounds.Y
+	}
+	step := min(max(abs32(past), 8), 80) / 4
+	if past < 0 {
+		step = -step
+	}
+	before := sv.ScrollY
+	sv.ScrollBy(step)
+	if moved := sv.ScrollY - before; moved != 0 {
+		u.active.OnPointerDrag(u.dragX, u.dragY+moved)
 	}
 }
 

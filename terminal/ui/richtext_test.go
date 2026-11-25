@@ -175,7 +175,7 @@ func TestRichTextTabsAlignAcrossSpansAndLines(t *testing.T) {
 	stop := float32(7 * text.TabSize)
 	want := map[string]placedText{
 		"x": {"x", stop, 0},
-		"y": {"y", stop, 16},
+		"y": {"y", 10 * text.TabSize, 16},
 		"z": {"z", 2 * stop, 32},
 	}
 	seen := 0
@@ -192,5 +192,21 @@ func TestRichTextTabsAlignAcrossSpansAndLines(t *testing.T) {
 	}
 	if seen != len(want) {
 		t.Fatalf("painted %v, want x, y and z on their own", paintedText(dl))
+	}
+}
+
+func TestRichTextMonoTabStopsUseMonoColumns(t *testing.T) {
+	u := richUi()
+	r := mountRich(u, 500, Span{Text: "\tx\n", Mono: true}, Span{Text: "        x", Mono: true})
+	dl := &gfx.DisplayList{}
+	r.PaintSelf(dl)
+	var xs []float32
+	for _, p := range paintedText(dl) {
+		if strings.TrimSpace(p.s) == "x" {
+			xs = append(xs, p.x+float32(strings.Index(p.s, "x"))*10)
+		}
+	}
+	if len(xs) != 2 || xs[0] != xs[1] {
+		t.Fatalf("x at %v, want the tab and 8 spaces to land on the same column", xs)
 	}
 }

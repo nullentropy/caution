@@ -111,8 +111,10 @@ type Core struct {
 	SoundToken string
 	// right-click menu (`context` prop), deepest carrier under the pointer wins
 	// picks come back through OnContextPick with the server-assigned id
-	ContextItems  []ContextItem
-	OnContextPick func(id int)
+	ContextItems    []ContextItem
+	OnContextPick   func(id int)
+	SelectionItems  []ContextItem
+	OnSelectionPick func(id, start, end int)
 
 	// absolute, logical px, valid after layout
 	Bounds gfx.Rect
@@ -402,7 +404,7 @@ func (b *Core) HitTest(x, y float32) Widget {
 			return hit
 		}
 	}
-	if inside && (b.self.Interactive() || b.Tip != "" || len(b.ContextItems) > 0) {
+	if inside && (b.self.Interactive() || b.Tip != "" || len(b.ContextItems) > 0 || len(b.SelectionItems) > 0) {
 		return b.self
 	}
 	return nil

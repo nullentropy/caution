@@ -355,6 +355,12 @@ func (s *Session) SetMetrics(tokens map[string]float64) {
 	}
 }
 
+func (s *Session) WriteClipboard(text string) {
+	if s.mounted {
+		s.ops = append(s.ops, map[string]any{"op": wire.OpClip, "text": text})
+	}
+}
+
 // browser tab title, native window titlebar
 func (s *Session) SetTitle(title string) {
 	s.title = title
@@ -1053,6 +1059,12 @@ func (s *Session) dispatch(m clientMsg) {
 	case wire.EvContext:
 		if fn := n.contextHandlers[toInt(m.Value)]; fn != nil {
 			fn()
+		}
+	case wire.EvSelContext:
+		if v, ok := m.Value.(map[string]any); ok {
+			if fn := n.selectionHandlers[toInt(v["id"])]; fn != nil {
+				fn(toInt(v["start"]), toInt(v["end"]))
+			}
 		}
 	case wire.EvColResize:
 		if v, ok := m.Value.(map[string]any); ok && n.onColResize != nil {

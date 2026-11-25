@@ -68,6 +68,7 @@ const (
 	EvSplitResize  Event = "split-resize"
 	EvVisibleRange Event = "visible-range"
 	EvContext      Event = "context"
+	EvSelContext   Event = "selection-context"
 	EvSpanClick    Event = "span-click"
 
 	// glass pointer gestures, left button then right
@@ -130,6 +131,7 @@ const (
 	OpCmd      Op = "cmd"
 	OpMotion   Op = "motion"
 	OpCookie   Op = "cookie"
+	OpClip     Op = "clipboard"
 )
 
 // Session.SetMotion values, the mount's "motion" field and the motion op

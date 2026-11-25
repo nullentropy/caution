@@ -72,7 +72,8 @@ type Node struct {
 	// a Focus() asked for before the node joined a session
 	wantsFocus bool
 
-	contextHandlers map[int]func()
+	contextHandlers   map[int]func()
+	selectionHandlers map[int]func(start, end int)
 }
 
 func newNode(typ wire.Type) *Node {
@@ -665,6 +666,29 @@ func (n *Node) Context(items ...ContextItem) *Node {
 	}
 	n.set("context", specs)
 	return n.subscribe(wire.EvContext)
+}
+
+type SelectionItem struct {
+	Title  string
+	Sep    bool
+	OnPick func(start, end int)
+}
+
+func (n *Node) SelectionContext(items ...SelectionItem) *Node {
+	specs := make([]any, 0, len(items))
+	n.selectionHandlers = map[int]func(int, int){}
+	id := 0
+	for _, it := range items {
+		if it.Sep {
+			specs = append(specs, map[string]any{"sep": true})
+			continue
+		}
+		id++
+		specs = append(specs, map[string]any{"id": id, "title": it.Title})
+		n.selectionHandlers[id] = it.OnPick
+	}
+	n.set("selectionContext", specs)
+	return n.subscribe(wire.EvSelContext)
 }
 
 // textarea visible line count (its intrinsic height)

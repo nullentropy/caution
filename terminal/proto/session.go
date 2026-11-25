@@ -111,6 +111,7 @@ type patchOp struct {
 	Value    string             `json:"value"`
 	Motion   wire.Motion        `json:"motion"`
 	Cookie   string             `json:"cookie"`
+	Text     string             `json:"text"`
 }
 
 // one tree row's meta, parallel to its cells in a rows op
@@ -585,6 +586,10 @@ func (s *Session) applyOp(op *patchOp) bool {
 	case wire.OpCookie:
 		if s.setCookie != nil {
 			s.setCookie(op.Cookie)
+		}
+	case wire.OpClip:
+		if s.ui.WriteClipboard != nil {
+			s.ui.WriteClipboard(op.Text)
 		}
 	case wire.OpResource:
 		s.applyResources(&resourceSpec{Images: op.Images, Sounds: op.Sounds, Fonts: op.Fonts})

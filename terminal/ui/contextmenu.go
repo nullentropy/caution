@@ -37,6 +37,14 @@ func (u *UI) contextClick(x, y float32) {
 		hit = u.Root.HitTest(x, y)
 	}
 	for w := hit; w != nil; w = w.Base().Parent {
+		if s, e, ok := u.selectionWithin(w); ok && len(w.Base().SelectionItems) > 0 {
+			pick := w.Base().OnSelectionPick
+			if pick == nil {
+				pick = func(int, int, int) {}
+			}
+			u.openContextMenu(w.Base().SelectionItems, func(id int) { pick(id, s, e) }, x, y)
+			return
+		}
 		items := w.Base().ContextItems
 		if len(items) == 0 {
 			continue
@@ -48,6 +56,18 @@ func (u *UI) contextClick(x, y float32) {
 		u.openContextMenu(items, pick, x, y)
 		return
 	}
+}
+
+func (u *UI) selectionWithin(w Widget) (start, end int, ok bool) {
+	if u.sel == nil || u.sel.Start == u.sel.End {
+		return 0, 0, false
+	}
+	for o := Widget(u.sel.Owner); o != nil; o = o.Base().Parent {
+		if o == w {
+			return min(u.sel.Start, u.sel.End), max(u.sel.Start, u.sel.End), true
+		}
+	}
+	return 0, 0, false
 }
 
 func (u *UI) openContextMenu(items []ContextItem, onPick func(id int), x, y float32) {

@@ -361,6 +361,14 @@ func (ns *NodeStore) Apply(w ui.Widget, id int, p props) {
 	if subscribed(p, wire.EvContext) {
 		w.Base().OnContextPick = func(cid int) { ns.sink.Event(id, wire.EvContext, cid) }
 	}
+	if v, ok := p["selectionContext"]; ok {
+		w.Base().SelectionItems = contextItems(v)
+	}
+	if subscribed(p, wire.EvSelContext) {
+		w.Base().OnSelectionPick = func(cid, start, end int) {
+			ns.sink.Event(id, wire.EvSelContext, map[string]any{"id": cid, "start": start, "end": end})
+		}
+	}
 	switch t := w.(type) {
 	case *ui.Panel:
 		if v, ok := p["bg"]; ok {
