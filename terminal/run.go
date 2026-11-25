@@ -494,6 +494,7 @@ func Run(o Options) error {
 		sess.NoteFullscreen(on)
 	})
 	watchFileDrag(win, sess.NoteFileDrag)
+	installQuitFilter()
 	var iconified, occluded, hidden bool
 	noteVisible := func() {
 		if h := iconified || occluded; h != hidden {
