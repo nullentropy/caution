@@ -801,8 +801,16 @@ func (s *Session) SetRoot(root *Node) {
 	s.nodes = map[int]*Node{}
 	s.nextID = 0
 	s.root = root
+	unnumber(root)
 	s.attach(root)
 	s.sendMount()
+}
+
+func unnumber(n *Node) {
+	n.id = 0
+	for _, k := range n.kids {
+		unnumber(k)
+	}
 }
 
 // token bucket, burst 240, refill 120/s. human input stays far below that

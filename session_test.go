@@ -293,6 +293,36 @@ func TestClickRacingARemountIsDropped(t *testing.T) {
 	expectQuiet(t, fired)
 }
 
+func TestTreeMountedAgainKeepsTakingEvents(t *testing.T) {
+	fired := make(chan string, 8)
+	sessCh := make(chan *Session, 1)
+	towel := Panel().Kids(Button("towel").OnClick(func() { fired <- "towel" }))
+	mount := func(s *Session) *Node {
+		sessCh <- s
+		return towel
+	}
+	tc := dialSession(t, mount)
+	tc.read()
+	sess := <-sessCh
+
+	done := make(chan struct{})
+	sess.Update(func() {
+		sess.SetRoot(Panel().Kids(Label("Don't panic")))
+		sess.SetRoot(towel)
+		for range 4 {
+			towel.Add(Label("Mostly harmless")).Remove()
+		}
+		close(done)
+	})
+	<-done
+
+	tc.read()
+	buttonID := kidIDs(t, tc.read())[0]
+	seq := seqOf(t, tc.read())
+	tc.event(buttonID, "click", seq)
+	expectFire(t, fired, "towel")
+}
+
 func TestTreeToggleRoundTrip(t *testing.T) {
 	items := []TreeItem{
 		{Key: "a", Cells: []string{"a"}, Kids: []TreeItem{{Key: "a1", Cells: []string{"a1"}}}},
