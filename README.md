@@ -262,6 +262,17 @@ the app. Picks come back as session events. Session-wide shortcuts outside menus
 register through the `keys` list and fire after the focused widget declines
 the chord.
 
+Use `App: true` for the a menu under the app's name.
+
+```go
+s.SetMenu(
+    caution.Menu{Title: "Rowboat", App: true, Items: []caution.MenuItem{
+        {Title: "Settings…", Key: ",", OnPick: openSettings},
+    }},
+    caution.Menu{Title: "Edit", Items: editItems},
+)
+```
+
 The mouse's extra buttons are session-wide too. Button 4 is back and 5 is
 forward on every mouse that has them:
 

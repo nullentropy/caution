@@ -70,6 +70,7 @@ type keySpec struct {
 type MenuSpec struct {
 	Title string     `json:"title"`
 	Items []MenuItem `json:"items"`
+	App   bool       `json:"app"`
 }
 
 type MenuItem struct {
@@ -878,8 +879,12 @@ func MenubarSpec(menus []MenuSpec) []ui.MenuSpec {
 		return out
 	}
 	out := make([]ui.MenuSpec, 0, len(menus))
-	for _, m := range menus {
-		out = append(out, ui.MenuSpec{Title: m.Title, Items: conv(m.Items)})
+	for _, app := range []bool{true, false} {
+		for _, m := range menus {
+			if m.App == app {
+				out = append(out, ui.MenuSpec{Title: m.Title, Items: conv(m.Items)})
+			}
+		}
 	}
 	return out
 }

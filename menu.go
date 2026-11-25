@@ -6,6 +6,7 @@ import "github.com/nullentropy/caution/wire"
 type Menu struct {
 	Title string
 	Items []MenuItem
+	App   bool
 }
 
 // one of: a separator (Sep), a submenu (Items), or a pickable item
@@ -48,7 +49,11 @@ func (s *Session) SetMenu(menus ...Menu) {
 	}
 	specs := make([]any, 0, len(menus))
 	for _, m := range menus {
-		specs = append(specs, map[string]any{"title": m.Title, "items": conv(m.Items)})
+		spec := map[string]any{"title": m.Title, "items": conv(m.Items)}
+		if m.App {
+			spec["app"] = true
+		}
+		specs = append(specs, spec)
 	}
 	s.menu = specs
 	if s.mounted {

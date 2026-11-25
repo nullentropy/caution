@@ -18,16 +18,23 @@ static CautionMenuTarget *cautionTarget(void) {
 	return t;
 }
 
-// standard app menu (About, Hide, Quit) comes first
-void *caution_menu_new(void) {
+void *caution_menu_new(void **appMenu) {
 	NSString *app = [[NSProcessInfo processInfo] processName];
 	NSMenu *root = [[NSMenu alloc] init];
 	NSMenuItem *appItem = [root addItemWithTitle:app action:nil keyEquivalent:@""];
-	NSMenu *appMenu = [[NSMenu alloc] initWithTitle:app];
-	[appMenu addItemWithTitle:[@"About " stringByAppendingString:app]
-	                   action:@selector(orderFrontStandardAboutPanel:)
-	            keyEquivalent:@""];
-	[appMenu addItem:[NSMenuItem separatorItem]];
+	NSMenu *menu = [[NSMenu alloc] initWithTitle:app];
+	[menu addItemWithTitle:[@"About " stringByAppendingString:app]
+	                action:@selector(orderFrontStandardAboutPanel:)
+	         keyEquivalent:@""];
+	[menu addItem:[NSMenuItem separatorItem]];
+	[appItem setSubmenu:menu];
+	*appMenu = menu;
+	return root;
+}
+
+void caution_menu_app_tail(void *appMenuPtr) {
+	NSMenu *appMenu = (NSMenu *)appMenuPtr;
+	NSString *app = [[NSProcessInfo processInfo] processName];
 	[appMenu addItemWithTitle:[@"Hide " stringByAppendingString:app]
 	                   action:@selector(hide:)
 	            keyEquivalent:@"h"];
@@ -42,8 +49,6 @@ void *caution_menu_new(void) {
 	[appMenu addItemWithTitle:[@"Quit " stringByAppendingString:app]
 	                   action:@selector(terminate:)
 	            keyEquivalent:@"q"];
-	[appItem setSubmenu:appMenu];
-	return root;
 }
 
 void *caution_menu_add_submenu(void *menuPtr, const char *title) {

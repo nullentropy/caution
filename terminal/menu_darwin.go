@@ -5,7 +5,8 @@ package terminal
 /*
 #cgo LDFLAGS: -framework Cocoa
 #include <stdlib.h>
-void *caution_menu_new(void);
+void *caution_menu_new(void **appMenu);
+void  caution_menu_app_tail(void *appMenu);
 void *caution_menu_add_submenu(void *menu, const char *title);
 void  caution_menu_add_item(void *menu, const char *title, const char *key, unsigned long mods, long tag);
 void  caution_menu_add_sep(void *menu);
@@ -33,7 +34,8 @@ func cautionMenuPicked(tag C.long) {
 // main thread only
 func installMenu(menus []proto.MenuSpec, onPick func(id int)) {
 	menuOnPick = onPick
-	root := C.caution_menu_new()
+	var app unsafe.Pointer
+	root := C.caution_menu_new(&app)
 	var add func(m unsafe.Pointer, items []proto.MenuItem)
 	add = func(m unsafe.Pointer, items []proto.MenuItem) {
 		for _, it := range items {
@@ -55,7 +57,21 @@ func installMenu(menus []proto.MenuSpec, onPick func(id int)) {
 			}
 		}
 	}
+	appItems := false
 	for _, menu := range menus {
+		if menu.App && len(menu.Items) > 0 {
+			add(app, menu.Items)
+			appItems = true
+		}
+	}
+	if appItems {
+		C.caution_menu_add_sep(app)
+	}
+	C.caution_menu_app_tail(app)
+	for _, menu := range menus {
+		if menu.App {
+			continue
+		}
 		ct := C.CString(menu.Title)
 		sub := C.caution_menu_add_submenu(root, ct)
 		C.free(unsafe.Pointer(ct))
