@@ -50,6 +50,7 @@ type UI struct {
 	// set by the shell
 	WriteClipboard func(s string)
 	ReadClipboard  func() string
+	PasteImage func(x, y float32) bool
 	// the shell owns text editing
 	HostText bool
 

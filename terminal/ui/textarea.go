@@ -330,6 +330,14 @@ func (a *TextArea) pasteMultiline() {
 	if a.UI.ReadClipboard == nil {
 		return
 	}
+	raw := a.UI.ReadClipboard()
+	if raw == "" {
+		if a.UI.PasteImage != nil {
+			b := a.Bounds
+			a.UI.PasteImage(b.X+b.W/2, b.Y+b.H/2)
+		}
+		return
+	}
 	clip := strings.Map(func(r rune) rune {
 		switch {
 		case r == '\n':
@@ -340,7 +348,7 @@ func (a *TextArea) pasteMultiline() {
 			return -1
 		}
 		return r
-	}, a.UI.ReadClipboard())
+	}, raw)
 	if clip == "" {
 		return
 	}

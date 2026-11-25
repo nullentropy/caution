@@ -7,6 +7,7 @@ import (
 	"image"
 	"image/png"
 	"io"
+	"log"
 	"math"
 	"net"
 	"net/http"
@@ -495,6 +496,18 @@ func Run(o Options) error {
 	})
 	watchFileDrag(win, sess.NoteFileDrag)
 	installQuitFilter()
+	u.PasteImage = func(x, y float32) bool {
+		data := clipboardImage()
+		if data == nil {
+			return false
+		}
+		if int64(len(data)) > sess.FileDropCap() {
+			log.Printf("caution: pasted image exceeds the server's %d byte cap, skipped", sess.FileDropCap())
+			return true
+		}
+		go sess.NoteFileDrop([]proto.DropFile{{Name: "image.png", Type: "image/png", Data: data}}, float64(x), float64(y))
+		return true
+	}
 	var iconified, occluded, hidden bool
 	noteVisible := func() {
 		if h := iconified || occluded; h != hidden {
