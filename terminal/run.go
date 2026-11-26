@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"os"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -653,7 +654,7 @@ func Run(o Options) error {
 		}
 		u.CharInput(r)
 	})
-	win.SetKeyCallback(func(_ *glfw.Window, key glfw.Key, _ int, action glfw.Action, mods glfw.ModifierKey) {
+	win.SetKeyCallback(func(_ *glfw.Window, key glfw.Key, scancode int, action glfw.Action, mods glfw.ModifierKey) {
 		if action != glfw.Press && action != glfw.Repeat {
 			return
 		}
@@ -695,6 +696,8 @@ func Run(o Options) error {
 			k.Name = "PageUp"
 		case glfw.KeyPageDown:
 			k.Name = "PageDown"
+		case glfw.KeyInsert:
+			k.Name = "Insert"
 		default:
 			// letters and digits are keys only under a modifier chord (Cmd+A/C/V,
 			// app combos), bare presses insert via the char callback
@@ -704,6 +707,15 @@ func Run(o Options) error {
 				k.Name = string(rune('a' + (key - glfw.KeyA)))
 			case chord && key >= glfw.Key0 && key <= glfw.Key9:
 				k.Name = string(rune('0' + (key - glfw.Key0)))
+			case key >= glfw.KeyF1 && key <= glfw.KeyF12:
+				k.Name = "F" + strconv.Itoa(int(key-glfw.KeyF1)+1)
+			case chord:
+				// punctuation as the layout prints it unshifted, so Ctrl+/ is "/"
+				if name := glfw.GetKeyName(key, scancode); name != "" {
+					k.Name = name
+				} else {
+					return
+				}
 			default:
 				return
 			}

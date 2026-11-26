@@ -72,6 +72,8 @@ type Node struct {
 	// a Focus() asked for before the node joined a session
 	wantsFocus bool
 
+	term *termHandlers
+
 	contextHandlers   map[int]func()
 	selectionHandlers map[int]func(start, end int)
 }

@@ -838,7 +838,7 @@ func (u *UI) paintTip(dl *gfx.DisplayList, vw, vh float32) {
 // -- keyboard ------------------------------------------------------------------------
 
 func (u *UI) charInput(r rune) {
-	if u.OnKeyCombo != nil && u.focusedText() == nil && u.Overlay == nil && lastDialog(u.Root) == nil {
+	if u.OnKeyCombo != nil && u.focusedText() == nil && !u.rawFocused() && u.Overlay == nil && lastDialog(u.Root) == nil {
 		combo := string(r)
 		if unicode.IsUpper(r) {
 			combo = "shift+" + string(unicode.ToLower(r))
@@ -865,6 +865,11 @@ func (u *UI) TickIn() time.Duration {
 	if tf := u.focusedText(); tf != nil && tf.Focused && tf.selStart == tf.selEnd {
 		tick = tf.blinkTick()
 	}
+	if tg, ok := u.focused.(*TermGrid); ok {
+		if d := tg.blinkTick(); d > 0 && (tick == 0 || d < tick) {
+			tick = d
+		}
+	}
 	if u.tipW != nil && !u.tipShown() {
 		if d := max(time.Until(u.tipAt), time.Millisecond); tick == 0 || d < tick {
 			tick = d
@@ -888,6 +893,9 @@ func (u *UI) NoteTick() {
 	if tf := u.focusedText(); tf != nil {
 		tf.markDirty()
 	}
+	if tg, ok := u.focused.(*TermGrid); ok && tg.blinks() {
+		tg.markDirty()
+	}
 	u.stepEdgeScroll()
 }
 
@@ -899,6 +907,10 @@ func (u *UI) SetWindowActive(active bool) {
 	if tf := u.focusedText(); tf != nil {
 		tf.touch()
 		tf.Invalidate()
+	}
+	if tg, ok := u.focused.(*TermGrid); ok {
+		tg.Touch()
+		tg.Invalidate()
 	}
 }
 
@@ -912,7 +924,17 @@ func (u *UI) focusedText() *TextField {
 	return nil
 }
 
+type rawKeyer interface{ RawKeys() bool }
+
+func (u *UI) rawFocused() bool {
+	r, ok := u.focused.(rawKeyer)
+	return ok && r.RawKeys() && u.Overlay == nil
+}
+
 func (u *UI) keyDown(k Key) bool {
+	if u.rawFocused() && u.focused.OnKey(k) {
+		return true
+	}
 	if k.Name == "Tab" {
 		if tf := u.focusedText(); tf != nil && tf.OnTab != nil && !k.Meta && !k.Ctrl && !k.Alt {
 			tf.OnTab(k.Shift, tf.Value, tf.selEnd)

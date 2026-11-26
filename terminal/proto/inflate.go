@@ -656,6 +656,8 @@ func (ns *NodeStore) Apply(w ui.Widget, id int, p props) {
 				ns.sink.Event(id, wire.EvRDrop, map[string]any{"x": x, "y": y})
 			}
 		}
+	case *ui.TermGrid:
+		applyTermGrid(t, id, p, ns.sink)
 	case *ui.Grid:
 		if v, ok := p["columns"].([]any); ok {
 			t.Columns = t.Columns[:0]
@@ -769,6 +771,7 @@ var widgets = map[wire.Type]func() ui.Widget{
 	wire.Image:    func() ui.Widget { return ui.NewImageView() },
 	wire.Shader:   func() ui.Widget { return ui.NewShaderPane() },
 	wire.Glass:    func() ui.Widget { return ui.NewGlass() },
+	wire.TermGrid: func() ui.Widget { return ui.NewTermGrid() },
 }
 
 func construct(typ wire.Type) ui.Widget {

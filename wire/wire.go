@@ -38,6 +38,8 @@ const (
 	Image  Type = "image"
 	Shader Type = "shader"
 	Glass  Type = "glass"
+
+	TermGrid Type = "termgrid"
 )
 
 var Types = []Type{
@@ -46,6 +48,7 @@ var Types = []Type{
 	Table, Tree,
 	Select, Progress, Slider, Radio, Tabs,
 	Dialog, Image, Shader, Glass,
+	TermGrid,
 }
 
 type Event string
@@ -79,6 +82,11 @@ const (
 	EvRPick Event = "rpick"
 	EvRDrag Event = "rdrag"
 	EvRDrop Event = "rdrop"
+
+	// termgrid: every key and char while focused
+	EvTermInput Event = "term-input"
+	EvTermMouse Event = "term-mouse"
+	EvGridSize  Event = "grid-size"
 
 	EvResize     Event = "resize"
 	EvMenu       Event = "menu"

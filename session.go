@@ -1132,6 +1132,8 @@ func (s *Session) dispatch(m clientMsg) {
 			y, _ := v["y"].(float64)
 			n.onRDrop(x, y)
 		}
+	case wire.EvTermInput, wire.EvTermMouse, wire.EvGridSize:
+		n.dispatchTerm(m.Ev, m.Value)
 	}
 }
 
