@@ -33,13 +33,11 @@ func (s *ImageStore) fetchAndDecode(src string) ([]byte, int, int, error) {
 	}
 	b := img.Bounds()
 	w, h := b.Dx(), b.Dy()
-	// premultiplied RGBA is the texture contract. the browser uploads with
-	// UNPACK_PREMULTIPLY_ALPHA_WEBGL, natively we do it here
 	pix := make([]byte, w*h*4)
 	o := 0
 	for y := b.Min.Y; y < b.Max.Y; y++ {
 		for x := b.Min.X; x < b.Max.X; x++ {
-			r, g, bb, a := img.At(x, y).RGBA() // 16-bit, already premultiplied
+			r, g, bb, a := img.At(x, y).RGBA() // these are 16-bit values that are already premultiplied
 			pix[o] = byte(r >> 8)
 			pix[o+1] = byte(g >> 8)
 			pix[o+2] = byte(bb >> 8)

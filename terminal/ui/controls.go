@@ -4,13 +4,8 @@ import (
 	"github.com/nullentropy/caution/terminal/gfx"
 )
 
-// local interaction, semantic events upstream, all styling from theme tokens
-
 var ctrlFont = gfx.NewFont(13, gfx.FontOpts{})
 
-// -- progress -------------------------------------------------------------------
-
-// Value is 0..1, display-only
 type Progress struct {
 	Core
 	Value float32
@@ -30,10 +25,6 @@ func (p *Progress) PaintSelf(dl *gfx.DisplayList) {
 	}
 }
 
-// -- slider ---------------------------------------------------------------------
-
-// dragging is client-authoritative (server value sets are ignored mid-drag)
-// moves emit input (debounced upstream), release or a key press emits commit
 type Slider struct {
 	Core
 	Min, Max, Step, Value float32
@@ -76,7 +67,7 @@ func (s *Slider) valueAt(x float32) float32 {
 func (s *Slider) setValue(v float32, commit bool) {
 	if v != s.Value {
 		s.Value = v
-		s.Invalidate()
+		s.InvalidateWidget()
 		if s.OnInput != nil {
 			s.OnInput(v)
 		}
@@ -128,7 +119,7 @@ func (s *Slider) OnKey(k Key) bool {
 
 func (s *Slider) OnHoverChange(h bool) {
 	s.hovered = h
-	s.Invalidate()
+	s.InvalidateWidget()
 }
 
 func (s *Slider) PaintSelf(dl *gfx.DisplayList) {
@@ -158,12 +149,8 @@ func (s *Slider) PaintSelf(dl *gfx.DisplayList) {
 	dl.Rect(thumb, fill, gfx.RectOpts{Radius: gfx.CornerRadius(thumbR), BorderWidth: Metrics.BorderWidth * 2, BorderColor: &white})
 }
 
-// -- radio group ------------------------------------------------------------------
-
-// checkbox.size - 2, a circle reads optically larger than a square of the same box
 func radioD() float32 { return Metrics.CheckboxSize - 2 }
 
-// vertical, picking emits select with the index
 type RadioGroup struct {
 	Core
 	Options  []string
@@ -194,9 +181,9 @@ func (r *RadioGroup) pick(i int) {
 	if i < 0 || i >= len(r.Options) || i == r.Selected {
 		return
 	}
-	r.Selected = i // local echo
+	r.Selected = i
 	r.sound("toggle")
-	r.Invalidate()
+	r.InvalidateWidget()
 	if r.OnSelect != nil {
 		r.OnSelect(i)
 	}
@@ -223,14 +210,14 @@ func (r *RadioGroup) OnPointerUp(x, y float32) {
 func (r *RadioGroup) OnPointerHover(_, y float32) {
 	if i := r.rowAt(y); i != r.hoverRow {
 		r.hoverRow = i
-		r.Invalidate()
+		r.InvalidateWidget()
 	}
 }
 
 func (r *RadioGroup) OnHoverChange(h bool) {
 	if !h && r.hoverRow != -1 {
 		r.hoverRow = -1
-		r.Invalidate()
+		r.InvalidateWidget()
 	}
 }
 
@@ -245,8 +232,6 @@ func (r *RadioGroup) rowAt(y float32) int {
 func (r *RadioGroup) PaintSelf(dl *gfx.DisplayList) {
 	b := r.Bounds
 	d, rowH := radioD(), Metrics.RowHeight
-	// the selected dot keeps a 5px accent ring, floored so it never vanishes under
-	// a small checkbox.size
 	dot := max(4, d-10)
 	for i, opt := range r.Options {
 		y := b.Y + float32(i)*rowH
@@ -277,15 +262,11 @@ func (r *RadioGroup) PaintSelf(dl *gfx.DisplayList) {
 	}
 }
 
-// -- tabs ---------------------------------------------------------------------------
-
 var tabFont = gfx.NewFont(13, gfx.FontOpts{Weight: 600})
 
-// tabsH is control.height plus the 2px selection underline below the text
 func tabPad() float32 { return Metrics.ControlPadX }
 func tabsH() float32  { return Metrics.ControlHeight + 2 }
 
-// picking emits select, content switching is app policy
 type Tabs struct {
 	Core
 	Options  []string
@@ -312,9 +293,9 @@ func (t *Tabs) pick(i int) {
 	if i < 0 || i >= len(t.Options) || i == t.Selected {
 		return
 	}
-	t.Selected = i // local echo
+	t.Selected = i
 	t.sound("select")
-	t.Invalidate()
+	t.InvalidateWidget()
 	if t.OnSelect != nil {
 		t.OnSelect(i)
 	}
@@ -341,14 +322,14 @@ func (t *Tabs) OnPointerUp(x, y float32) {
 func (t *Tabs) OnPointerHover(x, _ float32) {
 	if i := t.tabAt(x); i != t.hoverTab {
 		t.hoverTab = i
-		t.Invalidate()
+		t.InvalidateWidget()
 	}
 }
 
 func (t *Tabs) OnHoverChange(h bool) {
 	if !h && t.hoverTab != -1 {
 		t.hoverTab = -1
-		t.Invalidate()
+		t.InvalidateWidget()
 	}
 }
 

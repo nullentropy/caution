@@ -5,7 +5,6 @@ go 1.26
 require (
 	github.com/ebitengine/oto/v3 v3.4.1
 	github.com/evanw/esbuild v0.28.1
-	github.com/go-gl/gl v0.0.0-20260331235117-4566fea9a276
 	github.com/go-gl/glfw/v3.3/glfw v0.0.0-20260802143932-8fa725040a18
 	github.com/go-text/typesetting v0.3.4
 	github.com/gorilla/websocket v1.5.3

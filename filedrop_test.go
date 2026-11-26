@@ -88,20 +88,17 @@ func TestOverCapAndInterruptedDropsDeliverNothing(t *testing.T) {
 	tc.dropEnd()
 	expectQuiet(t, fired)
 
-	// a chunk past its declared size ends the drop
 	tc.dropStart(1, 1, File{Name: "z", Data: []byte("abc")})
 	tc.dropData(0, []byte("abcd"))
 	tc.dropEnd()
 	expectQuiet(t, fired)
 
-	// data short of the declared size at end
 	f := File{Name: "short", Data: []byte("abcdef")}
 	tc.dropStart(1, 1, f)
 	tc.dropData(0, f.Data[:3])
 	tc.dropEnd()
 	expectQuiet(t, fired)
 
-	// a disconnect mid-drop discards it, the tail on the new socket is ignored
 	tc.dropStart(1, 1, f)
 	tc.dropData(0, f.Data[:3])
 	tc.redial(sid, seq)
@@ -110,7 +107,6 @@ func TestOverCapAndInterruptedDropsDeliverNothing(t *testing.T) {
 	tc.dropEnd()
 	expectQuiet(t, fired)
 
-	// and a fresh drop still works
 	ok := File{Name: "ok", Data: []byte("fits")}
 	tc.dropStart(2, 3, ok)
 	tc.dropData(0, ok.Data)
@@ -118,8 +114,6 @@ func TestOverCapAndInterruptedDropsDeliverNothing(t *testing.T) {
 	expectFire(t, fired, "drop 2,3 ok||fits")
 }
 
-// the real client side over a real socket, since the chunking has to stay
-// under the server's read limit and assemble back into the same bytes
 func TestClientChunksReassembleOnTheServer(t *testing.T) {
 	fired := make(chan string, 4)
 	var got []File

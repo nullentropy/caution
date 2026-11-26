@@ -23,7 +23,6 @@ func cautionFileDrag(over C.int) {
 	}
 }
 
-// main thread
 func watchFileDrag(win *glfw.Window, fn func(over bool)) {
 	onFileDrag = fn
 	C.caution_watch_file_drag(unsafe.Pointer(win.GetCocoaWindow()))

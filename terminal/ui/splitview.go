@@ -2,47 +2,40 @@ package ui
 
 import "github.com/nullentropy/caution/terminal/gfx"
 
-// visual gutter between panes, the grab target extends splitSlop px past it
 const (
 	splitDivider = 6
 	splitSlop    = 3
 )
 
-// two panes with a draggable divider (nest for more). dragging is client-local
-// and the final position commits upstream as `split-resize` on release.
-// Pos is the first pane's main-axis size in px (the second's with PinEnd),
-// clamped by MinA/MinB every layout so window resizes keep both panes sane and
-// change the unpinned one. with one child it fills the split, no divider
 type SplitView struct {
 	Core
-	Axis     string // "h" | "v"
+	Axis     Axis
 	Pos      float32
 	PinEnd   bool
 	MinA     float32
 	MinB     float32
 	OnResize func(pos float32)
 
-	first        float32 // first pane's laid-out size
+	first        float32
 	hoverDivider bool
 	grab         *float32
 }
 
 func NewSplitView() *SplitView {
-	s := &SplitView{Axis: "h", Pos: 300, MinA: 80, MinB: 80}
+	s := &SplitView{Axis: AxisH, Pos: 300, MinA: 80, MinB: 80}
 	s.self = s
 	return s
 }
 
-func (s *SplitView) Interactive() bool { return true } // only the divider hits (see HitTest)
+func (s *SplitView) Interactive() bool { return true }
 
 func (s *SplitView) mainSize() float32 {
-	if s.Axis == "v" {
+	if s.Axis == AxisV {
 		return s.Bounds.H
 	}
 	return s.Bounds.W
 }
 
-// sizes the first pane within MinA/MinB and keeps Pos in step
 func (s *SplitView) setFirst(a float32) {
 	main := s.mainSize()
 	s.first = min(max(a, s.MinA), max(s.MinA, main-splitDivider-s.MinB))
@@ -71,7 +64,7 @@ func (s *SplitView) LayoutChildren() {
 	}
 
 	first := s.Kids[0]
-	if s.Axis == "h" {
+	if s.Axis == AxisH {
 		first.Base().Bounds = gfx.R(b.X, b.Y, s.first, b.H)
 	} else {
 		first.Base().Bounds = gfx.R(b.X, b.Y, b.W, s.first)
@@ -79,7 +72,7 @@ func (s *SplitView) LayoutChildren() {
 	layoutSubtree(first)
 	second := s.Kids[1]
 	start := s.first + splitDivider
-	if s.Axis == "h" {
+	if s.Axis == AxisH {
 		second.Base().Bounds = gfx.R(b.X+start, b.Y, max(0, b.W-start), b.H)
 	} else {
 		second.Base().Bounds = gfx.R(b.X, b.Y+start, b.W, max(0, b.H-start))
@@ -92,22 +85,20 @@ func (s *SplitView) LayoutChildren() {
 
 func (s *SplitView) dividerRect() gfx.Rect {
 	b := s.Bounds
-	if s.Axis == "h" {
+	if s.Axis == AxisH {
 		return gfx.R(b.X+s.first-splitSlop, b.Y, splitDivider+splitSlop*2, b.H)
 	}
 	return gfx.R(b.X, b.Y+s.first-splitSlop, b.W, splitDivider+splitSlop*2)
 }
 
 func (s *SplitView) PaintOverlay(dl *gfx.DisplayList) {
-	// divider is invisible at rest, shows on hover (with the resize cursor) and
-	// while dragging
 	if !s.split() || !s.hoverDivider && s.grab == nil {
 		return
 	}
 	b := s.Bounds
 	c := s.first + splitDivider/2
 	var line gfx.Rect
-	if s.Axis == "h" {
+	if s.Axis == AxisH {
 		line = gfx.R(b.X+c-1.5, b.Y, 3, b.H)
 	} else {
 		line = gfx.R(b.X, b.Y+c-1.5, b.W, 3)
@@ -120,7 +111,7 @@ func (s *SplitView) HitTest(x, y float32) Widget {
 		return nil
 	}
 	if s.split() && Contains(s.dividerRect(), x, y) {
-		return s // divider beats pane edges
+		return s
 	}
 	for i := len(s.Kids) - 1; i >= 0; i-- {
 		if hit := s.Kids[i].HitTest(x, y); hit != nil {
@@ -131,7 +122,7 @@ func (s *SplitView) HitTest(x, y float32) Widget {
 }
 
 func (s *SplitView) Cursor() string {
-	if s.Axis == "h" {
+	if s.Axis == AxisH {
 		return "col-resize"
 	}
 	return "row-resize"
@@ -139,12 +130,12 @@ func (s *SplitView) Cursor() string {
 
 func (s *SplitView) OnPointerDown(x, y float32, _ int) {
 	v := x
-	if s.Axis == "v" {
+	if s.Axis == AxisV {
 		v = y
 	}
 	grab := v - s.first
 	s.grab = &grab
-	s.Invalidate()
+	s.InvalidateWidget()
 }
 
 func (s *SplitView) OnPointerDrag(x, y float32) {
@@ -152,11 +143,11 @@ func (s *SplitView) OnPointerDrag(x, y float32) {
 		return
 	}
 	v := x
-	if s.Axis == "v" {
+	if s.Axis == AxisV {
 		v = y
 	}
 	s.setFirst(v - *s.grab)
-	s.Invalidate()
+	s.InvalidateWidget()
 }
 
 func (s *SplitView) OnPointerUp(_, _ float32) {
@@ -164,13 +155,13 @@ func (s *SplitView) OnPointerUp(_, _ float32) {
 		return
 	}
 	s.grab = nil
-	s.Invalidate()
+	s.InvalidateWidget()
 	if s.OnResize != nil {
-		s.OnResize(float32(int(s.Pos + 0.5))) // commit once, on release
+		s.OnResize(float32(int(s.Pos + 0.5)))
 	}
 }
 
 func (s *SplitView) OnHoverChange(h bool) {
 	s.hoverDivider = h
-	s.Invalidate()
+	s.InvalidateWidget()
 }

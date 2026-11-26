@@ -34,7 +34,7 @@ func TestCaretBlinksOnlyWhileWindowActive(t *testing.T) {
 		t.Fatal("inactive window still paints the caret")
 	}
 
-	tf.lastActivity = time.Now().Add(-3 * tfBlink / 2) // mid off-phase
+	tf.lastActivity = time.Now().Add(-3 * tfBlink / 2)
 	u.SetWindowActive(true)
 	if !tf.blinkOn() {
 		t.Fatal("reactivation should show the caret solid")
@@ -52,7 +52,7 @@ func TestCaretSettlesSolidAfterIdle(t *testing.T) {
 		t.Fatalf("just before the cutoff: tick %v, want one at the cutoff", d)
 	}
 
-	tf.lastActivity = time.Now().Add(-tfBlinkFor - tfBlink) // would be an off phase
+	tf.lastActivity = time.Now().Add(-tfBlinkFor - tfBlink)
 	if d := u.TickIn(); d != 0 {
 		t.Fatalf("idle past the cutoff still asks for a tick in %v", d)
 	}

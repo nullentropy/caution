@@ -6,8 +6,6 @@ import (
 	"testing"
 )
 
-// root/web/terminal.ts plus a nested dir to run from, mirroring the real
-// layout (checkout/cmd/demo)
 func fakeCheckout(t *testing.T) (root, nested string) {
 	t.Helper()
 	root = t.TempDir()
@@ -57,8 +55,6 @@ func TestResolveEntryFallsBackAndPassesThrough(t *testing.T) {
 	root, nested := fakeCheckout(t)
 	t.Chdir(nested)
 
-	// the old hardcoded path doesn't resolve from here, the fallback must find
-	// the checkout's entry instead of failing
 	got, err := resolveEntry("../web/terminal.ts")
 	if err != nil {
 		t.Fatalf("resolveEntry fallback: %v", err)
@@ -67,7 +63,6 @@ func TestResolveEntryFallsBackAndPassesThrough(t *testing.T) {
 		t.Fatalf("resolveEntry = %s, want the checkout entry", got)
 	}
 
-	// an entry that DOES exist is used verbatim, no surprise substitution
 	local := filepath.Join(nested, "custom.ts")
 	if err := os.WriteFile(local, []byte("// custom\n"), 0o644); err != nil {
 		t.Fatal(err)

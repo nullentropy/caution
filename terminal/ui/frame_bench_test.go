@@ -8,8 +8,6 @@ import (
 	"github.com/nullentropy/caution/terminal/text"
 )
 
-// real shaper, build cost is dominated by text work so a fake measure would
-// flatter every number
 func realUi() *UI {
 	u := New()
 	sh := text.NewShaper(text.NewRegistry())
@@ -17,8 +15,6 @@ func realUi() *UI {
 	return u
 }
 
-// the perf scene in widget form: rows of a panel, three labels and a button
-// in a scroller, ~26 widgets per row
 func benchTree(rows int) (Widget, *Label) {
 	root := NewPanel()
 	root.Bg = Theme["bg"]
@@ -58,8 +54,6 @@ func countWidgets(w Widget) int {
 	return n
 }
 
-// pins the scene the recorded numbers were measured on, the benchmarks only
-// mean anything against a tree of known size
 func TestBenchTreeSize(t *testing.T) {
 	u := realUi()
 	root, _ := benchTree(260)
@@ -75,20 +69,18 @@ func TestBenchTreeSize(t *testing.T) {
 	}
 }
 
-// whole-tree rebuild, what a resize, theme change or untargeted invalidation costs
 func BenchmarkBuildFrameFull(b *testing.B) {
 	u := realUi()
 	root, _ := benchTree(260)
 	u.Root = root
-	u.BuildFrame(&gfx.DisplayList{}, 1200, 800) // warm the shaper cache
+	u.BuildFrame(&gfx.DisplayList{}, 1200, 800)
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		u.Invalidate()
+		u.InvalidateAll()
 		u.BuildFrame(&gfx.DisplayList{}, 1200, 800)
 	}
 }
 
-// targeted case: one label's text changes in a ~2600-widget tree, frame after frame
 func BenchmarkBuildFrameOneLabel(b *testing.B) {
 	u := realUi()
 	root, label := benchTree(260)
@@ -98,13 +90,11 @@ func BenchmarkBuildFrameOneLabel(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		label.Text = fmt.Sprintf("tick %d", i)
-		label.Invalidate()
+		label.InvalidateWidget()
 		u.BuildFrame(&gfx.DisplayList{}, 1200, 800)
 	}
 }
 
-// the floor: nothing changed (a caret blink elsewhere, a throttled table
-// report). layout skips the whole tree, what's left is the marking walk
 func BenchmarkBuildFrameClean(b *testing.B) {
 	u := realUi()
 	root, _ := benchTree(260)
@@ -140,9 +130,6 @@ func BenchmarkPaintOnly(b *testing.B) {
 	}
 }
 
-// correctness bar for per-subtree retention: a spliced frame must be
-// byte-for-byte what a full walk produces. two identical trees run the same
-// mutations, one splices, the other is forced to rebuild, every command must agree
 func TestPaintReuseMatchesFullWalk(t *testing.T) {
 	spliced, sLabel := benchTree(20)
 	full, fLabel := benchTree(20)
@@ -160,11 +147,11 @@ func TestPaintReuseMatchesFullWalk(t *testing.T) {
 	for i, step := range steps {
 		step(sLabel)
 		step(fLabel)
-		sLabel.Invalidate()
-		fLabel.Invalidate()
+		sLabel.InvalidateWidget()
+		fLabel.InvalidateWidget()
 		ds, df := &gfx.DisplayList{}, &gfx.DisplayList{}
 		us.BuildFrame(ds, 900, 600)
-		uf.Invalidate() // forces the whole-list rebuild
+		uf.InvalidateAll()
 		uf.BuildFrame(df, 900, 600)
 		if len(ds.Cmds) != len(df.Cmds) {
 			t.Fatalf("step %d: spliced list has %d commands, full walk %d", i, len(ds.Cmds), len(df.Cmds))

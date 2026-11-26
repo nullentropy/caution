@@ -13,7 +13,6 @@ const CURSORS: Record<string, string> = {
   'row-resize': 'row-resize',
 };
 
-// read by the headless probes (cmd/goldens, cmd/loopprobe)
 interface ProbeState {
   frames: number;
   mounted: boolean;
@@ -30,7 +29,6 @@ function probe(): ProbeState {
 }
 
 export class Host {
-  // caps animation repaints, browser mirror of native -fps. 0 = display rate
   maxFps = 0;
 
   private funnel: Funnel;
@@ -61,7 +59,7 @@ export class Host {
     document.addEventListener('visibilitychange', focus);
     focus();
     new ResizeObserver(() => this.invalidate()).observe(canvas);
-    // ResizeObserver misses pure-DPR changes (browser zoom, monitor move)
+    // ResizeObserver doesn't fire when only the pixel ratio changes, as on browser zoom or a move to another monitor
     window.addEventListener('resize', () => this.invalidate());
     const fps = Number(new URLSearchParams(location.search).get('fps'));
     if (Number.isFinite(fps) && fps > 0) this.maxFps = fps;
@@ -96,8 +94,6 @@ export class Host {
     this.funnel.sync();
     this.semantics.schedule();
     if (!animating) return;
-    // animated shaders keep painting while any are on screen. input and
-    // patches still paint immediately, so only the continuation is paced
     if (this.maxFps > 0) {
       if (this.animTimer == null) {
         const wait = Math.max(0, 1000 / this.maxFps - (performance.now() - t0));
@@ -111,7 +107,6 @@ export class Host {
     }
   }
 
-  // the terminal's time-driven repaints: caret blink, tooltip delay, theme tween
   private scheduleTick(): void {
     if (this.tickTimer != null) {
       clearTimeout(this.tickTimer);
@@ -127,12 +122,10 @@ export class Host {
   }
 }
 
-// the terminal calls these as soon as it starts, before the Host exists
-// early calls are held until bind
 export function hostCallbacks(canvas: HTMLCanvasElement): HostCallbacks & { bind(host: Host): void } {
   const gl = canvas.getContext('webgl2', {
     alpha: false,
-    antialias: false, // the renderer does its own analytic AA
+    antialias: false,
     depth: false,
     stencil: false,
     premultipliedAlpha: true,
@@ -183,7 +176,6 @@ export function hostCallbacks(canvas: HTMLCanvasElement): HostCallbacks & { bind
     stop: (src) => sounds.stop(src || undefined),
     mounted(sid) {
       if (sid) sessionStorage.setItem('caution:sid', sid);
-      // headless capture (cmd/goldens) waits for this before screenshotting
       probe().mounted = true;
     },
   };

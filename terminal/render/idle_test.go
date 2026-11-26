@@ -6,20 +6,14 @@ import (
 	"github.com/nullentropy/caution/terminal/gfx"
 )
 
-// AnimationIsInvisible reads only retained state, so no GL context needed
 func TestAnimationIsInvisible(t *testing.T) {
 	view := gfx.R(0, 0, 400, 300)
 
-	// animated effect layer inside the viewport, damage exists so the frame
-	// must be serviced
 	visible := &gfx.DisplayList{}
 	visible.BeginLayer(gfx.R(20, 20, 100, 100))
 	visible.Text("x", 24, 24, gfx.Font{}, gfx.White)
 	visible.EndLayer("frag", nil, true)
 
-	// same layer scrolled far below the viewport. EndLayer still asks for
-	// animation but PlanDamage clamps its rect away, so the frame would
-	// paint nothing
 	offscreen := &gfx.DisplayList{}
 	offscreen.BeginLayer(gfx.R(20, 900, 100, 100))
 	offscreen.Text("x", 24, 904, gfx.Font{}, gfx.White)
@@ -49,8 +43,6 @@ func TestAnimationIsInvisible(t *testing.T) {
 		}
 	}
 
-	// geometric animation moves bounds every frame, so even with no damage
-	// rects the frame is rebuilt, never skipped
 	geom := &gfx.DisplayList{}
 	geom.BeginLayer(gfx.R(20, 900, 100, 100))
 	geom.EndLayer("frag", nil, true)

@@ -11,28 +11,11 @@ import (
 	"github.com/nullentropy/caution/terminal"
 )
 
-// the headless probes check the renderer reports Painted honestly, this checks
-// the shell acts on it with a real compositor, vsync and refresh
-//
-// phases, frame counters reset for each:
-//
-//	idle       a static tree            presents nothing
-//	patch      one label at 10Hz        presents about once per patch
-//	animate    a visible shader pane     presents at the MaxFPS cap
-//	offscreen  the same pane moved off   presents nothing again
-//	caret      a focused text field      presents once per blink, and the
-//	                                     loop wakes about that often too
-//
-// keep the pointer off the window. a wake alone presents nothing, but hovering
-// something interactive is a real change and counts
-
 type presentPhase struct {
-	name string
-	// lo..hi presented frames, stepsHi caps loop iterations when set
+	name    string
 	lo, hi  int
 	stepsHi int
 	dur     time.Duration
-	// both run on the session goroutine, tick every 100ms
 	drive   func(sc *presentScene)
 	tick    func(sc *presentScene, i int)
 	visible *bool
@@ -123,26 +106,21 @@ func runPresent(fullscreen bool, seconds float64) error {
 	phase := func(name string) *presentPhase {
 		return &phases[slices.IndexFunc(phases, func(p presentPhase) bool { return p.name == name })]
 	}
-	// one frame per patch, the loop follows the server not the display
 	ticks := int(dur / (100 * time.Millisecond))
 	phase("patch").lo, phase("patch").hi = ticks*3/4, ticks*2
-	// a display slower than the cap presents fewer, so the floor is generous
-	// and the ceiling is the real gate
 	capped := int(dur.Seconds() * presentFPS)
 	for _, name := range []string{"animate", "shown"} {
 		if i := slices.IndexFunc(phases, func(p presentPhase) bool { return p.name == name }); i >= 0 {
 			phases[i].lo, phases[i].hi = capped/2, capped*5/4
 		}
 	}
-	// 530ms blink half period. one wake and one frame per flip, extra wakes
-	// show up in the steps
 	blinks := int(dur / (530 * time.Millisecond))
 	caret := phase("caret")
 	caret.lo, caret.hi, caret.stepsHi = blinks/2, blinks+2, blinks*3+6
 
 	go func() {
 		sc := <-scenes
-		time.Sleep(700 * time.Millisecond) // let the mount settle
+		time.Sleep(700 * time.Millisecond)
 		fmt.Printf("%-10s %8s %8s   %s\n", "phase", "steps", "present", "want")
 		bad := 0
 		for _, p := range phases {
@@ -150,7 +128,7 @@ func runPresent(fullscreen bool, seconds float64) error {
 				done := make(chan struct{})
 				sc.s.Update(func() { p.drive(sc); close(done) })
 				<-done
-				time.Sleep(250 * time.Millisecond) // the op has to land first
+				time.Sleep(250 * time.Millisecond)
 			}
 			terminal.ResetStats()
 			deadline := time.Now().Add(p.dur)
@@ -195,8 +173,6 @@ func runPresent(fullscreen bool, seconds float64) error {
 	})
 }
 
-// off the viewport its damage is outside the frame, the renderer reports the
-// animation invisible and the loop skips the frame
 func paneOffscreen(sc *presentScene, off bool) {
 	y := float64(92)
 	if off {

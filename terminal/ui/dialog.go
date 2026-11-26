@@ -6,10 +6,6 @@ var dialogTitleFont = gfx.NewFont(15, gfx.FontOpts{Weight: 600})
 
 func dialogTitleH() float32 { return Metrics.DialogTitleH }
 
-// modal: a full-viewport scrim that swallows input and a centered card whose
-// children lay out (frame/anchors) against the area below the title.
-// z-order is tree order, the server appends dialogs last. scrim click or
-// Escape emits `dismiss`, the server decides whether to remove the node
 type Dialog struct {
 	Core
 	Title     string
@@ -24,7 +20,7 @@ func NewDialog() *Dialog {
 	return d
 }
 
-func (d *Dialog) Interactive() bool { return true } // the scrim swallows every miss
+func (d *Dialog) Interactive() bool { return true }
 
 func (d *Dialog) cardRect() gfx.Rect {
 	b := d.Bounds

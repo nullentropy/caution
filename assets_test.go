@@ -8,9 +8,6 @@ import (
 	"testing"
 )
 
-// shaper artifact is embedded gzipped and the handler negotiates encoding
-// gzip clients (every browser) get the compressed bytes verbatim, identity
-// clients get a lazily inflated copy that must be valid wasm
 func TestWasmContentNegotiation(t *testing.T) {
 	r := httptest.NewRequest("GET", "/term.wasm", nil)
 	r.Header.Set("Accept-Encoding", "gzip, deflate, br")

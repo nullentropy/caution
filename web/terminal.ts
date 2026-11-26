@@ -1,8 +1,3 @@
-// the terminal's entry point
-//
-// widgets, layout, protocol, and text are all from the Go terminal and
-// compiled to wasm. here we have the canvas, socket, input, audio,
-// and the "shadow" DOM for assistive tech.
 import { Host, hostCallbacks } from './host/host';
 import { loadTerminal } from './host/wasm';
 

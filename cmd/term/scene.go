@@ -22,10 +22,9 @@ func scene(w, h, time float32) *gfx.DisplayList {
 	big := gfx.NewFont(28, gfx.FontOpts{Weight: 600})
 
 	dl.Text("caution - native terminal", 32, 22, title, ink)
-	dl.Text("the same display list, drawn by OpenGL instead of WebGL - no browser in this process",
+	dl.Text("the same display list, drawn by the native GPU API instead of WebGL - no browser in this process",
 		32, 54, body, inkDim)
 
-	// window: shadow, bordered panel, titlebar, traffic lights
 	win := gfx.R(32, 92, 430, 300)
 	dl.Shadow(win, gfx.Hex("#00000080"), 32, gfx.CornerRadius(12), 0, 14)
 	dl.Rect(win, panel, gfx.RectOpts{
@@ -46,7 +45,6 @@ func scene(w, h, time float32) *gfx.DisplayList {
 	dl.Text("hamburgefonstiv 0123456789 - the quick brown fox",
 		win.X+24, win.Y+152, body, inkDim)
 
-	// button
 	btn := gfx.R(win.X+24, win.Y+win.H-56, 96, 32)
 	dl.Fill(btn, accent, gfx.CornerRadius(8))
 	dl.Text("Primary", btn.X+22, btn.Y+8, gfx.NewFont(13, gfx.FontOpts{Weight: 600}), gfx.White)
@@ -54,7 +52,6 @@ func scene(w, h, time float32) *gfx.DisplayList {
 	dl.Rect(btn2, titlebar, gfx.RectOpts{Radius: gfx.CornerRadius(8), BorderWidth: 1, BorderColor: &edge})
 	dl.Text("Quiet", btn2.X+30, btn2.Y+8, body, ink)
 
-	// clipping, overflowing text cuts off at the edge with ~1px AA
 	clipPanel := gfx.R(494, 92, 220, 120)
 	dl.Fill(clipPanel, panelAlt, gfx.CornerRadius(12))
 	dl.PushClip(gfx.Inset(clipPanel, 1))
@@ -64,7 +61,6 @@ func scene(w, h, time float32) *gfx.DisplayList {
 	dl.Fill(gfx.R(clipPanel.X+140, clipPanel.Y+70, 200, 80), accent, gfx.CornerRadius(10))
 	dl.PopClip()
 
-	// effect layer, offscreen then composited through user GLSL (FBO round trip)
 	fxPanel := gfx.R(494, 232, 220, 160)
 	dl.BeginLayer(fxPanel)
 	dl.Fill(fxPanel, gfx.Hex("#101913"), gfx.CornerRadius(12))
@@ -80,7 +76,6 @@ vec4 effect(vec2 uv) {
   return c;
 }`, nil, false)
 
-	// shader quad
 	sq := gfx.R(742, 92, 186, 300)
 	dl.Fill(gfx.Inflate(sq, 8), panelAlt, gfx.CornerRadius(12))
 	dl.ShaderQuad(sq, `
@@ -89,7 +84,6 @@ vec4 effect(vec2 uv) {
   return vec4(col * 0.8, 1.0);
 }`, nil, true)
 
-	// shadow blur ramp
 	for i := 0; i < 4; i++ {
 		x := 32 + float32(i)*110
 		r := gfx.R(x, 452, 80, 56)
@@ -98,7 +92,6 @@ vec4 effect(vec2 uv) {
 		dl.Text("blur", r.X+26, r.Y+18, small, inkFaint)
 	}
 
-	// radius / border
 	rb := gfx.R(494, 452, 80, 56)
 	dl.Rect(rb, panelAlt, gfx.RectOpts{Radius: gfx.Corners{TL: 24, BR: 24}, BorderWidth: 2, BorderColor: &accent})
 	rb2 := gfx.R(590, 452, 80, 56)

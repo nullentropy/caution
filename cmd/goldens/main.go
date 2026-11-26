@@ -1,13 +1,3 @@
-// caution goldens: render each fixture scene in the native terminal (-shot)
-// and headless Chrome at 2x and diff them cell by cell (see diff.go)
-// structural drift fails the run, composites land in -out
-//
-// both terminals build from the working tree, runs from any directory:
-//
-//	go run ./cmd/goldens                       # all scenes
-//	go run ./cmd/goldens -scene table-light    # one scene
-//	go run ./cmd/goldens -out /tmp/goldens
-//	go run ./cmd/goldens a.png b.png           # just diff two existing shots
 package main
 
 import (
@@ -44,7 +34,6 @@ func main() {
 	}
 }
 
-// for one-off investigations and testing the metric on known-different frames
 func diffOnly(a, b, out string) error {
 	if err := os.MkdirAll(out, 0o755); err != nil {
 		return err
@@ -107,7 +96,7 @@ func run(sceneName, out string, w, h int, settle float64, chromeFlag string) err
 	defer os.RemoveAll(tmp)
 	termBin := filepath.Join(tmp, "term")
 	build := exec.Command("go", "build", "-o", termBin, "./cmd/term")
-	build.Dir = root // `go build ./cmd/...` needs the module, not our cwd
+	build.Dir = root
 	if outB, err := build.CombinedOutput(); err != nil {
 		return fmt.Errorf("building cmd/term: %v\n%s", err, outB)
 	}
@@ -133,7 +122,6 @@ func run(sceneName, out string, w, h int, settle float64, chromeFlag string) err
 		current.Store(&sc)
 
 		nativePNG := filepath.Join(out, sc.name+"-native.png")
-		// the browser always draws the in-window menu bar, native has to match
 		shot := exec.Command(termBin,
 			"-url", wsURL, "-shot", nativePNG,
 			"-settle", fmt.Sprint(settle),

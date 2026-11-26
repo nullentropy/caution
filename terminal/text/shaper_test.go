@@ -11,7 +11,6 @@ import (
 	"github.com/go-text/typesetting/shaping"
 )
 
-// glyph (visual) order
 func clustersOf(r *Run) []int {
 	out := make([]int, len(r.Glyphs))
 	for i, g := range r.Glyphs {
@@ -49,9 +48,6 @@ func TestShapeLatinStaysSingleRunAscending(t *testing.T) {
 }
 
 func TestShapeHebrewReversesToVisualOrder(t *testing.T) {
-	// the embedded Go fonts have no Hebrew (glyphs are .notdef) but bidi is
-	// font-independent. an RTL run comes back in visual order, so clusters
-	// DESCEND across the glyph array while x ascends
 	s := NewShaper(NewRegistry())
 	run := s.Shape(gfx.NewFont(14, gfx.FontOpts{}), 2, "שלום")
 	if len(run.Glyphs) != 4 {
@@ -68,25 +64,18 @@ func TestShapeHebrewReversesToVisualOrder(t *testing.T) {
 }
 
 func TestShapeMixedDirectionOrdersRunsVisually(t *testing.T) {
-	// "abc אבג def" under an LTR base, the Hebrew renders between the Latin
-	// segments, internally right-to-left. runes:
-	//   a=0 b=1 c=2 ' '=3 א=4 ב=5 ג=6 ' '=7 d=8 e=9 f=10
 	s := NewShaper(NewRegistry())
 	run := s.Shape(gfx.NewFont(14, gfx.FontOpts{}), 2, "abc אבג def")
 	want := []int{0, 1, 2, 3, 6, 5, 4, 7, 8, 9, 10}
 	if !intsEqual(clustersOf(run), want) {
 		t.Fatalf("mixed clusters = %v, want %v", clustersOf(run), want)
 	}
-	// every rune boundary maps to one cluster, width is the sum of
-	// advances regardless of order
 	if run.Width <= 0 {
 		t.Fatal("mixed run has no width")
 	}
 }
 
 func TestShapeMixedScriptItemizes(t *testing.T) {
-	// Latin + Greek + Cyrillic, which the embedded fonts really cover
-	// itemization must not reorder or drop glyphs for LTR scripts
 	s := NewShaper(NewRegistry())
 	text := "abc αβγ абв"
 	run := s.Shape(gfx.NewFont(14, gfx.FontOpts{}), 2, text)
@@ -120,8 +109,6 @@ func visualOrderForTest(rtl []bool, baseRTL bool) []int {
 }
 
 func TestVisualOrderTwoLevel(t *testing.T) {
-	// mirrors go-text's computeBidiOrdering: base-direction runs anchor,
-	// maximal opposite-direction sequences reverse
 	cases := []struct {
 		name string
 		rtl  []bool
@@ -138,7 +125,6 @@ func TestVisualOrderTwoLevel(t *testing.T) {
 			t.Fatalf("%s: order = %v, want %v", c.name, got, c.want)
 		}
 	}
-	// RTL base mirrors everything, embedded LTR sequences reverse back
 	if got := visualOrderForTest([]bool{true, false, false, true}, true); !intsEqual(got, []int{3, 1, 2, 0}) {
 		t.Fatalf("rtl base: order = %v, want [3 1 2 0]", got)
 	}

@@ -11,8 +11,6 @@ import (
 	"github.com/nullentropy/caution/terminal/text"
 )
 
-// fixed-advance fake measure (7px per rune, ascent 10, descent 3), layout math
-// needs no GL, fonts or window
 func fakeUi() *UI {
 	u := New()
 	u.Measure = func(_ gfx.Font, s string) *text.Run {
@@ -60,7 +58,6 @@ func TestAnchorsOneSidedPinKeepsSizeAndClamps(t *testing.T) {
 	layout(u, root, 200, 100)
 	wantBounds(t, c, 140, 70, 50, 20)
 
-	// a child wider than its parent clamps instead of overflowing
 	c.Width = f32p(500)
 	layout(u, root, 200, 100)
 	wantBounds(t, c, 0, 70, 190, 20)
@@ -117,8 +114,6 @@ func TestStackFixedAndFillWeights(t *testing.T) {
 	wantBounds(t, c, 0, 40, 100, 60)
 }
 
-// "aaaa " x10 at 7px/rune, maxW 100 -> 14-rune lines ("aaaa aaaa aaaa"),
-// 4 lines. lineH = 13, advance = 16 -> height 61
 func wrapFixtureLabel() *Label {
 	textStr := "aaaa aaaa aaaa aaaa aaaa aaaa aaaa aaaa aaaa aaaa"
 	l := NewLabel(textStr, gfx.NewFont(13, gfx.FontOpts{}), nil)
@@ -271,7 +266,6 @@ func TestPinEndKeepsSecondPaneSize(t *testing.T) {
 	layout(u, sp, 900, 400)
 	wantBounds(t, b, 900-200, 0, 200, 400)
 
-	// a drag moves the divider and Pos follows the second pane
 	layout(u, sp, 600, 400)
 	sp.OnPointerDown(394+3, 10, 0)
 	sp.OnPointerDrag(294+3, 10)
@@ -323,13 +317,11 @@ func TestTabScrollsFocusIntoView(t *testing.T) {
 	u.SetRoot(sv)
 	layout(u, sv, 200, 100)
 
-	u.moveFocus(1) // "one" is already visible
+	u.moveFocus(1)
 	if sv.ScrollY != 0 {
 		t.Fatalf("focusing a visible widget scrolled to %g", sv.ScrollY)
 	}
-	u.moveFocus(1) // "two" sits at y=500 in a 100-tall viewport
-	// the reveal asks for an 8px margin past the button but the scroller clamps
-	// to its content end: 500+32 content - 100 viewport = 432
+	u.moveFocus(1)
 	want := float32(432)
 	if sv.ScrollY != want {
 		t.Fatalf("scrollY = %g; want %g", sv.ScrollY, want)
@@ -352,7 +344,7 @@ func TestThemeTweenFadesToTarget(t *testing.T) {
 		t.Fatal("an active tween must keep the shell awake")
 	}
 
-	time.Sleep(220 * time.Millisecond) // past the 180ms tween
+	time.Sleep(220 * time.Millisecond)
 	u.BuildFrame(&dl, 100, 100)
 	if c := *Theme["accent"]; c.R != 1 || c.G != 1 || c.B != 1 {
 		t.Fatalf("tween did not land on target: %v", c)
@@ -368,7 +360,6 @@ func TestRowCacheEvictsFarRows(t *testing.T) {
 	tv.RowCount = 10000
 	tv.UI = u
 	tv.Bounds = gfx.R(0, 0, 400, 300)
-	// scroll deep feeding windows all the way, like a long scroll session
 	tv.ScrollY = 5000 * tv.RowHeight
 	for start := 0; start < 6000; start += 100 {
 		rows := make([][]string, 100)
@@ -380,7 +371,6 @@ func TestRowCacheEvictsFarRows(t *testing.T) {
 	if len(tv.cache) > 2100 {
 		t.Fatalf("cache holds %d rows; want it bounded near 2000", len(tv.cache))
 	}
-	// the viewport's rows must survive eviction
 	if _, ok := tv.cache[5000]; !ok {
 		t.Fatal("eviction dropped a row inside the viewport")
 	}
@@ -441,13 +431,10 @@ func TestGeometricAnimationSlidesOnStructuralReflow(t *testing.T) {
 	root.Add(c)
 	c.Frame = &gfx.Rect{X: 0, Y: 0, W: 100, H: 30}
 
-	// frame 1: first sight, records prev, starts nothing
 	layout(u, root, 200, 400)
 	u.animWalk(root, 0.016)
 	wantBounds(t, c, 0, 0, 100, 30)
 
-	// a structural frame moves it: the painted position starts near the old spot
-	// (ease-out travels ~19% in the first 16ms step) and converges
 	c.Frame = &gfx.Rect{X: 0, Y: 100, W: 100, H: 30}
 	layout(u, root, 200, 400)
 	u.structural = true
@@ -469,7 +456,6 @@ func TestGeometricAnimationSlidesOnStructuralReflow(t *testing.T) {
 	}
 	wantBounds(t, c, 0, 100, 100, 30)
 
-	// a non-structural move (scroll, splitter drag, resize) never animates
 	c.Frame = &gfx.Rect{X: 50, Y: 100, W: 100, H: 30}
 	layout(u, root, 200, 400)
 	u.animWalk(root, 0.016)
@@ -482,7 +468,7 @@ func TestGeometricAnimationFadesStructuralInsertsOnly(t *testing.T) {
 	a := NewPanel()
 	root.Add(a)
 	layout(u, root, 200, 100)
-	u.animWalk(root, 0.016) // mount frame is not structural: no fade
+	u.animWalk(root, 0.016)
 	if fr := a.Base().fadeR; fr != 0 {
 		t.Fatalf("mount-frame widget got fadeR %g; want 0", fr)
 	}
@@ -541,7 +527,6 @@ func TestTreeKeyboardTogglesAndJumpsToParent(t *testing.T) {
 	var toggled []string
 	tv.OnToggle = func(_ int, key string) { toggled = append(toggled, key) }
 
-	// left on a child jumps to its parent without toggling anything
 	tv.cursorRow = 1
 	if !tv.OnKey(Key{Name: "Left"}) {
 		t.Fatal("Left on a child not handled")
@@ -550,7 +535,6 @@ func TestTreeKeyboardTogglesAndJumpsToParent(t *testing.T) {
 		t.Fatalf("cursor %d toggled %v; want parent 0, no toggles", tv.cursorRow, toggled)
 	}
 
-	// left on the open parent collapses it (the server round-trips the rest)
 	if !tv.OnKey(Key{Name: "Left"}) {
 		t.Fatal("Left on open parent not handled")
 	}
@@ -558,7 +542,6 @@ func TestTreeKeyboardTogglesAndJumpsToParent(t *testing.T) {
 		t.Fatalf("toggled = %v; want [a]", toggled)
 	}
 
-	// right on a collapsed expandable expands it
 	tv.meta[0] = RowMeta{Key: "a", Depth: 0, Expandable: true, Expanded: false}
 	if !tv.OnKey(Key{Name: "Right"}) {
 		t.Fatal("Right on collapsed parent not handled")
@@ -585,10 +568,8 @@ func TestCellWidgetColumnsActivateInsteadOfSelecting(t *testing.T) {
 	}
 	tv.OnRowSelect = func(row int, _ string) { t.Fatalf("cell click selected row %d", row) }
 
-	// fixed cols take 140, the weighted name column gets 160: checkbox cells span
-	// x 160..220, button cells 220..300. row 0 is y 32..60
-	tv.OnPointerDown(180, 46, 1) // checkbox: flips true -> false, echoes locally
-	tv.OnPointerDown(250, 46, 1) // button
+	tv.OnPointerDown(180, 46, 1)
+	tv.OnPointerDown(250, 46, 1)
 	want := []string{"0/ok/false", "0/act/"}
 	if len(got) != 2 || got[0] != want[0] || got[1] != want[1] {
 		t.Fatalf("cell activations = %v; want %v", got, want)
@@ -597,7 +578,6 @@ func TestCellWidgetColumnsActivateInsteadOfSelecting(t *testing.T) {
 		t.Fatalf("checkbox local echo = %q; want false", cell)
 	}
 
-	// a text-column click still selects
 	selected := -1
 	tv.OnRowSelect = func(row int, _ string) { selected = row }
 	tv.OnPointerDown(80, 46, 1)

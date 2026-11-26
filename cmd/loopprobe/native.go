@@ -5,8 +5,9 @@ import (
 	"time"
 
 	"github.com/go-gl/glfw/v3.3/glfw"
+	"github.com/nullentropy/caution/terminal"
 	"github.com/nullentropy/caution/terminal/gfx"
-	"github.com/nullentropy/caution/terminal/glx"
+	"github.com/nullentropy/caution/terminal/gpu"
 	"github.com/nullentropy/caution/terminal/render"
 	"github.com/nullentropy/caution/terminal/text"
 	"github.com/nullentropy/caution/terminal/ui"
@@ -22,38 +23,32 @@ func runNative() error {
 		return err
 	}
 	defer glfw.Terminate()
-	glfw.WindowHint(glfw.ContextVersionMajor, 4)
-	glfw.WindowHint(glfw.ContextVersionMinor, 1)
-	glfw.WindowHint(glfw.OpenGLProfile, glfw.OpenGLCoreProfile)
-	glfw.WindowHint(glfw.OpenGLForwardCompatible, glfw.True)
+	glfw.WindowHint(glfw.ClientAPI, glfw.NoAPI)
 	glfw.WindowHint(glfw.Visible, glfw.False)
 	win, err := glfw.CreateWindow(W, H, "loopprobe", nil, nil)
 	if err != nil {
 		return err
 	}
-	win.MakeContextCurrent()
-	if err := glx.Init(); err != nil {
+	dev, err := terminal.OpenDevice(win)
+	if err != nil {
 		return err
 	}
 
 	devW, devH := int32(W*dpr), int32(H*dpr)
-	var tex, fbo uint32
-	glx.GenTextures(1, &tex)
-	glx.ActiveTexture(glx.TEXTURE0)
-	glx.BindTexture(glx.TEXTURE_2D, tex)
-	glx.TexImage2D(glx.TEXTURE_2D, 0, glx.RGBA, devW, devH, 0, glx.RGBA, glx.UNSIGNED_BYTE, nil)
-	glx.GenFramebuffers(1, &fbo)
-	glx.BindFramebuffer(glx.FRAMEBUFFER, fbo)
-	glx.FramebufferTexture2D(glx.FRAMEBUFFER, glx.COLOR_ATTACHMENT0, glx.TEXTURE_2D, tex, 0)
-	sample := func(lx, ly float32) byte { // red channel at a logical point
+	target, err := dev.NewTexture(int(devW), int(devH), gpu.Nearest)
+	if err != nil {
+		return err
+	}
+	sample := func(lx, ly float32) byte {
 		px, py := int32(lx*dpr), int32(ly*dpr)
-		pix := make([]byte, 4)
-		glx.BindFramebuffer(glx.FRAMEBUFFER, fbo)
-		glx.ReadPixels(px, devH-1-py, 1, 1, glx.RGBA, glx.UNSIGNED_BYTE, glx.Ptr(pix))
-		return pix[0]
+		pix, err := dev.ReadPixels(target)
+		if err != nil {
+			panic(err)
+		}
+		return pix[(int(py)*int(devW)+int(px))*4]
 	}
 
-	r, err := render.New()
+	r, err := render.New(dev)
 	if err != nil {
 		return err
 	}
@@ -73,7 +68,7 @@ func runNative() error {
 	frame := func() render.Frame {
 		return render.Frame{
 			ViewW: W, ViewH: H, DevW: devW, DevH: devH,
-			FBO: fbo, Time: float32(time.Since(start).Seconds()),
+			Target: target, Time: float32(time.Since(start).Seconds()),
 		}
 	}
 
@@ -84,6 +79,7 @@ func runNative() error {
 		u.BuildFrame(dl, W, H)
 		animating = dl.WantsAnimation()
 		r.Render(dl, *ui.Tok("bg"), frame())
+		dev.Present()
 	}
 	step := func() {
 		paint := animating && !r.AnimationIsInvisible()
@@ -91,14 +87,15 @@ func runNative() error {
 			dirty = false
 			fullDraw()
 		} else if paint {
-			if !r.RenderPartial(*ui.Tok("bg"), frame()) {
+			ok := r.RenderPartial(*ui.Tok("bg"), frame())
+			dev.Present()
+			if !ok {
 				fullDraw()
 			}
 		}
 		time.Sleep(5 * time.Millisecond)
 	}
 
-	// settle, the shader alone must ride the continuation path
 	for i := 0; i < 12; i++ {
 		step()
 	}
@@ -106,7 +103,6 @@ func runNative() error {
 		return fmt.Errorf("settle: expected continuation frames, got %+v", r.Frames)
 	}
 
-	// insert, then NO further ops. the loop alone must finish the fades
 	red := gfx.Hex("#ff2030")
 	plain := ui.NewPanel()
 	plain.Frame = &gfx.Rect{X: 280, Y: 200, W: 80, H: 60}
@@ -128,13 +124,11 @@ func runNative() error {
 	u.NoteStructural()
 	dirty = true
 
-	for i := 0; i < 90; i++ { // 450ms, the fade is 200ms
+	for i := 0; i < 90; i++ {
 		step()
 	}
 	a, b := sample(320, 230), sample(260, 120)
 	fmt.Printf("native: plain=%d overlay=%d frames=%+v\n", a, b, r.Frames)
-	// solid #ff2030 is red 255, the overlay's CRT scales it 0.8..1.0
-	// a starved fade holds a blend toward bg (red ~22 at alpha 0)
 	if a < 240 {
 		return fmt.Errorf("plain insert never finished fading (red=%d)", a)
 	}

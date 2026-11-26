@@ -15,14 +15,12 @@ type nullSink struct{}
 func (nullSink) Event(int, wire.Event, any)                   {}
 func (nullSink) Debounce(int, wire.Event, any, time.Duration) {}
 
-// local echo: a focused field ignores plain value sets, the value command
-// forces one through
 func TestFocusedFieldValueSetsHonorLocalEchoAndOverride(t *testing.T) {
 	s := &Session{ui: ui.New()}
 	s.store = NewNodeStore(nullSink{})
 	w := s.store.Build(nodeJSON{ID: 1, Type: "textfield", P: props{"value": "draft"}})
 	tf := w.(*ui.TextField)
-	tf.Focused = true // the user is editing
+	tf.Focused = true
 
 	s.applyOp(&patchOp{Op: wire.OpSet, ID: 1, P: props{"value": "server"}})
 	if tf.Value != "draft" {
@@ -65,7 +63,7 @@ func TestMountFocusesTheNodeItNames(t *testing.T) {
 	s.handle(&serverMsg{T: wire.MsgMount, Focus: 2, Root: &nodeJSON{
 		ID: 1, Type: "panel", Kids: []nodeJSON{{ID: 2, Type: "textfield"}},
 	}})
-	u.BuildFrame(&gfx.DisplayList{}, 400, 300) // focus requests land at paint
+	u.BuildFrame(&gfx.DisplayList{}, 400, 300)
 	if !u.IsFocused(s.store.ByID[2]) {
 		t.Fatal("mount did not focus node 2")
 	}
@@ -92,8 +90,6 @@ func TestRemoveDropsTheSubtreeAndKeepsTheRest(t *testing.T) {
 	}
 }
 
-// a set op names only what changed: a missing prop keeps its value, a sent
-// one replaces it, and null resets it to the prop's default
 func TestSetOpPropsKeepReplaceOrReset(t *testing.T) {
 	ns := NewNodeStore(nullSink{})
 	w := ns.Build(nodeJSON{ID: 1, Type: wire.Split, P: props{"pos": 120.0, "pinEnd": true}})

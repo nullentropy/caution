@@ -2,10 +2,9 @@ import type { WasmTerm } from './wasm';
 
 const carriesFiles = (e: DragEvent) => e.dataTransfer?.types.includes('Files') ?? false;
 
-// OS file drags only. the in-window pointer drag never fires drag events
+// the in-window pointer drag never fires drag events
 export function attachFileDrop(canvas: HTMLCanvasElement, term: WasmTerm): void {
-  // enter and leave fire for every element the drag crosses, so the hover
-  // state follows the balance instead of the last event
+  // enter and leave fire for every element the drag crosses
   let depth = 0;
   const hover = (over: boolean) => term.fileDrag(over);
 
@@ -16,7 +15,7 @@ export function attachFileDrop(canvas: HTMLCanvasElement, term: WasmTerm): void 
   });
   canvas.addEventListener('dragover', (e) => {
     if (!carriesFiles(e)) return;
-    e.preventDefault(); // without this the drop never fires
+    e.preventDefault(); // the browser only fires drop on a target that cancelled dragover
   });
   canvas.addEventListener('dragleave', (e) => {
     if (!carriesFiles(e) || depth === 0) return;
@@ -24,11 +23,11 @@ export function attachFileDrop(canvas: HTMLCanvasElement, term: WasmTerm): void 
   });
   canvas.addEventListener('drop', (e) => {
     if (!carriesFiles(e)) return;
-    e.preventDefault(); // else the browser navigates to the file
+    e.preventDefault(); // otherwise the browser opens the dropped file
     depth = 0;
     hover(false);
     const r = canvas.getBoundingClientRect();
-    // the list is only valid during the event
+    // the browser empties dataTransfer.files once the event handler returns
     const files = Array.from(e.dataTransfer?.files ?? []);
     void send(term, files, e.clientX - r.left, e.clientY - r.top);
   });

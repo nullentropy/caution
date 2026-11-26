@@ -11,8 +11,7 @@ const spiGetClientAreaAnimation = 0x1042
 
 var systemParametersInfo = syscall.NewLazyDLL("user32.dll").NewProc("SystemParametersInfoW")
 
-// Settings > Accessibility > Visual effects > Animation effects, also off in
-// many RDP sessions
+// this reads the Animation effects setting, which many RDP sessions also turn off
 func systemReducedMotion() bool {
 	var on int32
 	ok, _, _ := systemParametersInfo.Call(spiGetClientAreaAnimation, 0, uintptr(unsafe.Pointer(&on)), 0)

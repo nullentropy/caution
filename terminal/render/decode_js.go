@@ -7,9 +7,7 @@ import (
 	"syscall/js"
 )
 
-// decodes through an Image element so every format the page can show works
-// (SVG included). pixels come back from a 2D canvas unpremultiplied, so we
-// premultiply here like the native path does
+// the 2D canvas returns unpremultiplied pixels
 func (s *ImageStore) fetchAndDecode(src string) ([]byte, int, int, error) {
 	img := js.Global().Get("Image").New()
 	img.Set("crossOrigin", "anonymous")

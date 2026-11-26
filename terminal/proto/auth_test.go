@@ -12,7 +12,6 @@ import (
 	"github.com/nullentropy/caution/wire"
 )
 
-// hands out its messages then reports the socket closed
 type scriptedConn struct {
 	mu   sync.Mutex
 	msgs []string
@@ -38,7 +37,6 @@ func TestDeniedConnectionIsNotRetried(t *testing.T) {
 		return &scriptedConn{msgs: []string{`{"t":"denied"}`}}, nil
 	}
 	NewSession(ui.New(), Config{URL: "ws://caution/ws", Dial: dial})
-	// the first retry would land at 500ms
 	time.Sleep(900 * time.Millisecond)
 	if n := dials.Load(); n != 1 {
 		t.Fatalf("dialed %d times after a denial; want 1", n)

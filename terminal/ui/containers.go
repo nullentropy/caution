@@ -4,7 +4,6 @@ import (
 	"github.com/nullentropy/caution/terminal/gfx"
 )
 
-// explicit > height-for-width > fallback
 func heightAt(c Widget, w, fallback float32) float32 {
 	cb := c.Base()
 	if cb.Height != nil {
@@ -16,8 +15,6 @@ func heightAt(c Widget, w, fallback float32) float32 {
 	return fallback
 }
 
-// DockPanel style: children take space from the remaining rect in declaration
-// order by their `dock` side, a 'fill' child takes what's left
 type Dock struct {
 	Core
 	Padding float32
@@ -52,7 +49,7 @@ func (d *Dock) LayoutChildren() {
 			w := min(sz.W, rem.W)
 			b = gfx.R(rem.X+rem.W-w, rem.Y, w, rem.H)
 			rem.W = max(0, rem.W-w-d.Gap)
-		default: // fill
+		default:
 			b = rem
 		}
 		cb.Bounds = b
@@ -60,21 +57,32 @@ func (d *Dock) LayoutChildren() {
 	}
 }
 
-type StackAlign = string // "start" (default) | "center" | "end" | "stretch"
+type Align string
 
-// NSStackView style run along one axis. main-axis size comes from StackSize
-// (content | fixed | fill-by-weight), the cross axis follows Align
-// no wrapping, no flex algebra
+const (
+	AlignStart   Align = "start"
+	AlignCenter  Align = "center"
+	AlignEnd     Align = "end"
+	AlignStretch Align = "stretch"
+)
+
+type Axis string
+
+const (
+	AxisH Axis = "h"
+	AxisV Axis = "v"
+)
+
 type Stack struct {
 	Core
-	Axis    string // "h" | "v"
+	Axis    Axis
 	Padding float32
 	Spacing float32
-	Align   StackAlign
+	Align   Align
 }
 
-func NewHStack() *Stack { s := &Stack{Axis: "h", Spacing: 8}; s.self = s; return s }
-func NewVStack() *Stack { s := &Stack{Axis: "v", Spacing: 8}; s.self = s; return s }
+func NewHStack() *Stack { s := &Stack{Axis: AxisH, Spacing: 8}; s.self = s; return s }
+func NewVStack() *Stack { s := &Stack{Axis: AxisV, Spacing: 8}; s.self = s; return s }
 
 func (s *Stack) IntrinsicSize() Size {
 	s.adopt()
@@ -83,21 +91,21 @@ func (s *Stack) IntrinsicSize() Size {
 	for _, c := range s.Kids {
 		sz := sizeOf(c)
 		ss := c.Base().StackSize
-		if ss.Kind == "fixed" {
+		if ss.Kind == SizeFixed {
 			main += ss.Px
-		} else if s.Axis == "h" {
+		} else if s.Axis == AxisH {
 			main += sz.W
 		} else {
 			main += sz.H
 		}
-		if s.Axis == "h" {
+		if s.Axis == AxisH {
 			cross = max(cross, sz.H)
 		} else {
 			cross = max(cross, sz.W)
 		}
 	}
 	pad := s.Padding * 2
-	if s.Axis == "h" {
+	if s.Axis == AxisH {
 		return Size{main + pad, cross + pad}
 	}
 	return Size{cross + pad, main + pad}
@@ -107,10 +115,10 @@ func (s *Stack) HeightForWidth(w float32) (float32, bool) {
 	s.adopt()
 	inner := max(0, w-s.Padding*2)
 	var h float32
-	if s.Axis == "v" {
+	if s.Axis == AxisV {
 		h = s.Spacing * float32(max(0, len(s.Kids)-1))
 		for _, c := range s.Kids {
-			if ss := c.Base().StackSize; ss.Kind == "fixed" {
+			if ss := c.Base().StackSize; ss.Kind == SizeFixed {
 				h += ss.Px
 				continue
 			}
@@ -126,7 +134,7 @@ func (s *Stack) HeightForWidth(w float32) (float32, bool) {
 }
 
 func (s *Stack) childWidth(c Widget, crossAvail float32) float32 {
-	if s.Align == "stretch" {
+	if s.Align == AlignStretch {
 		return crossAvail
 	}
 	return min(sizeOf(c).W, crossAvail)
@@ -138,18 +146,16 @@ func (s *Stack) mainSizes(mainAvail, crossAvail float32) []float32 {
 	mains := make([]float32, len(s.Kids))
 	for i, c := range s.Kids {
 		ss := c.Base().StackSize
-		if ss.Kind == "fill" {
+		if ss.Kind == SizeFill {
 			weightSum += ss.Weight
 			continue
 		}
 		sz := sizeOf(c)
 		m := sz.W
-		if s.Axis == "v" {
-			// a v-stack knows each child's eventual width, so wrapped labels can restate
-			// their height before the main-axis pass
+		if s.Axis == AxisV {
 			m = heightAt(c, s.childWidth(c, crossAvail), sz.H)
 		}
-		if ss.Kind == "fixed" {
+		if ss.Kind == SizeFixed {
 			m = ss.Px
 		}
 		mains[i] = m
@@ -157,7 +163,7 @@ func (s *Stack) mainSizes(mainAvail, crossAvail float32) []float32 {
 	}
 	leftover := max(0, mainAvail-used)
 	for i, c := range s.Kids {
-		if ss := c.Base().StackSize; ss.Kind == "fill" && weightSum > 0 {
+		if ss := c.Base().StackSize; ss.Kind == SizeFill && weightSum > 0 {
 			mains[i] = leftover * ss.Weight / weightSum
 		}
 	}
@@ -171,39 +177,37 @@ func (s *Stack) LayoutChildren() {
 	}
 	r := gfx.Inset(s.Bounds, s.Padding)
 	mainAvail, crossAvail := r.W, r.H
-	if s.Axis == "v" {
+	if s.Axis == AxisV {
 		mainAvail, crossAvail = r.H, r.W
 	}
 	mains := s.mainSizes(mainAvail, crossAvail)
 
 	pos := r.X
-	if s.Axis == "v" {
+	if s.Axis == AxisV {
 		pos = r.Y
 	}
 	for i, c := range s.Kids {
 		main := mains[i]
 		sz := sizeOf(c)
-		// cross-axis children never exceed the stack's extent (labels truncate
-		// instead of overflowing)
 		crossNat := sz.W
-		if s.Axis == "h" {
+		if s.Axis == AxisH {
 			crossNat = heightAt(c, main, sz.H)
 		}
 		cross := min(crossNat, crossAvail)
-		if s.Align == "stretch" {
+		if s.Align == AlignStretch {
 			cross = crossAvail
 		}
 		crossPos := r.Y
-		if s.Axis == "v" {
+		if s.Axis == AxisV {
 			crossPos = r.X
 		}
 		switch s.Align {
-		case "center":
+		case AlignCenter:
 			crossPos += (crossAvail - cross) / 2
-		case "end":
+		case AlignEnd:
 			crossPos += crossAvail - cross
 		}
-		if s.Axis == "h" {
+		if s.Axis == AxisH {
 			c.Base().Bounds = gfx.R(pos, crossPos, main, cross)
 		} else {
 			c.Base().Bounds = gfx.R(crossPos, pos, cross, main)
@@ -213,9 +217,6 @@ func (s *Stack) LayoutChildren() {
 	}
 }
 
-// base for anything with a vertical scroll offset: clamping, wheel deltas,
-// the draggable overlay thumb. embedders define the viewport via viewportFn
-// and set ContentH during layout
 type Scroller struct {
 	Core
 	ScrollY  float32
@@ -266,7 +267,7 @@ func (s *Scroller) ScrollBy(dy float32) {
 	next := min(max(s.ScrollY+dy, 0), s.maxScroll())
 	if next != s.ScrollY {
 		s.ScrollY = next
-		s.Invalidate()
+		s.InvalidateWidget()
 	}
 }
 
@@ -274,7 +275,7 @@ func (s *Scroller) ScrollByX(dx float32) {
 	next := min(max(s.ScrollX+dx, 0), s.maxScrollX())
 	if next != s.ScrollX {
 		s.ScrollX = next
-		s.Invalidate()
+		s.InvalidateWidget()
 	}
 }
 
@@ -321,13 +322,13 @@ func (s *Scroller) thumbDown(x, y float32) bool {
 	if t, ok := s.thumbRect(); ok && Contains(t, x, y) {
 		grab := y - t.Y
 		s.dragGrab = &grab
-		s.Invalidate()
+		s.InvalidateWidget()
 		return true
 	}
 	if t, ok := s.hThumbRect(); ok && Contains(t, x, y) {
 		grab := x - t.X
 		s.dragGrabX = &grab
-		s.Invalidate()
+		s.InvalidateWidget()
 		return true
 	}
 	return false
@@ -344,7 +345,7 @@ func (s *Scroller) thumbDrag(x, y float32) bool {
 			next := min(max(ratio*s.maxScroll(), 0), s.maxScroll())
 			if next != s.ScrollY {
 				s.ScrollY = next
-				s.Invalidate()
+				s.InvalidateWidget()
 			}
 		}
 		return true
@@ -359,7 +360,7 @@ func (s *Scroller) thumbDrag(x, y float32) bool {
 			next := min(max(ratio*s.maxScrollX(), 0), s.maxScrollX())
 			if next != s.ScrollX {
 				s.ScrollX = next
-				s.Invalidate()
+				s.InvalidateWidget()
 			}
 		}
 		return true
@@ -371,15 +372,12 @@ func (s *Scroller) thumbUp() {
 	if s.dragGrab != nil || s.dragGrabX != nil {
 		s.dragGrab = nil
 		s.dragGrabX = nil
-		s.Invalidate()
+		s.InvalidateWidget()
 	}
 }
 
-// children lay out (frame/anchors) against a virtual content rect as tall as
-// their combined extent, the scroll offset just shifts it
 type ScrollView struct {
 	Scroller
-	// extra space below the last child
 	ContentInsetBottom float32
 	StickBottom        bool
 	lastMax            float32
@@ -414,8 +412,6 @@ func (sv *ScrollView) LayoutChildren() {
 			h = heightAt(c, wCtx, sz.H)
 		}
 		extent = max(extent, top+h)
-		// width extent from left-pinned/framed children only, right-anchored ones
-		// track the viewport not the content
 		var left, w float32
 		if cb.Frame != nil {
 			left, w = cb.Frame.X, cb.Frame.W
@@ -423,7 +419,7 @@ func (sv *ScrollView) LayoutChildren() {
 			w = sz.W
 			if a := cb.Anchors; a != nil {
 				if a.Right != nil {
-					w = 0 // tracks the viewport
+					w = 0
 				}
 				if a.Left != nil {
 					left = *a.Left
@@ -432,7 +428,6 @@ func (sv *ScrollView) LayoutChildren() {
 		}
 		extentW = max(extentW, left+w)
 	}
-	// judged against the previous layout's max so a resize doesn't unpin
 	pinned := sv.StickBottom && (sv.ContentH == 0 || sv.ScrollY >= sv.lastMax-1)
 	sv.ContentH = extent + sv.ContentInsetBottom
 	sv.ContentW = extentW
@@ -450,7 +445,7 @@ func (sv *ScrollView) HitTest(x, y float32) Widget {
 		return nil
 	}
 	if t, ok := sv.thumbRect(); ok && Contains(t, x, y) {
-		return sv // thumbs paint on top, so they hit first
+		return sv
 	}
 	if t, ok := sv.hThumbRect(); ok && Contains(t, x, y) {
 		return sv

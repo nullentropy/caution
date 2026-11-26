@@ -14,46 +14,37 @@ import (
 	"unsafe"
 
 	"github.com/go-gl/glfw/v3.3/glfw"
+	"github.com/nullentropy/caution/terminal"
 	"github.com/nullentropy/caution/terminal/gfx"
-	"github.com/nullentropy/caution/terminal/glx"
+	"github.com/nullentropy/caution/terminal/gpu"
 	"github.com/nullentropy/caution/terminal/pacer"
 	"github.com/nullentropy/caution/terminal/render"
 	"github.com/nullentropy/caution/terminal/text"
 	"github.com/nullentropy/caution/terminal/ui"
 )
 
-// frames must keep flowing while NSMenu tracking parks the main thread in a
-// modal loop. tracking is entered twice, pacer armed then idle, and frames
-// must flow in the first and starve in the second, so the probe can fail
 func runMenu() error {
 	if err := glfw.Init(); err != nil {
 		return err
 	}
 	defer glfw.Terminate()
-	glfw.WindowHint(glfw.ContextVersionMajor, 4)
-	glfw.WindowHint(glfw.ContextVersionMinor, 1)
-	glfw.WindowHint(glfw.OpenGLProfile, glfw.OpenGLCoreProfile)
-	glfw.WindowHint(glfw.OpenGLForwardCompatible, glfw.True)
+	glfw.WindowHint(glfw.ClientAPI, glfw.NoAPI)
 	glfw.WindowHint(glfw.Visible, glfw.False)
 	win, err := glfw.CreateWindow(400, 300, "loopprobe-menu", nil, nil)
 	if err != nil {
 		return err
 	}
-	win.MakeContextCurrent()
-	if err := glx.Init(); err != nil {
+	dev, err := terminal.OpenDevice(win)
+	if err != nil {
 		return err
 	}
 	devW, devH := int32(800), int32(600)
-	var tex, fbo uint32
-	glx.GenTextures(1, &tex)
-	glx.ActiveTexture(glx.TEXTURE0)
-	glx.BindTexture(glx.TEXTURE_2D, tex)
-	glx.TexImage2D(glx.TEXTURE_2D, 0, glx.RGBA, devW, devH, 0, glx.RGBA, glx.UNSIGNED_BYTE, nil)
-	glx.GenFramebuffers(1, &fbo)
-	glx.BindFramebuffer(glx.FRAMEBUFFER, fbo)
-	glx.FramebufferTexture2D(glx.FRAMEBUFFER, glx.COLOR_ATTACHMENT0, glx.TEXTURE_2D, tex, 0)
+	target, err := dev.NewTexture(int(devW), int(devH), gpu.Nearest)
+	if err != nil {
+		return err
+	}
 
-	r, err := render.New()
+	r, err := render.New(dev)
 	if err != nil {
 		return err
 	}
@@ -75,8 +66,9 @@ func runMenu() error {
 		u.BuildFrame(dl, 400, 300)
 		r.Render(dl, *ui.Tok("bg"), render.Frame{
 			ViewW: 400, ViewH: 300, DevW: devW, DevH: devH,
-			FBO: fbo, Time: float32(time.Since(start).Seconds()),
+			Target: target, Time: float32(time.Since(start).Seconds()),
 		})
+		dev.Present()
 		lastDraw = time.Now()
 	}
 	pacer.Install(func() {
@@ -95,7 +87,7 @@ func runMenu() error {
 
 	pacer.Arm(1.0 / 60.0)
 	before := frames()
-	C.caution_probe_menu(unsafe.Pointer(win.GetCocoaWindow()), 0.8) // blocks: tracking
+	C.caution_probe_menu(unsafe.Pointer(win.GetCocoaWindow()), 0.8)
 	armed := frames() - before
 	fmt.Printf("frames during 0.8s of menu tracking, pacer armed: %d\n", armed)
 

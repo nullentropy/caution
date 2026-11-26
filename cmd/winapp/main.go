@@ -1,14 +1,3 @@
-// caution winapp: build a caution binary as a Windows .exe with its icon and
-// manifest linked in as PE resources
-//
-//	go run ./cmd/winapp -pkg ./cmd/demo -name "Caution Demo"
-//
-// Cross-compiles from mac w/ mingw toolchain installed
-// (brew install mingw-w64)
-//
-// TODO:
-// - a version resource (the right-click Properties tab)
-// - authenticode signing
 package main
 
 import (
@@ -25,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/nullentropy/caution/internal/appicon"
+	"github.com/nullentropy/caution/internal/notices"
 )
 
 func main() {
@@ -35,6 +25,7 @@ func main() {
 	out := flag.String("o", "", "output directory (default .)")
 	arch := flag.String("arch", "amd64", "target architecture: amd64 or arm64")
 	cc := flag.String("cc", "", "C compiler for the cross build (default x86_64-w64-mingw32-gcc for amd64)")
+	cxx := flag.String("cxx", "", "C++ compiler for the cross build (default: -cc with gcc swapped for g++)")
 	flag.Parse()
 
 	if *pkg == "" || *name == "" {
@@ -73,15 +64,32 @@ func main() {
 	if err := os.WriteFile(sysoPath, syso, 0o644); err != nil {
 		log.Fatal("winapp: ", err)
 	}
-	defer os.Remove(sysoPath)
-
-	if err := build(*pkg, exePath, *arch, *cc); err != nil {
+	data, nb, err := notices.Stage("", func(out string) error {
+		err := build(*pkg, out, *arch, *cc, *cxx)
+		os.Remove(sysoPath)
+		if err != nil {
+			return err
+		}
+		return verify(out)
+	})
+	os.Remove(sysoPath)
+	if err != nil {
 		log.Fatal("winapp: ", err)
 	}
-	if err := verify(exePath); err != nil {
+	if *out != "" {
+		if err := os.MkdirAll(*out, 0o755); err != nil {
+			log.Fatal("winapp: ", err)
+		}
+	}
+	if err := os.WriteFile(exePath, data, 0o755); err != nil {
 		log.Fatal("winapp: ", err)
 	}
 	fmt.Println("wrote", exePath)
+	noticesPath := filepath.Join(*out, *name+"-THIRD_PARTY_NOTICES.txt")
+	if err := os.WriteFile(noticesPath, nb, 0o644); err != nil {
+		log.Fatal("winapp: ", err)
+	}
+	fmt.Println("wrote", noticesPath)
 }
 
 func loadIcon(path string) (*image.RGBA, error) {
@@ -110,15 +118,21 @@ func packageDir(pkg string) (string, error) {
 	return strings.TrimSpace(string(dir)), nil
 }
 
-func build(pkg, exePath, arch, cc string) error {
+func build(pkg, exePath, arch, cc, cxx string) error {
 	if cc == "" && arch == "amd64" {
 		cc = "x86_64-w64-mingw32-gcc"
 	}
-	// no console window behind the app
+	if cxx == "" && strings.HasSuffix(cc, "gcc") {
+		cxx = strings.TrimSuffix(cc, "gcc") + "g++"
+	}
+	// -H windowsgui keeps a console window from opening behind the app
 	cmd := exec.Command("go", "build", "-ldflags", "-H windowsgui", "-o", exePath, pkg)
 	cmd.Env = append(os.Environ(), "GOOS=windows", "GOARCH="+arch, "CGO_ENABLED=1")
 	if cc != "" {
 		cmd.Env = append(cmd.Env, "CC="+cc)
+	}
+	if cxx != "" {
+		cmd.Env = append(cmd.Env, "CXX="+cxx)
 	}
 	cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
 	if err := cmd.Run(); err != nil {
@@ -127,7 +141,6 @@ func build(pkg, exePath, arch, cc string) error {
 	return nil
 }
 
-// checks the two things that go wrong silently: subsystem and resources
 func verify(path string) error {
 	f, err := pe.Open(path)
 	if err != nil {
@@ -169,7 +182,6 @@ func verify(path string) error {
 	return nil
 }
 
-// top level of the tree is enough to see the icon and manifest made it in
 func resourceTypes(rsrc []byte) map[uint32]bool {
 	out := map[uint32]bool{}
 	if len(rsrc) < 16 {
@@ -183,7 +195,7 @@ func resourceTypes(rsrc []byte) map[uint32]bool {
 			break
 		}
 		name := binary.LittleEndian.Uint32(rsrc[at:])
-		if name&0x80000000 == 0 { // an id, not a string
+		if name&0x80000000 == 0 {
 			out[name] = true
 		}
 	}

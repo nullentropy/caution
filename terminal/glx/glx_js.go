@@ -1,7 +1,5 @@
 //go:build js && wasm
 
-// browser dialect: WebGL2 through syscall/js with the same names and go-gl
-// signatures as the native shims so the renderer compiles unchanged
 // GL hands out integer names and WebGL hands out JS objects, so a handle
 // table maps one to the other. name 0 is null, the default target
 package glx
@@ -15,15 +13,13 @@ import (
 const ES = true
 
 var (
-	gl      js.Value
-	objects = map[uint32]js.Value{}
-	// each program's location handles, released with it
+	gl       js.Value
+	objects  = map[uint32]js.Value{}
 	uniforms = map[uint32][]uint32{}
 	nextID   uint32
-	scratch  js.Value // Uint8Array reused for uploads
+	scratch  js.Value
 )
 
-// call before Init
 func SetContext(ctx js.Value) { gl = ctx }
 
 func Init() error {
@@ -51,6 +47,7 @@ const (
 	INFO_LOG_LENGTH     = 0x8B84
 	LINEAR              = 0x2601
 	LINK_STATUS         = 0x8B82
+	MAX_TEXTURE_SIZE    = 0x0D33
 	NEAREST             = 0x2600
 	ONE                 = 1
 	ONE_MINUS_SRC_ALPHA = 0x0303
@@ -103,8 +100,6 @@ func bytesAt(data unsafe.Pointer, size int) []byte {
 	return unsafe.Slice((*byte)(data), size)
 }
 
-// returns a view of exactly len(b) into the scratch Uint8Array. WebGL reads
-// it synchronously so one buffer serves every call
 func upload(b []byte) js.Value {
 	if scratch.Get("length").Int() < len(b) {
 		scratch = js.Global().Get("Uint8Array").New(len(b))
@@ -124,7 +119,6 @@ func cstring(p *uint8) string {
 	return string(unsafe.Slice((*byte)(p), n))
 }
 
-// fills the buffer GL would have, NUL terminated within bufSize
 func writeLog(s string, bufSize int32, length *int32, out *uint8) {
 	if out == nil || bufSize <= 0 {
 		return
@@ -217,14 +211,21 @@ func BufferSubData(target uint32, offset, size int, data unsafe.Pointer) {
 	gl.Call("bufferSubData", target, offset, upload(bytesAt(data, size)))
 }
 
-// only ever RGBA / UNSIGNED_BYTE here, which gives the byte count go-gl's
-// pointer signature leaves out
+// formats here are always RGBA with UNSIGNED_BYTE, which gives the byte
+// count that go-gl's pointer signature leaves out
 func TexImage2D(target uint32, level, internalformat, width, height, border int32, format, xtype uint32, pixels unsafe.Pointer) {
 	if pixels == nil {
 		gl.Call("texImage2D", target, level, internalformat, width, height, border, format, xtype, js.Null())
 		return
 	}
 	gl.Call("texImage2D", target, level, internalformat, width, height, border, format, xtype,
+		upload(bytesAt(pixels, int(width)*int(height)*4)))
+}
+
+func GetInteger(pname uint32) int { return gl.Call("getParameter", pname).Int() }
+
+func TexSubImage2D(target uint32, level, xoffset, yoffset, width, height int32, format, xtype uint32, pixels unsafe.Pointer) {
+	gl.Call("texSubImage2D", target, level, xoffset, yoffset, width, height, format, xtype,
 		upload(bytesAt(pixels, int(width)*int(height)*4)))
 }
 
@@ -276,7 +277,6 @@ func GetProgramInfoLog(program uint32, bufSize int32, length *int32, infoLog *ui
 	writeLog(gl.Call("getProgramInfoLog", obj(program)).String(), bufSize, length, infoLog)
 }
 
-// -1 for a missing uniform like GL, otherwise a handle to the location object
 func GetUniformLocation(program uint32, name *uint8) int32 {
 	loc := gl.Call("getUniformLocation", obj(program), cstring(name))
 	if loc.IsNull() {
@@ -287,8 +287,6 @@ func GetUniformLocation(program uint32, name *uint8) int32 {
 	return int32(id)
 }
 
-// Ptr, Str and Strs match go-gl's helpers, pointers into Go memory the calls
-// above read back
 func Ptr(data any) unsafe.Pointer {
 	switch v := data.(type) {
 	case nil:

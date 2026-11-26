@@ -1,21 +1,3 @@
-// caution linuxapp: lay out a caution binary as a Linux desktop app
-// no bundle format, just binary + .desktop entry + hicolor icons:
-//
-//	bin/<slug>
-//	share/applications/<slug>.desktop
-//	share/icons/hicolor/<size>x<size>/apps/<slug>.png
-//
-// copy the tree into ~/.local (-install does this), $DESTDIR/usr, or tar it
-//
-//	go run ./cmd/linuxapp -pkg ./cmd/demo -name "Caution Demo"
-//	go run ./cmd/linuxapp -bin ./myapp -name "My App" -icon icon.png -o dist/
-//	go run ./cmd/linuxapp -pkg ./cmd/demo -name "Caution Demo" -install
-//
-// StartupWMClass must equal terminal.Options.AppID or the desktop can't tie
-// the window to the entry. broken on native Wayland, GLFW 3.3 never sets an
-// app id (see linux/README.md)
-//
-// runs on any OS. set GOOS=linux when building for another machine
 package main
 
 import (
@@ -29,14 +11,14 @@ import (
 	"strings"
 
 	"github.com/nullentropy/caution/internal/appicon"
+	"github.com/nullentropy/caution/internal/notices"
 )
 
-// 16-48 lists and panels, 64-256 launchers, 512 scaled displays
 var iconSizes = []int{16, 24, 32, 48, 64, 128, 256, 512}
 
 func main() {
 	pkg := flag.String("pkg", "", "Go package to build (e.g. ./cmd/demo)")
-	bin := flag.String("bin", "", "prebuilt binary to package (alternative to -pkg)")
+	bin := flag.String("bin", "", "prebuilt binary to package, run from the module that built it (alternative to -pkg)")
 	name := flag.String("name", "", "app name shown in launchers (required)")
 	id := flag.String("id", "", "app id / StartupWMClass (default: slug of -name)")
 	icon := flag.String("icon", "", "square PNG for the icon (default: generated caution mark)")
@@ -58,6 +40,22 @@ func main() {
 		*comment = *name + " - a caution app"
 	}
 
+	var build func(string) error
+	if *pkg != "" {
+		build = func(out string) error {
+			cmd := exec.Command("go", "build", "-o", out, *pkg)
+			cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
+			if err := cmd.Run(); err != nil {
+				return fmt.Errorf("go build: %w", err)
+			}
+			return nil
+		}
+	}
+	data, nb, err := notices.Stage(*bin, build)
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	root := *out
 	if *install {
 		home, err := os.UserHomeDir()
@@ -76,24 +74,26 @@ func main() {
 		log.Fatal(err)
 	}
 
-	// GOOS/GOARCH pass through the environment
 	binTarget := filepath.Join(binDir, slug)
-	if *pkg != "" {
-		cmd := exec.Command("go", "build", "-o", binTarget, *pkg)
-		cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
-		if err := cmd.Run(); err != nil {
-			log.Fatal("go build: ", err)
-		}
-	} else {
-		data, err := os.ReadFile(*bin)
-		if err != nil {
-			log.Fatal(err)
-		}
-		if err := os.WriteFile(binTarget, data, 0o755); err != nil {
-			log.Fatal(err)
-		}
+	staged := binTarget + ".new"
+	if err := os.WriteFile(staged, data, 0o755); err != nil {
+		log.Fatal(err)
+	}
+	if err := os.Rename(staged, binTarget); err != nil {
+		os.Remove(staged)
+		log.Fatal(err)
 	}
 	log.Printf("caution: wrote %s", binTarget)
+
+	docDir := filepath.Join(root, "share", "doc", slug)
+	if err := os.MkdirAll(docDir, 0o755); err != nil {
+		log.Fatal(err)
+	}
+	noticesPath := filepath.Join(docDir, "THIRD_PARTY_NOTICES.txt")
+	if err := os.WriteFile(noticesPath, nb, 0o644); err != nil {
+		log.Fatal(err)
+	}
+	log.Printf("caution: wrote %s", noticesPath)
 
 	master := appicon.Default()
 	if *icon != "" {
@@ -126,8 +126,8 @@ func main() {
 	log.Printf("caution: wrote %d icons under %s", len(iconSizes),
 		filepath.Join(root, "share", "icons", "hicolor"))
 
-	// absolute Exec when installed, launchers don't read PATH. staged trees
-	// get the bare slug since the final location isn't known
+	// an installed entry needs an absolute Exec because launchers don't read
+	// PATH
 	execPath := slug
 	if *install {
 		execPath = binTarget
@@ -153,7 +153,6 @@ func main() {
 	}
 
 	if *install {
-		// desktops cache the applications dir. advisory, fine if missing
 		if _, err := exec.LookPath("update-desktop-database"); err == nil {
 			_ = exec.Command("update-desktop-database", appsDir).Run()
 		}
@@ -165,10 +164,8 @@ func main() {
 	}
 }
 
-// StartupNotify=false because GLFW never finishes the handshake, true
-// leaves the cursor spinning until timeout
-// no MimeType or %U/%F, caution apps take no file args and the desktop
-// would offer them for "open with"
+// StartupNotify is false because GLFW never finishes the startup handshake,
+// and true would leave the cursor spinning until it times out
 func desktopEntry(name, comment, execPath, iconName, appID, categories string) string {
 	if !strings.HasSuffix(categories, ";") {
 		categories += ";"

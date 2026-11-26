@@ -1,52 +1,23 @@
-// Package render is the native display-list backend: one unified instanced
-// shader with the same three fragment modes as the browser's WebGL2 renderer
-// the GLSL bodies are the WebGL source (the shared GLSL ES 3.00 / 410 core
-// subset), with the version header picked per dialect at compile time (see
-// terminal/glx): 410 core on desktop GL, 300 es under `-tags angle`. same
-// bodies is also why app effect shaders run unchanged on every backend
 package render
 
 import (
 	"regexp"
 	"strings"
-
-	"github.com/nullentropy/caution/terminal/glx"
 )
 
-// prepends the dialect's version header. ES fragment shaders also need a
-// default float precision
-func shaderSrc(body string, frag bool) string {
-	if glx.ES {
-		if frag {
-			return "#version 300 es\nprecision highp float;\n" + body
-		}
-		return "#version 300 es\n" + body
-	}
-	return "#version 410 core\n" + body
-}
-
-// every primitive is an instanced unit quad, the fragment shader branches
-// on mode:
-//
-//	0 = SDF rounded rect (fill + optional border), analytic AA
-//	1 = SDF rounded-rect shadow (smoothstep falloff over blur radius)
-//	2 = textured (glyphs / images), premultiplied atlas, tinted by color
-//
-// clip is a per-instance axis-aligned rect evaluated per fragment, so clip
-// changes never break batching. coordinates are logical pixels
 const vertSrc = `
 layout(location=0) in vec2 a_unit;
-layout(location=1) in vec4 i_rect;    // x, y, w, h
-layout(location=2) in vec4 i_radii;   // tl, tr, br, bl
-layout(location=3) in vec4 i_color;   // straight alpha
-layout(location=4) in vec4 i_border;  // border color, straight alpha
-layout(location=5) in vec4 i_params;  // borderWidth, mode, blur, unused
-layout(location=6) in vec4 i_uv;      // u0, v0, u1, v1
-layout(location=7) in vec4 i_clip;    // x, y, w, h
+layout(location=1) in vec4 i_rect;
+layout(location=2) in vec4 i_radii;
+layout(location=3) in vec4 i_color;
+layout(location=4) in vec4 i_border;
+layout(location=5) in vec4 i_params;
+layout(location=6) in vec4 i_uv;
+layout(location=7) in vec4 i_clip;
 
-uniform vec2 u_view;   // logical size of the current render target
-uniform vec2 u_origin; // logical offset of the target (0,0 for the window)
-uniform float u_flipY; // -1 for the window, +1 for offscreen layers
+uniform vec2 u_view;
+uniform vec2 u_origin;
+uniform float u_flipY;
 
 out vec2 v_pos;
 out vec2 v_uv;
@@ -59,9 +30,7 @@ flat out vec4 v_clip;
 
 void main() {
   int mode = int(i_params.y + 0.5);
-  // Expand the quad so AA (1px) and shadow falloff have room outside the rect.
-  // Textured quads are exact: their uv mapping must not shift.
-  float margin = mode == 1 ? i_params.z * 2.5 + 1.0 : (mode == 2 ? 0.0 : 1.0);
+  float margin = mode == 1 ? i_params.z * 2.5 + 1.0 : (mode >= 2 ? 0.0 : 1.0);
   vec2 pos = i_rect.xy - vec2(margin) + a_unit * (i_rect.zw + vec2(margin * 2.0));
 
   v_pos = pos;
@@ -92,7 +61,6 @@ flat in vec4 v_clip;
 out vec4 o_color;
 
 float sdRoundRect(vec2 p, vec2 hs, vec4 r) {
-  // Pick this quadrant's radius: r = (tl, tr, br, bl), +x is right, +y is down.
   float rad = p.x >= 0.0 ? (p.y >= 0.0 ? r.z : r.y) : (p.y >= 0.0 ? r.w : r.x);
   rad = min(rad, min(hs.x, hs.y));
   vec2 q = abs(p) - hs + rad;
@@ -104,16 +72,15 @@ vec4 premul(vec4 c) { return vec4(c.rgb * c.a, c.a); }
 void main() {
   int mode = int(v_params.y + 0.5);
 
-  // Axis-aligned clip coverage with ~1px AA at the clip edge.
   vec2 cmax = v_clip.xy + v_clip.zw;
   vec2 cc = clamp(min(v_pos - v_clip.xy, cmax - v_pos) + 0.5, 0.0, 1.0);
   float clipCov = cc.x * cc.y;
 
   vec4 result;
-  if (mode == 2) {
+  if (mode == 3) {
+    result = premul(v_color);
+  } else if (mode == 2) {
     result = texture(u_tex, v_uv) * premul(v_color);
-    // Rounded corners for textured quads (images). Glyphs pass zero radii
-    // and skip this, keeping their own edge anti-aliasing untouched.
     if (v_radii.x + v_radii.y + v_radii.z + v_radii.w > 0.0) {
       vec2 hs = v_rect.zw * 0.5;
       float d = sdRoundRect(v_pos - (v_rect.xy + hs), hs, v_radii);
@@ -141,11 +108,10 @@ void main() {
   o_color = result * clipCov;
 }`
 
-// custom-shader passes: layer composites and shader quads
 const quadVertSrc = `
 layout(location=0) in vec2 a_unit;
-uniform vec4 u_rect;   // x, y, w, h on the target, logical px
-uniform vec4 u_uvrect; // uv sub-range (clipped shader quads)
+uniform vec4 u_rect;
+uniform vec4 u_uvrect;
 uniform vec2 u_view;
 uniform vec2 u_origin;
 uniform float u_flipY;
@@ -160,11 +126,6 @@ void main() {
 
 var identRe = regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_]*$`)
 
-// the app defines `vec4 effect(vec2 uv)` with (0,0) at the top-left, and may
-// use u_time (seconds), u_res (logical px), its declared float uniforms, and
-// for layer effects `src(uv)`, the subtree rendered to a texture
-// (premultiplied, transparent outside [0,1]). apps write GLSL ES 3.00 for the
-// browser and the shared subset compiles the same under 410 core
 func wrapUserFrag(frag string, uniformNames []string, withContent bool) string {
 	var decls strings.Builder
 	for _, n := range uniformNames {
@@ -190,5 +151,4 @@ vec4 src(vec2 uv) {
 		"void main() { o_color = effect(v_uv); }"
 }
 
-// fallback when an app effect fails to compile, composites unchanged
 const passthroughFrag = `vec4 effect(vec2 uv) { return src(uv); }`

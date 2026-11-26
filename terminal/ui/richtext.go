@@ -11,30 +11,23 @@ import (
 type Span struct {
 	Text               string
 	Bold, Italic, Mono bool
-	// "" takes the widget's family
-	Font string
-	// nil takes the widget's Color
-	Color *gfx.Color
-	Bg    *gfx.Color
-	// non-empty makes it clickable
-	Action string
+	Font               string
+	Color              *gfx.Color
+	Bg                 *gfx.Color
+	Action             string
 }
 
 type RichText struct {
 	Core
-	// every span's face derives from it, so mono never changes the line pitch
 	Font        gfx.Font
 	Color       *gfx.Color
 	Selectable  bool
 	OnSpanClick func(action string)
 
 	spans []Span
-	// spans' text concatenated, selection boundaries and fragments index it
-	text string
-	// spans[i] covers text[offs[i]:offs[i+1]]
-	offs []int
-	// bumped by SetSpans, keys the memos below
-	rev int
+	text  string
+	offs  []int
+	rev   int
 
 	lastSize   *richSize
 	lastLayout *richLayout
@@ -48,7 +41,6 @@ type richSize struct {
 	size       Size
 }
 
-// text of one span on one wrapped line, positioned from the line origin
 type fragment struct {
 	span       int
 	start, end int
@@ -61,15 +53,13 @@ type richLine struct {
 	frags []fragment
 }
 
-// paint, hit-testing, selection and clicks all read this
 type richLayout struct {
 	rev, epoch int
 	fontKey    string
 	w          float32
 	lines      []richLine
 	fonts      []gfx.Font
-	// y offset that puts a span's baseline on the base font's
-	shift []float32
+	shift      []float32
 }
 
 func NewRichText(f gfx.Font, color *gfx.Color) *RichText {
@@ -92,7 +82,7 @@ func (r *RichText) SetSpans(spans []Span) {
 	r.offs[len(spans)] = len(r.text)
 	r.rev++
 	r.hoverSpan, r.pressSpan = -1, -1
-	r.Invalidate()
+	r.InvalidateWidget()
 }
 
 func (r *RichText) Text() string { return r.text }
@@ -109,7 +99,6 @@ func (r *RichText) spanFont(s Span) gfx.Font {
 	return gfx.NewFont(r.Font.Size, gfx.FontOpts{Weight: w, Italic: s.Italic, Mono: s.Mono, Family: family})
 }
 
-// width of text[a:b] with each span's own face
 func (r *RichText) measureRange(fonts []gfx.Font, a, b int) float32 {
 	var w float32
 	for _, f := range r.pieces(fonts, a, b) {
@@ -187,8 +176,6 @@ func (r *RichText) HeightForWidth(w float32) (float32, bool) {
 	return wrappedHeight(r.UI, r.Font, len(r.layout(w).lines)), true
 }
 
-// every rune boundary on a line: x from the line origin and the byte offset
-// it maps to, ascending
 func (r *RichText) lineBoundaries(l *richLayout, ln richLine) (xs []float32, bos []int) {
 	for _, f := range ln.frags {
 		if f.tab {
@@ -222,7 +209,6 @@ func (r *RichText) lineAt(l *richLayout, y float32) int {
 	return clampInt(int((y-r.Bounds.Y)/adv), 0, len(l.lines)-1)
 }
 
-// nearest boundary to a point, as a byte offset into the text
 func (r *RichText) byteAtPoint(x, y float32) int {
 	l := r.layout(r.Bounds.W)
 	li := r.lineAt(l, y)
@@ -233,8 +219,6 @@ func (r *RichText) byteAtPoint(x, y float32) int {
 	return bos[nearestBoundary(xs, x-r.Bounds.X)]
 }
 
-// x of a byte offset on a line, from the line origin. an offset inside a
-// rune snaps to the boundary before it
 func (r *RichText) xAtByte(l *richLayout, ln richLine, bo int) float32 {
 	xs, bos := r.lineBoundaries(l, ln)
 	x := xs[0]
@@ -247,7 +231,6 @@ func (r *RichText) xAtByte(l *richLayout, ln richLine, bo int) float32 {
 	return x
 }
 
-// span under a point, -1 between fragments or outside every line box
 func (r *RichText) spanAt(x, y float32) int {
 	l := r.layout(r.Bounds.W)
 	li := r.lineAt(l, y)
@@ -300,7 +283,7 @@ func (r *RichText) Semantics() *Semantic {
 	if r.text == "" {
 		return nil
 	}
-	return &Semantic{Role: "text", Label: r.text}
+	return &Semantic{Role: RoleText, Label: r.text}
 }
 
 const spanBgPad = 3
@@ -338,7 +321,6 @@ func (r *RichText) PaintSelf(dl *gfx.DisplayList) {
 	}
 }
 
-// selection boundaries are byte offsets, so the copy is the exact source slice
 func (r *RichText) GlyphText(start, end int) string {
 	s := clampInt(min(start, end), 0, len(r.text))
 	e := clampInt(max(start, end), 0, len(r.text))
@@ -369,8 +351,6 @@ func (r *RichText) OnPointerDrag(x, y float32) {
 	}
 }
 
-// a release on the pressed span with nothing selected is a click, a drag
-// that selected text is not
 func (r *RichText) OnPointerUp(x, y float32) {
 	pressed := r.pressSpan
 	r.pressSpan = -1

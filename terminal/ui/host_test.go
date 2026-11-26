@@ -99,7 +99,7 @@ func TestSemanticsFlattenMeaningWithStableIDs(t *testing.T) {
 	u := fakeUi()
 	root := NewPanel()
 	root.Add(NewLabel("hi", cbFont, nil))
-	root.Add(NewPanel()) // decorative
+	root.Add(NewPanel())
 	btn := NewButton("go")
 	root.Add(btn)
 	cb := NewCheckbox("opt")
@@ -118,7 +118,7 @@ func TestSemanticsFlattenMeaningWithStableIDs(t *testing.T) {
 	nodes := u.Semantics()
 	roles := []string{}
 	for _, n := range nodes {
-		roles = append(roles, n.Role)
+		roles = append(roles, string(n.Role))
 	}
 	want := []string{"text", "button", "checkbox", "textbox"}
 	if len(roles) != len(want) {

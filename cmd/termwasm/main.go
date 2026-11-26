@@ -1,7 +1,5 @@
 //go:build js && wasm
 
-// caution termwasm: the terminal compiled to WebAssembly. this is the wasm
-// entrypoint, for compilation with `go run ./cmd/bundle`
 package main
 
 import (
@@ -13,6 +11,7 @@ import (
 
 	"github.com/nullentropy/caution/terminal/gfx"
 	"github.com/nullentropy/caution/terminal/glx"
+	"github.com/nullentropy/caution/terminal/gpu/glgpu"
 	"github.com/nullentropy/caution/terminal/proto"
 	"github.com/nullentropy/caution/terminal/render"
 	"github.com/nullentropy/caution/terminal/text"
@@ -27,17 +26,14 @@ var (
 
 	dpr          float32 = 1
 	lastW, lastH float32
-	dirty        = true // the tree changed since the last full frame
-	animating    bool   // the last full frame asked for another
+	dirty        = true
+	animating    bool
 	lastSem      string
 	semNodes     []ui.SemanticNode
 )
 
 func host() js.Value { return js.Global().Get("__cautionHost") }
 
-// the page's fetch, so a server path resolves against the page origin and
-// carries its cookies. net/http would reach the same API but links the whole
-// client stack into the wasm
 func fetchBytes(src string) ([]byte, error) {
 	type result struct {
 		data []byte
@@ -87,7 +83,7 @@ func main() {
 		return
 	}
 	var err error
-	if r, err = render.New(); err != nil {
+	if r, err = render.New(glgpu.New()); err != nil {
 		println("caution: renderer:", err.Error())
 		return
 	}
@@ -106,7 +102,7 @@ func main() {
 		js.CopyBytesToJS(b, data)
 		call("saveFile", name, b)
 	}
-	r.Images.OnLoad = func() { u.Invalidate() }
+	r.Images.OnLoad = func() { u.InvalidateAll() }
 
 	sid := ""
 	if v := host().Get("sid"); v.Type() == js.TypeString {
@@ -166,7 +162,6 @@ func main() {
 	select {}
 }
 
-// for the page's diagnostics counters
 const (
 	frameSkipped = iota
 	frameFull
@@ -174,8 +169,6 @@ const (
 	framePartial
 )
 
-// args: logical size, device size, clock in seconds. returns [animating, kind]
-// page owns scheduling, full vs damage choice mirrors run.go's loop
 func paint(_ js.Value, a []js.Value) any {
 	w, h := float32(a[0].Float()), float32(a[1].Float())
 	devW, devH := int32(a[2].Int()), int32(a[3].Int())
@@ -236,8 +229,6 @@ func fileDrag(_ js.Value, a []js.Value) any {
 
 func fileDropCap(js.Value, []js.Value) any { return float64(sess.FileDropCap()) }
 
-// args: x, y, [{name, type, data}]. sends block on the socket, so off the js
-// callback
 func fileDrop(_ js.Value, a []js.Value) any {
 	list := a[2]
 	files := make([]proto.DropFile, list.Length())
@@ -348,13 +339,12 @@ type semRowJSON struct {
 
 func rectJSON(r gfx.Rect) [4]float32 { return [4]float32{r.X, r.Y, r.W, r.H} }
 
-// "" when nothing changed since the last call
 func semantics(js.Value, []js.Value) any {
 	semNodes = u.Semantics()
 	out := make([]semJSON, 0, len(semNodes))
 	for _, n := range semNodes {
 		j := semJSON{
-			ID: n.ID, Role: n.Role, Label: n.Label, Checked: n.Checked, Value: n.Value,
+			ID: n.ID, Role: string(n.Role), Label: n.Label, Checked: n.Checked, Value: n.Value,
 			RowCount: n.RowCount, Focused: n.Focused, Bounds: rectJSON(n.Bounds),
 		}
 		for _, r := range n.Rows {

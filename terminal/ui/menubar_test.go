@@ -37,7 +37,6 @@ func TestMenubarReservesHeightAndPushesTreeDown(t *testing.T) {
 	wantBounds(t, root, 0, MenubarH(), 800, 600-MenubarH())
 	wantBounds(t, u.Menubar, 0, 0, 800, MenubarH())
 
-	// clearing the spec gives the tree the whole viewport back
 	u.SetMenubar(nil, pick)
 	u.BuildFrame(&gfx.DisplayList{}, 800, 600)
 	if u.Menubar != nil {
@@ -54,7 +53,6 @@ func TestMenubarClickOpensAndPicks(t *testing.T) {
 	u.SetMenubar(menus, pick)
 	u.BuildFrame(&gfx.DisplayList{}, 800, 600)
 
-	// click the first title, its dropdown opens on the overlay
 	u.PointerDown(20, 13)
 	u.PointerUp(20, 13)
 	if u.Overlay == nil {
@@ -64,9 +62,7 @@ func TestMenubarClickOpensAndPicks(t *testing.T) {
 	if !ok {
 		t.Fatalf("overlay is %T, want *menuPopover", u.Overlay)
 	}
-	// rows: item(26) sep(9) item(26) section(26) item(26) item(26) + pad
-	// first row starts at bounds.Y + pad
-	y := pop.Bounds.Y + mbPad + 13 // middle of "Add Row"
+	y := pop.Bounds.Y + mbPad + 13
 	u.PointerDown(pop.Bounds.X+20, y)
 	u.PointerUp(pop.Bounds.X+20, y)
 	if len(picked) != 1 || picked[0] != 1 {
@@ -75,7 +71,6 @@ func TestMenubarClickOpensAndPicks(t *testing.T) {
 	if u.Overlay != nil {
 		t.Fatal("a pick must close the dropdown")
 	}
-	// the bar reconciles its highlight at next paint
 	u.BuildFrame(&gfx.DisplayList{}, 800, 600)
 	if u.Menubar.openIdx != -1 {
 		t.Fatalf("openIdx = %d after pick, want -1", u.Menubar.openIdx)
@@ -89,10 +84,9 @@ func TestMenubarSectionRowsDoNotPick(t *testing.T) {
 	menus, pick := demoMenus(&picked)
 	u.SetMenubar(menus, pick)
 	u.BuildFrame(&gfx.DisplayList{}, 800, 600)
-	u.PointerDown(20, 13) // open "Rows"
+	u.PointerDown(20, 13)
 	pop := u.Overlay.(*menuPopover)
-	// row offsets: item 0..26, sep 26..35, item 35..61, section 61..87
-	y := pop.Bounds.Y + mbPad + 26 + 9 + 26 + 13 // middle of the section header
+	y := pop.Bounds.Y + mbPad + 26 + 9 + 26 + 13
 	u.PointerDown(pop.Bounds.X+20, y)
 	if len(picked) != 0 {
 		t.Fatalf("section header picked %v; must be inert", picked)
@@ -100,7 +94,6 @@ func TestMenubarSectionRowsDoNotPick(t *testing.T) {
 	if u.Overlay == nil {
 		t.Fatal("clicking a section header must not close the menu")
 	}
-	// the nested item under it picks (id 3)
 	y += 26
 	u.PointerDown(pop.Bounds.X+30, y)
 	if len(picked) != 1 || picked[0] != 3 {
@@ -116,15 +109,12 @@ func TestMenubarKeyEquivalentsFirePicks(t *testing.T) {
 	u.SetMenubar(menus, pick)
 	u.BuildFrame(&gfx.DisplayList{}, 800, 600)
 
-	// bare "n" in the spec means Cmd+N, the platform default
 	if !u.KeyDown(Key{Name: "n", Meta: true}) {
 		t.Fatal("Cmd+N must be consumed by the menu")
 	}
-	// spec mods are order-insensitive: "shift+cmd+k" fires on cmd+shift+k
 	if !u.KeyDown(Key{Name: "k", Meta: true, Shift: true}) {
 		t.Fatal("Shift+Cmd+K must be consumed by the menu")
 	}
-	// nested items' keys work too
 	if !u.KeyDown(Key{Name: "h", Ctrl: true, Alt: true}) {
 		t.Fatal("Ctrl+Alt+H must be consumed by the menu")
 	}

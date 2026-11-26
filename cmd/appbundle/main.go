@@ -1,12 +1,3 @@
-// caution appbundle: wrap a caution binary as a macOS .app
-// pure Go, no Xcode. an .app is a directory, Info.plist is XML, .icns is a
-// chunked container of PNGs
-//
-//	go run ./cmd/appbundle -pkg ./cmd/demo -name "Caution Demo"
-//	go run ./cmd/appbundle -bin ./myapp -name "My App" -icon icon.png -o dist/
-//
-// no -native flag needed inside a bundle, native.InBundle detects the .app
-// layout (see cmd/demo)
 package main
 
 import (
@@ -25,11 +16,12 @@ import (
 	xdraw "golang.org/x/image/draw"
 
 	"github.com/nullentropy/caution/internal/appicon"
+	"github.com/nullentropy/caution/internal/notices"
 )
 
 func main() {
 	pkg := flag.String("pkg", "", "Go package to build (e.g. ./cmd/demo)")
-	bin := flag.String("bin", "", "prebuilt binary to bundle (alternative to -pkg)")
+	bin := flag.String("bin", "", "prebuilt binary to bundle, run from the module that built it (alternative to -pkg)")
 	name := flag.String("name", "", "app name shown in Finder and the menu bar (required)")
 	id := flag.String("id", "", "bundle identifier (default dev.caution.<slug>)")
 	icon := flag.String("icon", "", "1024×1024-ish PNG for the icon (default: generated caution mark)")
@@ -44,15 +36,9 @@ func main() {
 		*id = "dev.caution." + slug
 	}
 
-	binPath := *bin
-	if *pkg != "" {
-		binPath = filepath.Join(os.TempDir(), "caution-appbundle-"+slug)
-		cmd := exec.Command("go", "build", "-o", binPath, *pkg)
-		cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
-		if err := cmd.Run(); err != nil {
-			log.Fatal("go build: ", err)
-		}
-		defer os.Remove(binPath)
+	data, nb, err := notices.Stage(*bin, goBuild(*pkg))
+	if err != nil {
+		log.Fatal(err)
 	}
 
 	app := filepath.Join(*out, *name+".app")
@@ -64,11 +50,11 @@ func main() {
 		}
 	}
 
-	// executable. a plain copy keeps the linker's ad-hoc signature on arm64
-	data, err := os.ReadFile(binPath)
-	if err != nil {
+	if err := os.WriteFile(filepath.Join(res, "THIRD_PARTY_NOTICES.txt"), nb, 0o644); err != nil {
 		log.Fatal(err)
 	}
+
+	// a plain copy keeps the linker's ad-hoc signature on arm64
 	if err := os.WriteFile(filepath.Join(macos, slug), data, 0o755); err != nil {
 		log.Fatal(err)
 	}
@@ -119,6 +105,20 @@ func main() {
 	fmt.Printf("wrote %s (%s)\n", app, *id)
 	fmt.Println("open it with Finder or `open`, ship it as a zip/dmg - no flags needed:")
 	fmt.Println("the binary detects the bundle and runs in native mode.")
+}
+
+func goBuild(pkg string) func(out string) error {
+	if pkg == "" {
+		return nil
+	}
+	return func(out string) error {
+		cmd := exec.Command("go", "build", "-o", out, pkg)
+		cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
+		if err := cmd.Run(); err != nil {
+			return fmt.Errorf("go build: %w", err)
+		}
+		return nil
+	}
 }
 
 func xmlEscape(s string) string {

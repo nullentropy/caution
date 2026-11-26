@@ -22,12 +22,9 @@ import (
 	"golang.org/x/image/font/gofont/goregular"
 )
 
-// -- built-in faces -----------------------------------------------------------
-
 type faceStyle struct {
 	mono, italic bool
-	// 400, 500 or 700. mono has no medium
-	weight int
+	weight       int
 }
 
 var faceTTFs = map[faceStyle][]byte{
@@ -56,8 +53,6 @@ func mustParse(ttf []byte) *font.Face {
 	return f
 }
 
-// weights snap to the nearest of regular/medium/bold, which covers the
-// protocol's practical range
 func goFace(f gfx.Font) *font.Face {
 	st := faceStyle{mono: f.Mono, italic: f.Italic, weight: 400}
 	switch {
@@ -76,16 +71,13 @@ func goFace(f gfx.Font) *font.Face {
 	return face
 }
 
-// -- app faces ----------------------------------------------------------------
-
 var (
 	wghtTag = opentype.MustNewTag("wght")
 	fvarTag = opentype.MustNewTag("fvar")
 )
 
-// one parsed file. a static file covers one weight, a variable file its fvar
-// wght range. go-text keeps variation coords on the Face, so each weight
-// drawn gets its own Face over the shared Font
+// go-text keeps variation coords on the Face, so each weight gets its own
+// Face over the shared Font
 type FontFile struct {
 	font       *font.Font
 	italic     bool
@@ -94,8 +86,6 @@ type FontFile struct {
 	faces      map[int]*font.Face
 }
 
-// weight, italic and the wght range come from the file. safe off the main
-// thread, nothing here touches a registry
 func ParseFont(data []byte) (*FontFile, error) {
 	ld, err := opentype.NewLoader(bytes.NewReader(data))
 	if err != nil {
@@ -140,7 +130,6 @@ func (ff *FontFile) at(weight int) *font.Face {
 	return f
 }
 
-// distance from a weight to the file's range, 0 when inside it
 func (ff *FontFile) distance(weight int) int {
 	switch {
 	case weight < ff.minW:
@@ -151,17 +140,11 @@ func (ff *FontFile) distance(weight int) int {
 	return 0
 }
 
-// family -> files, plus the default families for text that names none.
-// main thread only, like everything else in the package
 type Registry struct {
 	families map[string][]*FontFile
 	ui, mono string
-	// families tried after the app face and before the Go faces, for runes
-	// the app's own font lacks
 	fallback []string
-	// bumped whenever a lookup could resolve differently. the shaper and
-	// atlas compare against it and drop their caches
-	gen int
+	gen      int
 }
 
 func NewRegistry() *Registry {
@@ -173,7 +156,6 @@ func (r *Registry) Add(family string, f *FontFile) {
 	r.gen++
 }
 
-// "" means the built-in Go faces
 func (r *Registry) SetDefaults(ui, mono string, fallback []string) {
 	if r.ui == ui && r.mono == mono && slices.Equal(r.fallback, fallback) {
 		return
@@ -184,9 +166,6 @@ func (r *Registry) SetDefaults(ui, mono string, fallback []string) {
 
 func (r *Registry) Gen() int { return r.gen }
 
-// the family's closest file for the style: italic match first, then the
-// file whose range holds the weight, else the nearest range. nil when the
-// family is unknown or not loaded yet
 func (r *Registry) appFace(f gfx.Font) *font.Face {
 	family := f.Family
 	if family == "" {
@@ -217,8 +196,6 @@ func (r *Registry) familyFace(family string, f gfx.Font) *font.Face {
 	return best.at(f.Weight)
 }
 
-// per-rune fallback order: the app face, or the Go face when there is none,
-// then the fallback families, then the Go face, then emoji
 func (r *Registry) chain(f gfx.Font) []*font.Face {
 	primary := r.appFace(f)
 	if primary == nil {

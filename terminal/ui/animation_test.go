@@ -6,8 +6,6 @@ import (
 	"github.com/nullentropy/caution/terminal/gfx"
 )
 
-// a pane asking for continuous frames next to a label the server patches,
-// the shape of every app that animates while its data moves
 func animScene() (*Panel, *ShaderPane, *Label) {
 	root := NewPanel()
 	pane := NewShaderPane()
@@ -21,12 +19,6 @@ func animScene() (*Panel, *ShaderPane, *Label) {
 	return root, pane, label
 }
 
-// WantsAnimation must come from the retained commands, never be accumulated at
-// record time. a flag set by ShaderQuad/EndLayer as they record is skipped by
-// any subtree that splices instead of re-recording, and an animated pane is
-// byte-identical frame to frame so it splices on every frame that changes
-// anything else. the shells read the flag to keep painting, so losing it stops
-// all animation on the first unrelated patch
 func TestSplicedAnimationKeepsAskingForFrames(t *testing.T) {
 	u := fakeUi()
 	root, _, label := animScene()
@@ -38,9 +30,8 @@ func TestSplicedAnimationKeepsAskingForFrames(t *testing.T) {
 		t.Fatal("the first frame must want animation")
 	}
 
-	// unrelated patch: the label changes, the pane can't have
 	label.Text = "tick 1"
-	label.Invalidate()
+	label.InvalidateWidget()
 	second := &gfx.DisplayList{}
 	u.BuildFrame(second, 400, 300)
 
@@ -51,15 +42,11 @@ func TestSplicedAnimationKeepsAskingForFrames(t *testing.T) {
 		t.Fatal("a spliced animated pane stopped asking for frames: " +
 			"animation would die on the first unrelated patch")
 	}
-	// the commands must still carry the animation or the damage plan has nothing
-	// to replay either
 	if plan := gfx.PlanDamage(second, gfx.R(0, 0, 400, 300)); len(plan.Rects) == 0 {
 		t.Fatal("the spliced pane produced no animation damage")
 	}
 }
 
-// same hazard with no patch: a frame where every subtree splices must still
-// report the animation or the loop stops after its first quiet frame
 func TestCleanFrameKeepsAskingForFrames(t *testing.T) {
 	u := fakeUi()
 	root, _, _ := animScene()
@@ -75,8 +62,6 @@ func TestCleanFrameKeepsAskingForFrames(t *testing.T) {
 	}
 }
 
-// other direction: deriving from the commands must not invent animation or a
-// still tree spins the loop forever
 func TestStaticSceneAsksForNothing(t *testing.T) {
 	u := fakeUi()
 	root := NewPanel()

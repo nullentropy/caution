@@ -27,8 +27,6 @@ import (
 
 type MountFunc func(s *Session) *Node
 
-// all widget mutation happens on the session goroutine: inside event
-// handlers, or via Update from anywhere else (tickers, watchers, queues)
 type Session struct {
 	sid     int
 	token   string
@@ -76,19 +74,14 @@ type Session struct {
 	sounds        map[string]string
 	loops         []string
 
-	// Set-Cookie strings not yet on the wire. unlike ops they survive a
-	// disconnect, a resume can't rebuild them from the tree
 	cookies []string
 
-	// last node the app asked to focus, a mount names it so a reconnect that
-	// remounts puts focus back. focusPending queues the cmd for the next flush
 	focus        *Node
 	focusPending bool
 
 	vw, vh   float64
 	onResize func(w, h float64)
 
-	// event rate limiting so we can drop event floods
 	evTokens float64
 	evLast   time.Time
 
@@ -96,33 +89,19 @@ type Session struct {
 	req      *http.Request
 }
 
-// whatever Options.Authorize produced for the original connection, nil
-// without an Authorize hook
 func (s *Session) Identity() any { return s.identity }
 
 func (s *Session) Request() *http.Request { return s.req }
 
-// zero value keeps safe defaults: same-origin upgrades, no auth, plain HTTP
 type Options struct {
-	// vets every connection, resumes included. return an identity, or an error
-	// to reject with 403. on resume the identity must DeepEqual the original so
-	// a leaked session token can't adopt someone else's session
-	// nil allows everyone with a nil identity
-	Authorize func(r *http.Request) (any, error)
-	// for the WebSocket upgrade. empty means same-origin only, "*" allows any
-	AllowedOrigins []string
-	// both set switches to ListenAndServeTLS
+	Authorize       func(r *http.Request) (any, error)
+	AllowedOrigins  []string
 	TLSCert, TLSKey string
 	Instance        string
-	// how long a disconnected session waits for its client to resume before it
-	// ends. 0 is 60s
-	ResumeGrace time.Duration
-	// total bytes per file drop, the client skips a larger one. 0 is 32MB
-	MaxDropBytes int64
+	ResumeGrace     time.Duration
+	MaxDropBytes    int64
 }
 
-// reconnecting socket plus its reported viewport and the last seq the client
-// applied (-1: none reported)
 type adoptedConn struct {
 	conn   *websocket.Conn
 	vw, vh float64
@@ -135,13 +114,12 @@ type clientMsg struct {
 	Ev    wire.Event `json:"ev"`
 	Value any        `json:"value"`
 	Seq   int        `json:"seq"`
-	// socket it arrived on
-	from *websocket.Conn
+	from  *websocket.Conn
 }
 
 var (
 	sessionCounter atomic.Int64
-	registry       sync.Map // token -> *Session
+	registry       sync.Map
 )
 
 func newToken(instance string) string {
@@ -167,40 +145,28 @@ func randToken() string {
 	return hex.EncodeToString(b)
 }
 
-// one WebSocket endpoint at /ws with default Options. ?resume=<sid>
-// re-adopts the old session if it is still alive, anything else starts fresh
-//
-// addr is a TCP address (":8787") or "unix:/path/to.sock". a unix socket
-// serves the same protocol with no port open, for a local native terminal
-// (`cmd/term -url unix:/path`)
 func Serve(addr string, mount MountFunc) error {
 	return ServeOpts(addr, mount, Options{})
 }
 
-// a process may call both ServeOpts and ServeListener (dual web + native
-// binary), the first registration's mount and options win
 var wsOnce sync.Once
 
 func registerWS(mount MountFunc, opts Options) {
 	wsOnce.Do(func() { http.HandleFunc("/ws", wsHandler(mount, opts)) })
 }
 
-// caution/native uses this to run server and terminal in one process over
-// an in-memory pipe
 func ServeListener(l net.Listener, mount MountFunc, opts Options) error {
 	registerWS(mount, opts)
 	return http.Serve(l, nil)
 }
 
-// Serve with deployment hardening, see Options
 func ServeOpts(addr string, mount MountFunc, opts Options) error {
 	registerWS(mount, opts)
 	if path, ok := strings.CutPrefix(addr, "unix:"); ok {
 		if opts.TLSCert != "" || opts.TLSKey != "" {
 			return errors.New("caution: TLS over a unix socket is unsupported (the filesystem is the access control)")
 		}
-		// a stale socket file from a previous run blocks Listen, a live one fails
-		// the next Listen anyway, so removal is safe
+		// a stale socket file from a previous run blocks Listen
 		_ = os.Remove(path)
 		l, err := net.Listen("unix", path)
 		if err != nil {
@@ -268,8 +234,7 @@ func wsHandler(mount MountFunc, opts Options) http.HandlerFunc {
 	}
 }
 
-// a browser can't see the status of a failed upgrade, so a plain 403 reads
-// as an outage it retries forever. upgrade, say why, hang up
+// a browser can't see the status of a failed upgrade
 func deny(w http.ResponseWriter, r *http.Request, up websocket.Upgrader) {
 	conn, err := up.Upgrade(w, r, nil)
 	if err != nil {
@@ -279,9 +244,6 @@ func deny(w http.ResponseWriter, r *http.Request, up websocket.Upgrader) {
 	_ = conn.Close()
 }
 
-// hands a to the session named by ?resume= if it can
-// a resume token is not a credential, it only re-adopts a session minted for
-// the same identity
 func tryResume(r *http.Request, identity any, a adoptedConn) bool {
 	v, ok := registry.Load(r.URL.Query().Get("resume"))
 	if !ok {
@@ -299,13 +261,10 @@ func tryResume(r *http.Request, identity any, a adoptedConn) bool {
 	case s.conns <- a:
 		return true
 	case <-s.done:
-		// expired between lookup and adoption
 		return false
 	}
 }
 
-// nil (empty list) defers to gorilla's default: Origin host must match the
-// request host
 func originChecker(allowed []string) func(*http.Request) bool {
 	if len(allowed) == 0 {
 		return nil
@@ -323,8 +282,6 @@ func originChecker(allowed []string) func(*http.Request) bool {
 	}
 }
 
-// runs fn on the session goroutine and flushes the ops as one patch
-// safe from any goroutine, a closed session drops it
 func (s *Session) Update(fn func()) {
 	select {
 	case s.updates <- fn:
@@ -332,19 +289,12 @@ func (s *Session) Update(fn func()) {
 	}
 }
 
-// closed when the session ends (client gone past the resume grace, or Close)
-// use it to stop tickers
 func (s *Session) Done() <-chan struct{} { return s.done }
 
-// ends the session now. the client reconnects into a fresh session and a
-// fresh mount. safe from any goroutine
 func (s *Session) Close() { s.closed.Do(func() { close(s.closing) }) }
 
-// last-reported window size in logical px, 0,0 if never reported
-// valid from mount on since the initial size rides the connect URL
 func (s *Session) Viewport() (w, h float64) { return s.vw, s.vh }
 
-// runs on the session goroutine, reports are client-debounced (~250ms)
 func (s *Session) OnResize(fn func(w, h float64)) { s.onResize = fn }
 
 func queryFloat(r *http.Request, key string) float64 {
@@ -352,7 +302,6 @@ func queryFloat(r *http.Request, key string) float64 {
 	return f
 }
 
-// design tokens ("bg", "ink", "accent", ...) as color strings
 func (s *Session) SetTheme(tokens map[string]string) {
 	s.theme = tokens
 	if s.mounted {
@@ -360,11 +309,6 @@ func (s *Session) SetTheme(tokens map[string]string) {
 	}
 }
 
-// metric tokens ("radius.control", "row.height", ...) in logical px, the
-// geometry half of theming. restyles the widget vocabulary (square vs
-// rounded, compact vs comfortable) without per-widget props
-// terminals ignore unknown tokens, per-node props still override
-// MetricsCompact and MetricsComfortable are ready-made maps
 func (s *Session) SetMetrics(tokens map[string]float64) {
 	s.metrics = tokens
 	if s.mounted {
@@ -384,7 +328,6 @@ func (s *Session) WriteClipboard(text string) {
 	}
 }
 
-// browser tab title, native window titlebar
 func (s *Session) SetTitle(title string) {
 	s.title = title
 	if s.mounted {
@@ -392,19 +335,11 @@ func (s *Session) SetTitle(title string) {
 	}
 }
 
-// how much decorative motion the client plays: the fade a newly inserted
-// widget gets, the slide of widgets a reflow moved, the theme crossfade.
-// app shaders and effects always animate
 type Motion = wire.Motion
 
 const (
-	// full unless the OS asks for reduced motion (macOS Reduce motion, Windows
-	// "Show animations", GNOME and KDE animation settings, the browser's
-	// prefers-reduced-motion). the default
-	MotionSystem = wire.MotionSystem
-	// full regardless of the OS preference
-	MotionFull = wire.MotionFull
-	// none: inserts appear, reflows snap, themes switch at once
+	MotionSystem  = wire.MotionSystem
+	MotionFull    = wire.MotionFull
 	MotionReduced = wire.MotionReduced
 )
 
@@ -415,9 +350,6 @@ func (s *Session) SetMotion(m Motion) {
 	}
 }
 
-// kept by the browser, or in a per-app file natively, and sent on every later
-// connection so the next mount and Authorize see it. MaxAge < 0 deletes,
-// Path defaults to /, HttpOnly is dropped since a page can't set it
 func (s *Session) SetCookie(c *http.Cookie) {
 	cc := *c
 	cc.HttpOnly = false
@@ -432,11 +364,6 @@ func (s *Session) SetCookie(c *http.Cookie) {
 	s.cookies = append(s.cookies, raw)
 }
 
-// warms client resource caches ahead of first use, images (URLs or data:
-// URIs) for now. for images not in the tree yet like a next screen or a
-// hover swap, mounted ones load at first paint anyway
-// rides the mount and patches live like SetTheme. repeated srcs are dropped
-// so calling it from a rebuild loop costs nothing
 func (s *Session) Preload(srcs ...string) {
 	var fresh []string
 	for _, src := range srcs {
@@ -450,14 +377,11 @@ func (s *Session) Preload(srcs ...string) {
 	}
 }
 
-// one family's files on the wire
 type fontFamily struct {
 	Family string   `json:"family"`
 	Srcs   []string `json:"srcs"`
 }
 
-// TTF or OTF, URLs or data: URIs. weight, italic and any variable weight
-// range are read from the files. repeated srcs are dropped
 func (s *Session) AddFont(family string, srcs ...string) {
 	i := slices.IndexFunc(s.fonts, func(f fontFamily) bool { return f.Family == family })
 	if i < 0 {
@@ -476,9 +400,6 @@ func (s *Session) AddFont(family string, srcs ...string) {
 	}
 }
 
-// default families for text that names none: ui for normal text, mono for
-// Mono text. "" is the built-in Go face. fallback families supply the glyphs
-// the default and named families lack, tried in order before the Go face
 func (s *Session) SetFonts(ui, mono string, fallback ...string) {
 	s.fontUI, s.fontMono, s.fontFallback = ui, mono, fallback
 	if s.mounted {
@@ -486,8 +407,6 @@ func (s *Session) SetFonts(ui, mono string, fallback ...string) {
 	}
 }
 
-// gesture table: which WAV plays on press, toggle, select, open, close or
-// type, fired client-side at the moment of the gesture
 func (s *Session) SetSounds(tokens map[string]string) {
 	s.sounds = tokens
 	if s.mounted {
@@ -495,7 +414,6 @@ func (s *Session) SetSounds(tokens map[string]string) {
 	}
 }
 
-// decodes WAV sources on the client ahead of their first Play
 func (s *Session) PreloadSounds(srcs ...string) {
 	var fresh []string
 	for _, src := range srcs {
@@ -509,14 +427,12 @@ func (s *Session) PreloadSounds(srcs ...string) {
 	}
 }
 
-// src is a URL or data: URI
 func (s *Session) Play(src string) {
 	if s.mounted {
 		s.ops = append(s.ops, map[string]any{"op": wire.OpPlay, "src": src})
 	}
 }
 
-// repeats until Stop
 func (s *Session) Loop(src string) {
 	if slices.Contains(s.loops, src) {
 		return
@@ -527,7 +443,6 @@ func (s *Session) Loop(src string) {
 	}
 }
 
-// every playing instance of src
 func (s *Session) Stop(src string) {
 	s.loops = slices.DeleteFunc(s.loops, func(l string) bool { return l == src })
 	if s.mounted {
@@ -542,11 +457,6 @@ func (s *Session) StopAll() {
 	}
 }
 
-// session-wide shortcut: "cmd+k", "ctrl+shift+p", "alt+enter", any of
-// cmd/ctrl/alt/shift plus a key. fires only when the focused widget declines
-// the chord, so a text field's cmd+z stays undo
-// in the native terminal a menu item's key equivalent for the same chord
-// wins (the OS routes it first)
 func (s *Session) OnKey(combo string, fn func()) {
 	if s.keyHandlers == nil {
 		s.keyHandlers = map[int]func(){}
@@ -559,31 +469,20 @@ func (s *Session) OnKey(combo string, fn func()) {
 	}
 }
 
-// mouse buttons 4 (back) and 5 (forward). both terminals swallow the press
-// either way so the browser never navigates history out from under the app
 func (s *Session) OnAux(fn func(button int)) { s.onAux = fn }
 
-// the system's own fullscreen: green button and cmd+ctrl+f on macOS, the
-// fullscreen API on the web. a custom titlebar usually restyles here since
-// fullscreen has no traffic lights to leave room for
 func (s *Session) OnFullscreen(fn func(on bool)) { s.onFullscreen = fn }
 
-// last known client state
 func (s *Session) Fullscreen() bool { return s.fullscreen }
 
-// the client window gaining or losing focus. a hidden browser tab counts as
-// unfocused
 func (s *Session) OnFocus(fn func(focused bool)) { s.onFocus = fn }
 
-// last known client state, true until the client says otherwise
 func (s *Session) Focused() bool { return !s.unfocused }
 
 func (s *Session) OnVisible(fn func(visible bool)) { s.onVisible = fn }
 
 func (s *Session) Visible() bool { return !s.hidden }
 
-// canonical modifier order and case so the client's event-derived string
-// always matches: cmd+ctrl+alt+shift+<key>
 func normalizeCombo(combo string) string {
 	var meta, ctrl, alt, shift bool
 	key := ""
@@ -618,8 +517,6 @@ func normalizeCombo(combo string) string {
 }
 
 func (s *Session) run(mount MountFunc, first *websocket.Conn) {
-	// runs last, so a client that reconnects on the close finds no session to
-	// resume
 	defer func() {
 		if s.conn != nil {
 			_ = s.conn.Close()
@@ -651,17 +548,13 @@ func (s *Session) run(mount MountFunc, first *websocket.Conn) {
 			}
 		}()
 	}
-	// a resuming client whose last-applied seq still matches gets a bare ack,
-	// its tree, scroll, focus and row caches are intact and a remount would
-	// discard them. anything else gets a full mount
 	adopt := func(c *websocket.Conn, resumeSeq int) {
 		if s.conn != nil {
 			_ = s.conn.Close()
 		}
-		// events are small, a message near this limit is a bug or an attack
 		c.SetReadLimit(1 << 20)
 		s.conn = c
-		s.drop.reset() // a drop cut by the old socket can't finish on this one
+		s.drop.reset()
 		if resumeSeq >= 0 && resumeSeq == s.seq {
 			if err := c.WriteJSON(map[string]any{"t": wire.MsgResume, "seq": s.seq}); err != nil {
 				log.Info().Msgf("caution: session %d resume ack failed: %v", s.sid, err)
@@ -686,8 +579,7 @@ func (s *Session) run(mount MountFunc, first *websocket.Conn) {
 			expire = nil
 			log.Info().Msgf("caution: session %d resumed", s.sid)
 			adopt(a.conn, a.seq)
-			s.flush() // cookies set while the client was away
-			// window may have changed size while the client was away
+			s.flush()
 			if a.vw > 0 && (a.vw != s.vw || a.vh != s.vh) {
 				s.vw, s.vh = a.vw, a.vh
 				if s.onResize != nil {
@@ -697,7 +589,7 @@ func (s *Session) run(mount MountFunc, first *websocket.Conn) {
 			}
 		case c := <-dead:
 			if c != s.conn {
-				continue // pump of an already-replaced connection
+				continue
 			}
 			_ = s.conn.Close()
 			s.conn = nil
@@ -712,8 +604,6 @@ func (s *Session) run(mount MountFunc, first *websocket.Conn) {
 	}
 }
 
-// recover barrier: a panicking handler logs a stack and surfaces a crash
-// dialog, this session and every other one keeps running
 func (s *Session) safely(what string, fn func()) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -754,8 +644,6 @@ func crashTree(msg string) *Node {
 
 func (s *Session) sendMount() {
 	s.ops = nil
-	// bump even with no connection, the tree has diverged from anything a
-	// client ever saw
 	s.seq++
 	if s.conn == nil {
 		return
@@ -814,9 +702,6 @@ func (s *Session) sendMount() {
 	s.cookies = nil
 }
 
-// replaces the whole tree and remounts the client, for tree-as-data flows
-// like loading a UI document or hot-reloading a design
-// must run on the session goroutine (a handler or an Update closure)
 func (s *Session) SetRoot(root *Node) {
 	if s.root != nil {
 		s.detach(s.root)
@@ -836,8 +721,6 @@ func unnumber(n *Node) {
 	}
 }
 
-// token bucket, burst 240, refill 120/s. human input stays far below that
-// (client debouncing keeps even scroll storms near 10/s) so only floods trip it
 func (s *Session) allowEvent() bool {
 	now := time.Now()
 	if s.evLast.IsZero() {
@@ -857,12 +740,10 @@ func (s *Session) dispatch(m clientMsg) {
 	if m.T != wire.MsgEvent {
 		return
 	}
-	// a drop is many chunks, the byte cap bounds it instead
 	if m.Ev != wire.EvFileDrop && !s.allowEvent() {
 		log.Debug().Msgf("caution: session %d event flood - dropping %s", s.sid, m.Ev)
 		return
 	}
-	// session-level events carry node id 0, no widget owns them
 	if m.ID == 0 {
 		switch m.Ev {
 		case wire.EvResize:
@@ -918,7 +799,7 @@ func (s *Session) dispatch(m clientMsg) {
 			}
 		case wire.EvFileDrop:
 			if m.from != s.conn {
-				break // queued before a reconnect, its drop was already discarded
+				break
 			}
 			v, _ := m.Value.(map[string]any)
 			if files, x, y := s.drop.apply(v, s.maxDropBytes); files != nil && s.onFileDrop != nil {
@@ -930,13 +811,9 @@ func (s *Session) dispatch(m clientMsg) {
 	n := s.nodes[m.ID]
 	log.Trace().Msgf("caution: session %d <- %s node=%d value=%v", s.sid, m.Ev, m.ID, m.Value)
 	if n == nil {
-		return // stale event for a node removed by an in-flight patch
+		return
 	}
 	if m.Seq < n.born {
-		// fired before the client ever saw this node: the id was recycled by a
-		// remount (SetRoot resets the id space) and the event belongs to whatever
-		// wore it in the old tree. delivering it would click a widget the user
-		// never touched
 		log.Debug().Msgf("caution: session %d dropped stale %s for node %d (event seq %d < node birth %d)",
 			s.sid, m.Ev, m.ID, m.Seq, n.born)
 		return
@@ -953,24 +830,19 @@ func (s *Session) dispatch(m clientMsg) {
 		}
 	case wire.EvToggle:
 		if v, ok := m.Value.(map[string]any); ok {
-			// tree disclosure {row, key}. the node owns expansion: flip, reflatten,
-			// refresh the client's window, then tell the app
 			if key, _ := v["key"].(string); key != "" && n.typ == wire.Tree {
 				n.toggleTreeRow(key)
 			}
 			break
 		}
 		checked, _ := m.Value.(bool)
-		// local echo: the client already shows the new state, sync our copy
-		// silently instead of patching it back
-		n.props["checked"] = checked
+		n.echo("checked", checked)
 		if n.onToggle != nil {
 			n.onToggle(checked)
 		}
 	case wire.EvInput, wire.EvCommit:
 		if f, ok := m.Value.(float64); ok {
-			// numeric input/commit means a slider, same events, same echo rule
-			n.props["value"] = f
+			n.echo("value", f)
 			if m.Ev == wire.EvInput {
 				if n.onSlide != nil {
 					n.onSlide(f)
@@ -981,7 +853,7 @@ func (s *Session) dispatch(m clientMsg) {
 			break
 		}
 		v, _ := m.Value.(string)
-		n.props["value"] = v // silent local-echo sync
+		n.echo("value", v)
 		if m.Ev == wire.EvInput {
 			if n.onInput != nil {
 				n.onInput(v)
@@ -991,7 +863,7 @@ func (s *Session) dispatch(m clientMsg) {
 		}
 	case wire.EvSubmit:
 		v, _ := m.Value.(string)
-		n.props["value"] = v // silent local-echo sync
+		n.echo("value", v)
 		if n.onSubmit != nil {
 			n.onSubmit(v)
 		}
@@ -1003,7 +875,7 @@ func (s *Session) dispatch(m clientMsg) {
 		v, _ := m.Value.(map[string]any)
 		text, _ := v["value"].(string)
 		shift, _ := v["shift"].(bool)
-		n.props["value"] = text // silent local-echo sync
+		n.echo("value", text)
 		if n.onTab != nil && !n.onTab(shift, text, toInt(v["caret"])) {
 			dir := "1"
 			if shift {
@@ -1024,11 +896,11 @@ func (s *Session) dispatch(m clientMsg) {
 		v, _ := m.Value.(map[string]any)
 		key, _ := v["key"].(string)
 		asc, _ := v["asc"].(bool)
-		n.props["sortKey"] = key // silent local-echo sync
+		n.echo("sortKey", key)
 		if asc {
-			n.props["sortDir"] = "asc"
+			n.echo("sortDir", "asc")
 		} else {
-			n.props["sortDir"] = "desc"
+			n.echo("sortDir", "desc")
 		}
 		if n.onSort != nil {
 			n.onSort(key, asc)
@@ -1043,11 +915,9 @@ func (s *Session) dispatch(m clientMsg) {
 		}
 	case wire.EvRowSelect:
 		if v, ok := m.Value.(map[string]any); ok {
-			// keyed table: the key is the selection identity, the index is just where
-			// the row sat at click time
 			idx := toInt(v["row"])
 			key, _ := v["key"].(string)
-			n.props["selectedKey"] = key // silent local-echo sync
+			n.echo("selectedKey", key)
 			if n.onRowSelectKey != nil {
 				n.onRowSelectKey(key, idx)
 			}
@@ -1057,12 +927,11 @@ func (s *Session) dispatch(m clientMsg) {
 			break
 		}
 		idx := toInt(m.Value)
-		n.props["selected"] = idx // silent local-echo sync
+		n.echo("selected", idx)
 		if n.onRowSelect != nil {
 			n.onRowSelect(idx)
 		}
 	case wire.EvRowActivate:
-		// no prop sync, the preceding row-select already did it
 		if v, ok := m.Value.(map[string]any); ok {
 			idx := toInt(v["row"])
 			key, _ := v["key"].(string)
@@ -1079,7 +948,7 @@ func (s *Session) dispatch(m clientMsg) {
 		}
 	case wire.EvSelect:
 		idx := toInt(m.Value)
-		n.props["selected"] = idx // silent local-echo sync
+		n.echo("selected", idx)
 		if n.onSelect != nil {
 			n.onSelect(idx)
 		}
@@ -1105,7 +974,7 @@ func (s *Session) dispatch(m clientMsg) {
 		}
 	case wire.EvSplitResize:
 		pos, _ := m.Value.(float64)
-		n.props["pos"] = pos // silent local-echo sync
+		n.echo("pos", pos)
 		if n.onSplitResize != nil {
 			n.onSplitResize(pos)
 		}
@@ -1113,8 +982,6 @@ func (s *Session) dispatch(m clientMsg) {
 		if v, ok := m.Value.(map[string]any); ok && n.onPick != nil {
 			x, _ := v["x"].(float64)
 			y, _ := v["y"].(float64)
-			// target resolves through the node table: the client sends the id, the app
-			// gets the live node (nil when the id is 0 or gone)
 			n.onPick(x, y, s.nodes[toInt(v["target"])])
 		}
 	case wire.EvDrag:
@@ -1167,9 +1034,6 @@ func (s *Session) flush() {
 	}
 	s.seq++
 	if s.conn == nil {
-		// disconnected: drop the ops (a resume that needs them remounts from the
-		// current tree) but still count the batch, resume acks compare seqs to see
-		// if anything changed while the client was away
 		s.ops = nil
 		return
 	}
@@ -1190,8 +1054,6 @@ func (s *Session) attach(n *Node) {
 		s.nextID++
 		n.id = s.nextID
 	}
-	// the next message sent carries this node to the client (s.seq only
-	// advances on actual sends, so this holds across disconnects)
 	n.born = s.seq + 1
 	n.sess = s
 	s.nodes[n.id] = n
@@ -1249,7 +1111,7 @@ func (s *Session) queueRemove(id int) {
 func (s *Session) queueRows(id, start int, rows [][]string, meta []map[string]any, reset bool) {
 	op := map[string]any{"op": wire.OpRows, "id": id, "start": start, "reset": reset, "rows": rows}
 	if meta != nil {
-		op["meta"] = meta // trees only: {key, d(epth), k(ids), x(panded)} per row
+		op["meta"] = meta
 	}
 	s.ops = append(s.ops, op)
 }

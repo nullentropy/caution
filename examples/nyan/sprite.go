@@ -8,10 +8,9 @@ import (
 )
 
 const (
-	gridW = 64
-	gridH = 26
-	scale = 8
-	// flipbook length, the demo cycles /nyan/0.png ... /5.png
+	gridW  = 64
+	gridH  = 26
+	scale  = 8
 	Frames = 6
 )
 
@@ -27,12 +26,12 @@ var (
 	space    = color.NRGBA{0x06, 0x07, 0x12, 0xff}
 
 	rainbow = []color.NRGBA{
-		{0xe5, 0x3d, 0x3d, 0xff}, // red
-		{0xf2, 0x8c, 0x2e, 0xff}, // orange
-		{0xf5, 0xe0, 0x42, 0xff}, // yellow
-		{0x54, 0xc4, 0x4d, 0xff}, // green
-		{0x3d, 0x8b, 0xe5, 0xff}, // blue
-		{0x8a, 0x4d, 0xc4, 0xff}, // violet
+		{0xe5, 0x3d, 0x3d, 0xff},
+		{0xf2, 0x8c, 0x2e, 0xff},
+		{0xf5, 0xe0, 0x42, 0xff},
+		{0x54, 0xc4, 0x4d, 0xff},
+		{0x3d, 0x8b, 0xe5, 0xff},
+		{0x8a, 0x4d, 0xc4, 0xff},
 	}
 )
 
@@ -59,14 +58,13 @@ func NyanFrame(frame int) []byte {
 
 	fill(0, 0, gridW, gridH, space)
 
-	// stars: white plus-shapes drifting left one cell per frame, wrapping
 	starSeed := []struct{ x, y int }{
 		{5, 3}, {17, 12}, {29, 20}, {40, 5}, {52, 15}, {60, 9}, {11, 22}, {46, 22}, {57, 2},
 	}
 	for i, st := range starSeed {
 		x := (st.x - frame*2 + gridW) % gridW
 		y := st.y
-		tw := (frame + i) % 3 // twinkle: dot -> plus -> dot
+		tw := (frame + i) % 3
 		cell(x, y, white)
 		if tw == 1 {
 			cell(x-1, y, white)
@@ -76,11 +74,9 @@ func NyanFrame(frame int) []byte {
 		}
 	}
 
-	bob := frame % 2 // the classic every-other-frame bounce
+	bob := frame % 2
 	bodyX, bodyY := 36, 7+bob
 
-	// rainbow trail: six 2-cell stripes in a square wave that scrolls with the
-	// frame, the wave flips every 4 cells
 	for x := 0; x < bodyX-1; x++ {
 		off := 0
 		if ((x+frame*2)/4)%2 == 0 {
@@ -91,16 +87,14 @@ func NyanFrame(frame int) []byte {
 		}
 	}
 
-	// pop-tart body: tan slab, pink frosting inset, sprinkles
 	fill(bodyX, bodyY, 18, 12, tan)
 	fill(bodyX+1, bodyY+1, 16, 10, frosting)
 	for i, sp := range []struct{ x, y int }{{3, 3}, {7, 2}, {11, 4}, {5, 7}, {9, 8}, {13, 7}, {2, 5}, {14, 2}} {
-		if (i+frame)%4 != 0 { // a sprinkle blinks now and then
+		if (i+frame)%4 != 0 {
 			cell(bodyX+sp.x, bodyY+sp.y, sprinkle)
 		}
 	}
 
-	// tail: gray zigzag flapping behind the tart
 	tailY := bodyY + 5
 	if frame%2 == 0 {
 		fill(bodyX-4, tailY-1, 4, 2, gray)
@@ -110,21 +104,18 @@ func NyanFrame(frame int) []byte {
 		fill(bodyX-6, tailY+2, 3, 2, gray)
 	}
 
-	// legs: four stubs shuffling with the frame
 	legOff := frame % 2
 	for i := 0; i < 4; i++ {
 		fill(bodyX+1+i*5+legOff, bodyY+12, 2, 2, gray)
 	}
 
-	// head: gray blob over the tart's right edge, ears, face
 	headX, headY := bodyX+12, bodyY+2
 	fill(headX, headY, 10, 8, gray)
 	fill(headX+1, headY-1, 8, 1, gray)
-	cell(headX, headY-2, grayDark) // left ear
+	cell(headX, headY-2, grayDark)
 	cell(headX+1, headY-1, gray)
-	cell(headX+9, headY-2, grayDark) // right ear
+	cell(headX+9, headY-2, grayDark)
 	cell(headX+8, headY-1, gray)
-	// eyes (with glints), cheeks, mouth
 	cell(headX+2, headY+2, blackish)
 	cell(headX+7, headY+2, blackish)
 	cell(headX+2, headY+1, white)
@@ -137,7 +128,7 @@ func NyanFrame(frame int) []byte {
 
 	var buf bytes.Buffer
 	if err := png.Encode(&buf, img); err != nil {
-		panic(err) // deterministic in-memory encode, cannot fail at runtime
+		panic(err)
 	}
 	return buf.Bytes()
 }

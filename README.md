@@ -12,11 +12,8 @@ There are two terminals, and every app works in both without changes:
 - the **browser terminal**: the same Go terminal compiled to WebAssembly,
   drawing into a WebGL2 canvas. A small TypeScript page
   bundled in your app owns the DOM
-- the **native terminal**: a Go program (GLFW + OpenGL) that opens the same
-  app as a desktop window, with no browser engine in the process
-
-Only the GL binding differs. The test harness (`cmd/goldens`) renders the
-same scenes through both and compares the frames.
+- the **native terminal**: a Go program (GLFW for the window, the platform's
+  own GPU API for pixels).
 
 ## Quick start
 
@@ -459,7 +456,14 @@ terminal in one process over an in-memory pipe; `go build` is the bundler.
 Packaging:
 
 - macOS: `go run ./cmd/appbundle -pkg ./cmd/demo -name "My App"`
+- Windows: `go run ./cmd/winapp -pkg ./cmd/demo -name "My App"`
 - Linux: `go run ./cmd/linuxapp -pkg ./cmd/demo -name "My App" -install`
+
+The packagers put the app's third-party licenses in
+`THIRD_PARTY_NOTICES.txt`: in `Contents/Resources` on macOS, in
+`share/doc/<slug>` on Linux, and as `<name>-THIRD_PARTY_NOTICES.txt` next
+to the `.exe` on Windows.
+`go run ./cmd/notices` regenerates the one at the repository root.
 
 Window options (`native.Options` / `terminal.Options` / `cmd/term` flags):
 

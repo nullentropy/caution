@@ -69,7 +69,7 @@ func main() {
 	addr := flag.String("addr", ":8080", `listen address - ":8080" or "unix:/path.sock"`)
 	flag.Parse()
 
-	caution.ServeClient() // the embedded terminal: host page + client runtime
+	caution.ServeClient()
 
 	if *nativeFlag || native.InBundle() {
 		if err := native.Run(mount, native.Options{Title: "Hello Caution", W: 720, H: 480}); err != nil {

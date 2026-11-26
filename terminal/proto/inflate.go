@@ -25,7 +25,7 @@ type EventSink interface {
 }
 
 func num(v any) (float32, bool) {
-	f, ok := v.(float64) // encoding/json numbers
+	f, ok := v.(float64)
 	return float32(f), ok
 }
 
@@ -46,15 +46,11 @@ func boolean(v any) (bool, bool) {
 	return b, ok
 }
 
-// a set op carries only the props that changed, so a missing key leaves the
-// field alone. a present key of the wrong type, null included, resets it to
-// the zero value
 func set[T propType](p props, key string, dst *T) {
 	var zero T
 	setOr(p, key, dst, zero)
 }
 
-// set with def in place of the zero value
 func setOr[T propType](p props, key string, dst *T, def T) {
 	v, ok := p[key]
 	if !ok {
@@ -90,7 +86,6 @@ type propType interface {
 	string | bool | float32 | *float32 | int
 }
 
-// choice props (radio, tabs, select) replace the whole list
 func setOptions(p props, dst *[]string) {
 	v, ok := p["options"].([]any)
 	if !ok {
@@ -103,13 +98,18 @@ func setOptions(p props, dst *[]string) {
 	}
 }
 
+func strOf(v any) string {
+	s, _ := str(v)
+	return s
+}
+
 func color(v any) *gfx.Color {
 	s, ok := str(v)
 	if !ok || s == "" {
 		return nil
 	}
 	if s[0] == '$' {
-		return ui.Tok(s[1:]) // nil for unknown tokens, like the browser
+		return ui.Tok(s[1:])
 	}
 	c := gfx.Hex(s)
 	return &c
@@ -188,20 +188,19 @@ func stackSize(v any) (ui.StackSize, bool) {
 	if !ok {
 		return ui.StackSize{}, false
 	}
-	kind, _ := str(o["kind"])
-	switch kind {
-	case "fixed":
+	switch ui.SizeKind(strOf(o["kind"])) {
+	case ui.SizeFixed:
 		if px, ok := num(o["px"]); ok {
-			return ui.StackSize{Kind: "fixed", Px: px}, true
+			return ui.StackSize{Kind: ui.SizeFixed, Px: px}, true
 		}
-	case "fill":
+	case ui.SizeFill:
 		w, ok := num(o["weight"])
 		if !ok {
 			w = 1
 		}
-		return ui.StackSize{Kind: "fill", Weight: w}, true
-	case "content":
-		return ui.StackSize{Kind: "content"}, true
+		return ui.StackSize{Kind: ui.SizeFill, Weight: w}, true
+	case ui.SizeContent:
+		return ui.StackSize{Kind: ui.SizeContent}, true
 	}
 	return ui.StackSize{}, false
 }
@@ -221,7 +220,7 @@ func applyCommon(w ui.Widget, p props) {
 	if v, ok := p["stack"]; ok {
 		ss, valid := stackSize(v)
 		if !valid {
-			ss = ui.StackSize{Kind: "content"}
+			ss = ui.StackSize{Kind: ui.SizeContent}
 		}
 		b.StackSize = ss
 	}
@@ -304,8 +303,6 @@ func applyLabelFont(l *ui.Label, p props) {
 	l.Font = gfx.NewFont(size, gfx.FontOpts{Weight: weight, Italic: italic, Mono: mono, Family: family})
 }
 
-// construct by type, apply props, wire subscribed events to the sink
-// owns the id->widget map patches use
 type NodeStore struct {
 	ByID map[int]ui.Widget
 	idOf map[ui.Widget]int
@@ -316,7 +313,6 @@ func NewNodeStore(sink EventSink) *NodeStore {
 	return &NodeStore{ByID: map[int]ui.Widget{}, idOf: map[ui.Widget]int{}, sink: sink}
 }
 
-// forgets every node for a fresh mount
 func (ns *NodeStore) Reset() {
 	clear(ns.ByID)
 	clear(ns.idOf)
@@ -353,8 +349,6 @@ func (ns *NodeStore) Apply(w ui.Widget, id int, p props) {
 		return
 	}
 	applyCommon(w, p)
-	// context menus are type-agnostic like tips, but the pick needs the
-	// node id so they wire here and not in applyCommon
 	if v, ok := p["context"]; ok {
 		w.Base().ContextItems = contextItems(v)
 	}
@@ -454,7 +448,10 @@ func (ns *NodeStore) Apply(w ui.Widget, id int, p props) {
 	case *ui.Stack:
 		set(p, "padding", &t.Padding)
 		setOr(p, "spacing", &t.Spacing, 8)
-		set(p, "align", &t.Align)
+		if v, ok := p["align"]; ok {
+			s, _ := str(v)
+			t.Align = ui.Align(s)
+		}
 	case *ui.Dock:
 		set(p, "padding", &t.Padding)
 		set(p, "gap", &t.Gap)
@@ -471,12 +468,13 @@ func (ns *NodeStore) Apply(w ui.Widget, id int, p props) {
 				col.Title, _ = str(o["title"])
 				col.Weight, _ = num(o["weight"])
 				col.Width, _ = num(o["width"])
-				col.Kind, _ = str(o["kind"])
+				kind, _ := str(o["kind"])
+				col.Kind = ui.CellKind(kind)
 				t.Columns = append(t.Columns, col)
 			}
 		}
 		set(p, "rowCount", &t.RowCount)
-		set(p, "rowHeight", &t.RowHeight) // 0 defers to the row.height token
+		set(p, "rowHeight", &t.RowHeight)
 		set(p, "sortKey", &t.SortKey)
 		if v, ok := p["sortDir"]; ok {
 			s, _ := str(v)
@@ -538,7 +536,6 @@ func (ns *NodeStore) Apply(w ui.Widget, id int, p props) {
 		set(p, "min", &t.Min)
 		setOr(p, "max", &t.Max, 1)
 		set(p, "step", &t.Step)
-		// local echo, mid-drag the client's value wins
 		if !t.Dragging {
 			set(p, "value", &t.Value)
 		}
@@ -576,9 +573,9 @@ func (ns *NodeStore) Apply(w ui.Widget, id int, p props) {
 	case *ui.SplitView:
 		if v, ok := p["axis"]; ok {
 			s, _ := str(v)
-			t.Axis = "h"
+			t.Axis = ui.AxisH
 			if s == "v" {
-				t.Axis = "v"
+				t.Axis = ui.AxisV
 			}
 		}
 		setOr(p, "pos", &t.Pos, 300)
@@ -592,9 +589,9 @@ func (ns *NodeStore) Apply(w ui.Widget, id int, p props) {
 		set(p, "src", &t.Src)
 		if v, ok := p["fit"]; ok {
 			s, _ := str(v)
-			t.Fit = "contain"
+			t.Fit = gfx.FitContain
 			if s == "cover" || s == "fill" {
-				t.Fit = s
+				t.Fit = gfx.Fit(s)
 			}
 		}
 		if v, ok := p["radius"]; ok {
@@ -603,8 +600,6 @@ func (ns *NodeStore) Apply(w ui.Widget, id int, p props) {
 		set(p, "alt", &t.Alt)
 	case *ui.ShaderPane:
 		set(p, "frag", &t.Frag)
-		// merge only, a set op carries just the changed keys (SetUniform) so
-		// tweening one float never re-ships the whole uniform map
 		if v, ok := p["uniforms"]; ok {
 			if t.Uniforms == nil {
 				t.Uniforms = map[string]float32{}
@@ -615,8 +610,6 @@ func (ns *NodeStore) Apply(w ui.Widget, id int, p props) {
 		}
 		set(p, "animate", &t.Animate)
 	case *ui.Glass:
-		// the glass resolves pick targets through the store's id map
-		// (deepest widget -> nearest server-known ancestor)
 		t.IdOf = func(w ui.Widget) int { return ns.idOf[w] }
 		if v, ok := p["hoverFill"]; ok {
 			t.HoverFill = color(v)
@@ -663,13 +656,13 @@ func (ns *NodeStore) Apply(w ui.Widget, id int, p props) {
 			t.Columns = t.Columns[:0]
 			for _, cv := range v {
 				o, _ := cv.(props)
-				track := ui.GridTrack{Kind: "content"}
-				if k, _ := str(o["kind"]); k == "fixed" || k == "fill" {
+				track := ui.GridTrack{Kind: ui.SizeContent}
+				if k := ui.SizeKind(strOf(o["kind"])); k == ui.SizeFixed || k == ui.SizeFill {
 					track.Kind = k
 				}
 				track.Px, _ = num(o["px"])
 				track.Weight, _ = num(o["weight"])
-				track.Align, _ = str(o["align"])
+				track.Align = ui.Align(strOf(o["align"]))
 				t.Columns = append(t.Columns, track)
 			}
 		}
@@ -678,10 +671,8 @@ func (ns *NodeStore) Apply(w ui.Widget, id int, p props) {
 	}
 }
 
-// TextArea embeds TextField and shares its whole prop contract
 func (ns *NodeStore) applyText(t *ui.TextField, id int, p props) {
 	set(p, "radius", &t.Radius)
-	// local echo, while the user types a focused field ignores server sets
 	if !t.Focused {
 		set(p, "value", &t.Value)
 	}
@@ -739,7 +730,6 @@ func (ns *NodeStore) Remove(id int) {
 	}
 }
 
-// one constructor per protocol node type
 var widgets = map[wire.Type]func() ui.Widget{
 	wire.Panel:     func() ui.Widget { return ui.NewPanel() },
 	wire.Label:     func() ui.Widget { return ui.NewLabel("", gfx.NewFont(13, gfx.FontOpts{}), nil) },
@@ -756,8 +746,6 @@ var widgets = map[wire.Type]func() ui.Widget{
 	wire.Split:     func() ui.Widget { return ui.NewSplitView() },
 	wire.Table:     func() ui.Widget { return ui.NewTableView() },
 	wire.Tree: func() ui.Widget {
-		// tree is the table in tree mode: same columns and rows protocol,
-		// plus per-row hierarchy meta and toggle round-trips
 		t := ui.NewTableView()
 		t.Tree = true
 		return t
@@ -778,8 +766,6 @@ func construct(typ wire.Type) ui.Widget {
 	if ctor, ok := widgets[typ]; ok {
 		return ctor()
 	}
-	// server newer than this terminal, paint the hole instead of dropping the
-	// subtree so the rest of the tree still works
 	log.Error().Msgf("caution: unknown node type %q, using panel", typ)
 	return ui.NewPanel()
 }

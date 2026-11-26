@@ -19,7 +19,7 @@ func TestCookieJarPersistsAcrossRestarts(t *testing.T) {
 	j := openCookieJar("app-a")
 	j.set("login=abc; Path=/; Max-Age=3600")
 	j.set("pref=dark; Path=/; Max-Age=3600")
-	j.set("tab=2; Path=/") // a session cookie, gone with the process
+	j.set("tab=2; Path=/")
 	if got := names(j); len(got) != 3 {
 		t.Fatalf("live jar = %v", got)
 	}

@@ -10,8 +10,6 @@ import (
 	"github.com/nullentropy/caution/native"
 )
 
-// full-bleed fragment shaders in the shared ES3 subset, dark and slow on
-// purpose. each gets u_time in seconds and u_res in logical px
 var scenes = []struct {
 	name string
 	frag string
@@ -73,7 +71,6 @@ vec4 effect(vec2 uv) {
 
 const sceneEvery = 30 * time.Second
 
-// the -scene flag's pick (index into scenes), cycling continues from it
 var startScene = 0
 
 func mount(s *caution.Session) *caution.Node {
@@ -133,8 +130,6 @@ func main() {
 		caution.ServeClient()
 		go func() {
 			fmt.Printf("browser terminal on %s\n", *serve)
-			// the browser side is a bonus, a taken port must not take the native saver
-			// down with it
 			if err := caution.Serve(*serve, mount); err != nil {
 				log.Println("browser terminal:", err)
 			}
@@ -145,7 +140,7 @@ func main() {
 		Title:       "caution screensaver",
 		W:           1280,
 		H:           800,
-		MaxFPS:      30, // a screensaver should sip, not gulp
+		MaxFPS:      30,
 		Fullscreen:  !*windowed && *shot == "",
 		HideCursor:  *shot == "",
 		ExitOnInput: *shot == "",

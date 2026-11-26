@@ -12,17 +12,10 @@ import (
 	"golang.org/x/image/font/gofont/gosmallcaps"
 )
 
-// scenes must be deterministic. no animated shaders (different clocks), no
-// focused text field (caret phase), no images (async load)
-// wrapped labels break on explicit newlines with width slack so the native and
-// browser font stacks agree on line counts
-// geometry comes from anchors and fixed widths, not text measurement
-
 type scene struct {
-	name  string
-	theme string
-	build func(s *caution.Session) *caution.Node
-	// nil = terminal defaults
+	name    string
+	theme   string
+	build   func(s *caution.Session) *caution.Node
 	metrics map[string]float64
 }
 
@@ -42,8 +35,6 @@ var scenes = []scene{
 	{"metrics-square", "Midnight", metricsScene, squareMetrics},
 }
 
-// the anti-default look. both terminals must read every value from the same
-// token or the scene fails
 var squareMetrics = map[string]float64{
 	"radius.control": 0,
 	"radius.popover": 0,
@@ -63,7 +54,6 @@ var squareMetrics = map[string]float64{
 	"space.gap":          6,
 }
 
-// captures run one at a time but mounts happen on connection goroutines
 var current atomic.Pointer[scene]
 
 func mount(s *caution.Session) *caution.Node {
@@ -76,8 +66,6 @@ func mount(s *caution.Session) *caution.Node {
 	return sc.build(s)
 }
 
-// copied from the demo. scenes ship a full theme so both terminals resolve
-// identical colors
 var themes = map[string]map[string]string{
 	"Midnight": {
 		"bg": "#16181d", "ink": "#e8eaf0", "inkDim": "#9aa3b2", "inkFaint": "#6b7280",
@@ -93,8 +81,6 @@ var themes = map[string]map[string]string{
 	},
 }
 
-// one of everything that draws chrome, at rest, fixed widths
-// carries a menu so the closed menu bar is diffed too (native under -menubar)
 func controlsScene(s *caution.Session) *caution.Node {
 	s.SetMenu(
 		caution.Menu{Title: "File", Items: []caution.MenuItem{
@@ -131,7 +117,7 @@ func controlsScene(s *caution.Session) *caution.Node {
 		"code never touches the DOM.",
 		"",
 		"Every widget in this frame exists twice -",
-		"once in WebGL, once in OpenGL - and this",
+		"once in WebGL, once natively - and this",
 		"scene is the proof they agree.",
 	}, "\n")
 	right := caution.VStack().Gap(12).
@@ -160,7 +146,6 @@ func controlsScene(s *caution.Session) *caution.Node {
 	)
 }
 
-// keyed selection, weighted and fixed columns, enough rows for a scrollbar
 func tableScene(_ *caution.Session) *caution.Node {
 	emps := makeEmployees(200)
 	table := caution.Table([]caution.Col{
@@ -168,10 +153,9 @@ func tableScene(_ *caution.Session) *caution.Node {
 		{Key: "name", Title: "Name", Weight: 1},
 		{Key: "email", Title: "Email", Weight: 1.6},
 		{Key: "role", Title: "Role", Width: 110},
-		// in-cell widget columns, all three renderers
-		{Key: "load", Title: "Load", Width: 120, Kind: "progress"},
-		{Key: "ok", Title: "OK", Width: 50, Kind: "checkbox"},
-		{Key: "act", Title: "", Width: 90, Kind: "button"},
+		{Key: "load", Title: "Load", Width: 120, Kind: caution.ColProgress},
+		{Key: "ok", Title: "OK", Width: 50, Kind: caution.ColCheckbox},
+		{Key: "act", Title: "", Width: 90, Kind: caution.ColButton},
 	}, len(emps)).RowKey(0).SetSelectedKey("E00007").
 		RowsFunc(func(start, end int) [][]string {
 			out := make([][]string, 0, end-start+1)
@@ -193,7 +177,6 @@ func tableScene(_ *caution.Session) *caution.Node {
 	)
 }
 
-// indents, open and closed disclosure, a selected row, second column aligned
 func treeScene(_ *caution.Session) *caution.Node {
 	items := []caution.TreeItem{
 		{Key: "src", Cells: []string{"src", "-"}, Kids: []caution.TreeItem{
@@ -224,11 +207,8 @@ func treeScene(_ *caution.Session) *caution.Node {
 	)
 }
 
-// containers together: split, scroll mid-content, grid form, docked bars
 func layoutScene(_ *caution.Session) *caution.Node {
-	// rows carry height only. without Stretch they get zero width and both
-	// terminals agree on an invisible row, which diffing can't catch
-	list := caution.VStack().Gap(8).Align("stretch").
+	list := caution.VStack().Gap(8).Align(caution.AlignStretch).
 		Anchor(caution.A{Left: caution.Px(12), Top: caution.Px(12), Right: caution.Px(12)})
 	for i := 1; i <= 18; i++ {
 		list.Add(caution.Panel().H(44).Bg("$panelAlt").Radius(8).Border("$edgeSoft", 1).Kids(
@@ -273,10 +253,6 @@ func layoutScene(_ *caution.Session) *caution.Node {
 	)
 }
 
-// script itemization and bidi reordering. same engine and faces on both sides
-// so even scripts the fonts lack (Hebrew, Arabic as .notdef boxes) must match
-// pixel for pixel in the same order. Greek and Cyrillic check itemization
-// doesn't disturb glyphs that exist
 func textScene(_ *caution.Session) *caution.Node {
 	row := func(title, body string) *caution.Node {
 		return caution.Panel().H(52).Bg("$panelAlt").Radius(8).Border("$edgeSoft", 1).Kids(
@@ -286,7 +262,7 @@ func textScene(_ *caution.Session) *caution.Node {
 				Anchor(caution.A{Left: caution.Px(12), Bottom: caution.Px(8)}),
 		)
 	}
-	list := caution.VStack().Gap(10).Align("stretch").
+	list := caution.VStack().Gap(10).Align(caution.AlignStretch).
 		Anchor(caution.A{Left: caution.Px(16), Top: caution.Px(14), Right: caution.Px(16)}).Kids(
 		caution.Label("Itemization & bidi").FontSize(15).Weight(600),
 		row("latin", "The quick brown fox jumps over the lazy dog - 0123456789"),
@@ -306,8 +282,6 @@ func textScene(_ *caution.Session) *caution.Node {
 	)
 }
 
-// every face, colour and background a span can carry, with a break inside a
-// span and a word that straddles two
 func richTextScene(_ *caution.Session) *caution.Node {
 	body := caution.RichText(
 		caution.Span{Text: "Plain, "},
@@ -342,9 +316,6 @@ func richTextScene(_ *caution.Session) *caution.Node {
 	)
 }
 
-// every chrome the tokens touch, under squareMetrics. a terminal that misses a
-// token or hardcodes a constant drifts here
-// the dialog is here because it's the only radius.panel surface
 func metricsScene(s *caution.Session) *caution.Node {
 	s.SetMenu(
 		caution.Menu{Title: "Metrics", Items: []caution.MenuItem{
@@ -357,9 +328,9 @@ func metricsScene(s *caution.Session) *caution.Node {
 	table := caution.Table([]caution.Col{
 		{Key: "id", Title: "ID", Width: 80},
 		{Key: "name", Title: "Name", Weight: 1},
-		{Key: "load", Title: "Load", Width: 110, Kind: "progress"},
-		{Key: "ok", Title: "OK", Width: 50, Kind: "checkbox"},
-		{Key: "act", Title: "", Width: 84, Kind: "button"},
+		{Key: "load", Title: "Load", Width: 110, Kind: caution.ColProgress},
+		{Key: "ok", Title: "OK", Width: 50, Kind: caution.ColCheckbox},
+		{Key: "act", Title: "", Width: 84, Kind: caution.ColButton},
 	}, len(emps)).RowKey(0).SetSelectedKey("E00003").
 		RowsFunc(func(start, end int) [][]string {
 			out := make([][]string, 0, end-start+1)
@@ -378,7 +349,6 @@ func metricsScene(s *caution.Session) *caution.Node {
 		caution.HStack().Gap(10).Kids(
 			caution.Button("Save").Primary().W(96),
 			caution.Button("Cancel").W(96),
-			// per-node radius beats the token
 			caution.Button("pill").Radius(14).W(72).H(28),
 		),
 		caution.Checkbox("Sharp corners", true),
@@ -416,7 +386,6 @@ type employee struct {
 	id, name, email, role string
 }
 
-// mirrors the demo's generator
 func makeEmployees(n int) []employee {
 	firsts := []string{"Ada", "Grace", "Alan", "Edsger", "Barbara", "Donald", "Ken", "Dennis", "Bjarne", "Guido", "Linus", "Margaret"}
 	lasts := []string{"Lovelace", "Hopper", "Turing", "Dijkstra", "Liskov", "Knuth", "Thompson", "Ritchie", "Stroustrup", "Rossum", "Torvalds", "Hamilton"}
@@ -435,10 +404,6 @@ func makeEmployees(n int) []employee {
 	return out
 }
 
-// app fonts: a variable family over HTTP drawn across its weight axis, a
-// static family as a data: URI, the session default, and every fallback (a
-// family nobody registered, runes the app face lacks, mono with no mono
-// default)
 func fontsScene(s *caution.Session) *caution.Node {
 	s.AddFont("Sweep", "/fonts/Estedad-VF.ttf")
 	s.AddFont("Caps", "data:font/ttf;base64,"+base64.StdEncoding.EncodeToString(gosmallcaps.TTF))
@@ -454,7 +419,7 @@ func fontsScene(s *caution.Session) *caution.Node {
 	for w := 100; w <= 900; w += 100 {
 		sweep.Kids(caution.Label("Weight").FontSize(18).Weight(w))
 	}
-	list := caution.VStack().Gap(10).Align("stretch").
+	list := caution.VStack().Gap(10).Align(caution.AlignStretch).
 		Anchor(caution.A{Left: caution.Px(16), Top: caution.Px(14), Right: caution.Px(16)}).Kids(
 		caution.Label("App fonts - the same files shape and rasterize in both terminals").FontSize(15).Weight(600),
 		row("one variable file across its weight axis, session default family", sweep),

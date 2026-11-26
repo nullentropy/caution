@@ -1,6 +1,5 @@
 #import <Cocoa/Cocoa.h>
 
-// enter a REAL menu tracking session for `seconds`, then cancel it
 static NSMenu *probeMenu;
 
 static void cancelCallout(CFRunLoopTimerRef t, void *info) {
@@ -15,7 +14,7 @@ void caution_probe_menu(void *nswindow, double seconds) {
 	CFRunLoopTimerRef t = CFRunLoopTimerCreate(NULL,
 		CFAbsoluteTimeGetCurrent() + seconds, 0, 0, 0, cancelCallout, NULL);
 	CFRunLoopAddTimer(CFRunLoopGetMain(), t, kCFRunLoopCommonModes);
-	// blocks in the tracking run loop until cancelTracking
+	// popUpMenu doesn't return until the timer calls cancelTracking
 	[probeMenu popUpMenuPositioningItem:nil
 	                         atLocation:NSMakePoint(40, 40)
 	                             inView:w.contentView];

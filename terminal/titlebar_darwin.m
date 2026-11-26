@@ -31,9 +31,8 @@ void caution_watch_fullscreen(void *nswindow) {
 	                object:w
 	                 queue:nil
 	            usingBlock:^(NSNotification *note) {
-		// the toolbar only exists to center the traffic lights
-		// in fullscreen AppKit parks it in the auto-hide strip over our
-		// titlebar and there are no traffic lights, so drop it
+		// fullscreen has no traffic lights to center and AppKit would park
+		// the toolbar over our titlebar
 		w.toolbar = nil;
 		cautionFullscreenChanged(1);
 	}];

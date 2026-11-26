@@ -43,28 +43,19 @@ func (p *Panel) PaintSelf(dl *gfx.DisplayList) {
 	}
 }
 
-// -- label --------------------------------------------------------------------------
-
 type Label struct {
 	Core
-	Text  string
-	Font  gfx.Font
-	Color *gfx.Color
-	// drag/double-click selection and Cmd+C copy
+	Text       string
+	Font       gfx.Font
+	Color      *gfx.Color
 	Selectable bool
-	// breaks at the laid-out width instead of truncating, intrinsic height follows
-	// the line count (HeightForWidth). wrapped selection boundaries are byte offsets
-	// into the source (cross-line drags work, copies are exact), single-line ones
-	// are glyph indices
-	Wrap bool
+	Wrap       bool
 
 	lastFit   *labelFit
 	lastLines *labelLines
 	lastSize  *labelSize
 }
 
-// memoized natural size, layout asks every widget every frame and each ask
-// costs a shaping-cache lookup
 type labelSize struct {
 	text    string
 	fontKey string
@@ -97,9 +88,6 @@ func NewLabel(textStr string, f gfx.Font, color *gfx.Color) *Label {
 	return l
 }
 
-// full text when it fits the laid-out bounds, else the longest prefix + '...'
-// that does (tail truncation). labels at their intrinsic width never truncate,
-// ones squeezed by anchors/stacks/grids clamp instead of overflowing
 func (l *Label) displayText() string {
 	avail := l.Bounds.W
 	if avail <= 0 {
@@ -127,7 +115,6 @@ func (l *Label) displayText() string {
 	return display
 }
 
-// displayed run, so selection and painting agree on what is visible
 func (l *Label) run() *text.Run {
 	return l.UI.Measure(l.Font, l.displayText())
 }
@@ -137,13 +124,11 @@ func (l *Label) IntrinsicSize() Size {
 		c.epoch == l.UI.MeasureEpoch() {
 		return c.size
 	}
-	r := l.UI.Measure(l.Font, l.Text) // natural size = full text
+	r := l.UI.Measure(l.Font, l.Text)
 	sz := Size{ceil32(r.Width), ceil32(r.Ascent + r.Descent)}
 	l.lastSize = &labelSize{text: l.Text, fontKey: l.Font.Key, epoch: l.UI.MeasureEpoch(), size: sz}
 	return sz
 }
-
-// -- wrapped layout -------------------------------------------------------------
 
 func (l *Label) wrappedLines(w float32) []text.Line {
 	if c := l.lastLines; c != nil && c.text == l.Text && c.fontKey == l.Font.Key &&
@@ -155,7 +140,6 @@ func (l *Label) wrappedLines(w float32) []text.Line {
 	return lines
 }
 
-// per-font constants, the advance adds 25% leading between lines
 func lineMetrics(u *UI, f gfx.Font) (lineH, advance float32) {
 	m := u.Measure(f, "Mg")
 	lineH = m.Ascent + m.Descent
@@ -181,7 +165,6 @@ func (l *Label) xInLine(lineText string, bo int) float32 {
 	return xs[clampInt(ri, 0, len(xs)-1)]
 }
 
-// nearest source-offset boundary to a point (wrapped)
 func (l *Label) byteAtPoint(x, y float32) int {
 	lines := l.wrappedLines(l.Bounds.W)
 	if len(lines) == 0 {
@@ -194,7 +177,6 @@ func (l *Label) byteAtPoint(x, y float32) int {
 	run := l.UI.Measure(l.Font, lineText)
 	xs := runeBoundaryXs(run, utf8.RuneCountInString(lineText))
 	best := nearestBoundary(xs, x-l.Bounds.X)
-	// rune index within the line -> byte offset in the source
 	bo := ln.Start
 	for i := 0; i < best; i++ {
 		_, sz := utf8.DecodeRuneInString(l.Text[bo:])
@@ -218,7 +200,6 @@ func wordRangeAtByte(text string, bo int) (int, int) {
 		return 0, 0
 	}
 	bo = clampInt(bo, 0, len(text)-1)
-	// snap into the rune that covers bo
 	for bo > 0 && !utf8.RuneStart(text[bo]) {
 		bo--
 	}
@@ -239,21 +220,19 @@ func wordRangeAtByte(text string, bo int) (int, int) {
 		}
 		e += sz
 	}
-	if e == bo { // include at least the rune under the point
+	if e == bo {
 		_, sz := utf8.DecodeRuneInString(text[bo:])
 		e = bo + sz
 	}
 	return s, e
 }
 
-// highlight for the part of [s, e) that falls on one wrapped line. xAt maps a
-// source byte offset on the line to an x offset from the line origin
 func paintSelectionBand(dl *gfx.DisplayList, s, e int, ln text.Line, xAt func(bo int) float32, x, y, lineH float32) {
 	a := max(s, ln.Start)
 	b := min(e, ln.End)
 	if b > a || (ln.Start == ln.End && s <= ln.Start && e > ln.End) {
 		x0 := xAt(max(ln.Start, a))
-		x1 := x0 + 4 // stub marks empty lines inside the range
+		x1 := x0 + 4
 		if b > a {
 			x1 = xAt(b)
 		}
@@ -262,8 +241,6 @@ func paintSelectionBand(dl *gfx.DisplayList, s, e int, ln text.Line, xAt func(bo
 	}
 }
 
-// press on wrapped text: triple-click takes everything, double the word, a
-// single press collapses the selection at the byte under the pointer
 func pressSelection(u *UI, w selectionOwner, text string, bo, detail int) {
 	switch {
 	case detail >= 3:
@@ -322,7 +299,6 @@ func (l *Label) PaintSelf(dl *gfx.DisplayList) {
 	dl.Text(l.displayText(), l.Bounds.X, l.Bounds.Y, l.Font, *l.Color)
 }
 
-// x offset of the boundary before glyph i (or the run end)
 func (l *Label) boundaryX(i int) float32 {
 	run := l.run()
 	if i < len(run.Glyphs) {
@@ -331,7 +307,6 @@ func (l *Label) boundaryX(i int) float32 {
 	return run.Width
 }
 
-// nearest glyph boundary to an absolute x
 func (l *Label) BoundaryAt(absX float32) int {
 	local := absX - l.Bounds.X
 	n := len(l.run().Glyphs)
@@ -344,8 +319,6 @@ func (l *Label) BoundaryAt(absX float32) int {
 	return best
 }
 
-// glyph-boundary range back to the source text via shaping clusters
-// wrapped labels use source byte offsets directly
 func (l *Label) GlyphText(start, end int) string {
 	s := min(start, end)
 	e := max(start, end)
@@ -429,22 +402,17 @@ func (l *Label) OnPointerDrag(x, y float32) {
 	l.UI.moveSelectionEnd(l, l.BoundaryAt(x))
 }
 
-// -- button --------------------------------------------------------------------------
-
 var btnFont = gfx.NewFont(13, gfx.FontOpts{Weight: 600})
 
 type Button struct {
 	Core
 	Label   string
 	Primary bool
-	// overrides radius.control (nil = the token), for circular titlebar
-	// controls and pill CTAs
 	Radius  *float32
 	OnClick func()
 
-	hovered bool
-	pressed bool
-	// memoized natural size, layout asks every frame (see labelSize)
+	hovered   bool
+	pressed   bool
 	lastSize  Size
 	lastLabel string
 	lastEpoch int
@@ -461,8 +429,6 @@ func radiusOr(over *float32, def float32) float32 {
 }
 
 func (b *Button) IntrinsicSize() Size {
-	// keyed by MeasureEpoch, which a metrics change bumps, so the memo can't
-	// outlive the token table it came from
 	if b.sized && b.lastLabel == b.Label && b.lastEpoch == b.UI.MeasureEpoch() {
 		return b.lastSize
 	}
@@ -536,12 +502,12 @@ func (b *Button) PaintSelf(dl *gfx.DisplayList) {
 
 func (b *Button) OnPointerDown(_, _ float32, _ int) {
 	b.pressed = true
-	b.Invalidate()
+	b.InvalidateWidget()
 }
 
 func (b *Button) OnPointerUp(x, y float32) {
 	b.pressed = false
-	b.Invalidate()
+	b.InvalidateWidget()
 	if Contains(b.Bounds, x, y) {
 		b.Activate()
 	}
@@ -549,12 +515,9 @@ func (b *Button) OnPointerUp(x, y float32) {
 
 func (b *Button) OnHoverChange(h bool) {
 	b.hovered = h
-	b.Invalidate()
+	b.InvalidateWidget()
 }
 
-// radius is the widget's own uninflated corner radius: Metrics.RadiusControl
-// for standard controls, half the size for circular ones. the ring offsets
-// outward by its stroke plus a 1px gap and rounds to match
 func PaintFocusRing(dl *gfx.DisplayList, around gfx.Rect, radius float32) {
 	w := Metrics.FocusRing
 	off := w + 1
@@ -563,8 +526,6 @@ func PaintFocusRing(dl *gfx.DisplayList, around gfx.Rect, radius float32) {
 		Radius: gfx.CornerRadius(radius + off), BorderWidth: w, BorderColor: &ring,
 	})
 }
-
-// -- checkbox ------------------------------------------------------------------------
 
 var cbFont = gfx.NewFont(13, gfx.FontOpts{})
 
@@ -603,7 +564,7 @@ func (c *Checkbox) Activate() {
 	if c.OnToggle != nil {
 		c.OnToggle(c.Checked)
 	}
-	c.Invalidate()
+	c.InvalidateWidget()
 }
 
 func (c *Checkbox) PaintSelf(dl *gfx.DisplayList) {
@@ -646,10 +607,8 @@ func (c *Checkbox) OnPointerUp(x, y float32) {
 
 func (c *Checkbox) OnHoverChange(h bool) {
 	c.hovered = h
-	c.Invalidate()
+	c.InvalidateWidget()
 }
-
-// -- small helpers -------------------------------------------------------------------
 
 func ceil32(v float32) float32 { return float32(math.Ceil(float64(v))) }
 func abs32(v float32) float32 {
@@ -659,9 +618,6 @@ func abs32(v float32) float32 {
 	return v
 }
 
-// geometry (stepped diagonal strokes) like the select chevron and tree
-// disclosure, so chrome never depends on a font glyph and both terminals agree
-// to the pixel
 func PaintCheck(dl *gfx.DisplayList, cx, cy float32, c gfx.Color) {
 	cx = float32(math.Floor(float64(cx)))
 	cy = float32(math.Floor(float64(cy)))

@@ -13,10 +13,7 @@ import (
 	"github.com/nullentropy/caution/internal/cdp"
 )
 
-// the insert must produce a burst of build frames and the final pixels must
-// be solid
-// headless because it's the one place rAF reliably free-runs. a visible tab
-// that loses OS compositing throttles rAF and fakes the starvation
+// a visible tab that loses OS compositing throttles rAF
 func runBrowser(chromeFlag string) error {
 	caution.ServeClient()
 	l, err := net.Listen("tcp", "127.0.0.1:0")
@@ -89,8 +86,6 @@ func runBrowser(chromeFlag string) error {
 		return err
 	}
 
-	// timeline fits in insertAt + fade + slack. the fade has to show up as a
-	// burst of build frames while the shader keeps running
 	type probe struct {
 		Frames, Damaged, Partials int
 		Mounted                   bool

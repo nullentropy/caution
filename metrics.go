@@ -1,11 +1,6 @@
 package caution
 
-// ready-made maps for Session.SetMetrics, plain data so copy one and tweak it
-// names are terminal tokens (terminal/ui/metrics.go has the table and defaults)
-// tokens left out keep the terminal default, per-node props still override
-// the terminal defaults sit between these two
 var (
-	// dense: tight rows, short controls, small marks, for data-heavy screens
 	MetricsCompact = map[string]float64{
 		"radius.control":     4,
 		"radius.popover":     6,
@@ -23,7 +18,6 @@ var (
 		"space.gap":          7,
 	}
 
-	// airy: tall rows, generous padding, for touch or presentation surfaces
 	MetricsComfortable = map[string]float64{
 		"radius.control":     8,
 		"radius.popover":     10,

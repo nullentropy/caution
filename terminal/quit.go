@@ -1,6 +1,6 @@
 package terminal
 
-// stop linkd (App Intents) from killing us for no good reason
+// linkd is the App Intents daemon, and its quit requests would otherwise end the app
 func quitAllowed(sender string) bool {
 	return sender != "linkd"
 }

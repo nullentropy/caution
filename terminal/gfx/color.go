@@ -2,15 +2,12 @@ package gfx
 
 import "strconv"
 
-// straight (non-premultiplied) RGBA, channels 0..1
-// premultiplied in the shader
 type Color struct {
 	R, G, B, A float32
 }
 
 func RGBA(r, g, b, a float32) Color { return Color{r, g, b, a} }
 
-// '#rgb', '#rrggbb' or '#rrggbbaa'
 func Hex(s string) Color {
 	h := s
 	if len(h) > 0 && h[0] == '#' {
@@ -42,7 +39,6 @@ func Hex(s string) Color {
 
 func WithAlpha(c Color, a float32) Color { return Color{c.R, c.G, c.B, a} }
 
-// linear a->b by t (0..1), alpha included
 func Mix(a, b Color, t float32) Color {
 	return Color{
 		a.R + (b.R-a.R)*t,

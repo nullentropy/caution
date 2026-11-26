@@ -6,28 +6,15 @@ import (
 	"github.com/nullentropy/caution/terminal/gfx"
 )
 
-// transparent pointer-capture surface for custom interaction. paints nothing,
-// swallows presses over its bounds and reports them upstream: `pick` with the
-// glass-relative position and the id of the deepest server node under the
-// point, coalesced `drag` positions, `drop` on release
 type Glass struct {
 	Core
-	// target is 0 when nothing resolvable is under the point
-	// wired by the inflater when the node subscribes to "pick"
-	OnPick func(x, y float32, target int)
-	// drags coalesce to ~30/s
-	OnDragTo func(x, y float32)
-	OnDropAt func(x, y float32)
-	// coalesced like drags, but deltas accumulate between sends since dropping a
-	// wheel event would lose distance
+	OnPick    func(x, y float32, target int)
+	OnDragTo  func(x, y float32)
+	OnDropAt  func(x, y float32)
 	OnWheelAt func(x, y, dx, dy float32)
-	// right-button gestures. while a glass subscribes to rpick, a right-press over
-	// it starts a captured right-drag instead of a context menu, so custom
-	// interaction (orbit, measure, lasso) gets the second button
 	OnRPick   func(x, y float32)
 	OnRDragTo func(x, y float32)
 	OnRDropAt func(x, y float32)
-	// server node id (0 = none), injected by the inflater which owns the id map
 	IdOf      func(w Widget) int
 	HoverFill *gfx.Color
 	hovered   bool
@@ -47,7 +34,6 @@ func (g *Glass) RPickAt(x, y float32) {
 	g.rSent = time.Now()
 }
 
-// coalesced on the drag clock
 func (g *Glass) RDragAt(x, y float32) {
 	if g.OnRDragTo == nil || time.Since(g.rSent) < dragCoalesce {
 		return
@@ -56,15 +42,12 @@ func (g *Glass) RDragAt(x, y float32) {
 	g.OnRDragTo(x-g.Bounds.X, y-g.Bounds.Y)
 }
 
-// always the true endpoint, like drop
 func (g *Glass) RDropAt(x, y float32) {
 	if g.OnRDropAt != nil {
 		g.OnRDropAt(x-g.Bounds.X, y-g.Bounds.Y)
 	}
 }
 
-// a sub-window remainder rides the next event, at gesture end that's at most
-// one tick's worth
 func (g *Glass) WheelAt(x, y, dx, dy float32) {
 	if g.OnWheelAt == nil {
 		return
@@ -79,8 +62,6 @@ func (g *Glass) WheelAt(x, y, dx, dy float32) {
 	g.wheelDx, g.wheelDy = 0, 0
 }
 
-// pointer moves arrive at display rate and the session's event bucket (120/s
-// sustained) must absorb long drags without dropping anything
 const dragCoalesce = 33 * time.Millisecond
 
 func NewGlass() *Glass {
@@ -89,8 +70,6 @@ func NewGlass() *Glass {
 	return g
 }
 
-// only when someone listens, so an unsubscribed glass never steals input from
-// what's beneath it
 func (g *Glass) Interactive() bool { return g.OnPick != nil }
 
 func (g *Glass) OnPointerDown(x, y float32, _ int) {
@@ -123,9 +102,6 @@ func (g *Glass) OnPointerUp(x, y float32) {
 	}
 }
 
-// deepest server node under an absolute point: HitTest without its
-// interactivity filter, excluding the glass itself. a client-internal widget
-// answers with its nearest server-known ancestor
 func (g *Glass) targetAt(x, y float32) int {
 	if g.IdOf == nil {
 		return 0
@@ -163,7 +139,6 @@ func (g *Glass) deepestAt(w Widget, x, y float32) Widget {
 	return nil
 }
 
-// invisible by contract
 func (g *Glass) PaintSelf(dl *gfx.DisplayList) {
 	if g.hovered && g.HoverFill != nil {
 		dl.Fill(g.Bounds, *g.HoverFill, gfx.Corners{})
@@ -173,6 +148,6 @@ func (g *Glass) PaintSelf(dl *gfx.DisplayList) {
 func (g *Glass) OnHoverChange(h bool) {
 	if g.HoverFill != nil && g.hovered != h {
 		g.hovered = h
-		g.Invalidate()
+		g.InvalidateWidget()
 	}
 }

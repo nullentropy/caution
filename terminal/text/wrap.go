@@ -5,18 +5,12 @@ import (
 	"unicode/utf8"
 )
 
-// [Start, End) byte range into the source. separators consumed at a break
-// (spaces, newline) fall in the gap between ranges, so selections and copies
-// map back to exact source offsets
 type Line struct{ Start, End int }
 
-// greedy, honors '\n'. measure must be monotonic in prefix length (it's an
-// advance sum, so it is)
 func Wrap(measure func(string) float32, s string, maxW float32) []Line {
 	return WrapRanges(func(start, end int) float32 { return measure(s[start:end]) }, s, maxW)
 }
 
-// measure takes byte offsets into s, for text whose font changes partway
 func WrapRanges(measure func(start, end int) float32, s string, maxW float32) []Line {
 	var out []Line
 	p := 0
@@ -37,10 +31,9 @@ func WrapRanges(measure func(start, end int) float32, s string, maxW float32) []
 
 func wrapPara(measure func(start, end int) float32, s string, start, end int, maxW float32, out *[]Line) {
 	if start >= end {
-		*out = append(*out, Line{start, start}) // empty line (blank paragraph, trailing \n)
+		*out = append(*out, Line{start, start})
 		return
 	}
-	// bounds[i] is the byte offset rune i starts at, bounds[n] == end
 	var bounds []int
 	for i := start; i < end; {
 		bounds = append(bounds, i)
@@ -52,7 +45,6 @@ func wrapPara(measure func(start, end int) float32, s string, start, end int, ma
 
 	i := 0
 	for i < n {
-		// longest prefix that fits, binary search over rune count
 		lo, hi := i+1, n
 		for lo < hi {
 			mid := (lo + hi + 1) >> 1
@@ -64,8 +56,6 @@ func wrapPara(measure func(start, end int) float32, s string, start, end int, ma
 		}
 		brk := lo
 		if brk < n {
-			// back off to the last break opportunity, either side of a space so
-			// words stay whole. none means a hard break mid-word
 			sp := -1
 			for j := brk; j > i; j-- {
 				if s[bounds[j]-1] == ' ' || s[bounds[j]] == ' ' {
@@ -77,7 +67,6 @@ func wrapPara(measure func(start, end int) float32, s string, start, end int, ma
 				brk = sp
 			}
 		}
-		// line ends before its trailing spaces, the next starts after them
 		lineEnd := brk
 		for brk < n && lineEnd > i && s[bounds[lineEnd]-1] == ' ' {
 			lineEnd--

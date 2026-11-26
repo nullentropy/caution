@@ -51,7 +51,7 @@ func TestSoundTokensPerWidget(t *testing.T) {
 	btn.OnPointerUp(20, 20)
 	wantPlayed(t, played, "/press.wav")
 	btn.OnPointerDown(20, 20, 1)
-	btn.OnPointerUp(300, 300) // released outside: no click, no sound
+	btn.OnPointerUp(300, 300)
 	wantPlayed(t, played)
 
 	cb := NewCheckbox("opt")
@@ -70,7 +70,7 @@ func TestSoundTokensPerWidget(t *testing.T) {
 	mounted(u, tabs)
 	tabs.pick(1)
 	wantPlayed(t, played, "/select.wav")
-	tabs.pick(1) // already selected: nothing happens, nothing sounds
+	tabs.pick(1)
 	wantPlayed(t, played)
 
 	tf := NewTextField()
@@ -93,7 +93,7 @@ func TestSoundTokensForPopoversAndDialogs(t *testing.T) {
 	sel.Pick(1)
 	wantPlayed(t, played, "/select.wav")
 	sel.toggle()
-	sel.toggle() // the second press on an open select closes it
+	sel.toggle()
 	wantPlayed(t, played, "/open.wav", "/close.wav")
 
 	sel.toggle()
@@ -103,7 +103,7 @@ func TestSoundTokensForPopoversAndDialogs(t *testing.T) {
 
 	sel.toggle()
 	*played = (*played)[:0]
-	u.PointerDown(390, 290) // click-away
+	u.PointerDown(390, 290)
 	wantPlayed(t, played, "/close.wav")
 
 	d := NewDialog()
@@ -111,7 +111,7 @@ func TestSoundTokensForPopoversAndDialogs(t *testing.T) {
 	d.Anchors = &Anchors{Left: f32p(0), Right: f32p(0), Top: f32p(0), Bottom: f32p(0)}
 	d.OnDismiss = func() {}
 	mounted(u, d)
-	d.OnPointerDown(2, 2, 1) // on the scrim
+	d.OnPointerDown(2, 2, 1)
 	wantPlayed(t, played, "/close.wav")
 	u.KeyDown(Key{Name: "Escape"})
 	wantPlayed(t, played, "/close.wav")
@@ -154,7 +154,7 @@ func TestSoundTableRows(t *testing.T) {
 	tv.ApplyRows(0, [][]string{{"x"}, {"y"}, {"z"}}, []RowMeta{{Key: "k0", Expandable: true}, {Key: "k1"}, {Key: "k2"}}, true)
 	tv.toggleRow(0)
 	wantPlayed(t, played, "/toggle.wav")
-	tv.toggleRow(1) // a leaf has nothing to toggle
+	tv.toggleRow(1)
 	wantPlayed(t, played)
 }
 
@@ -175,7 +175,6 @@ func TestSoundOverridesAndSilence(t *testing.T) {
 	btn.Activate()
 	wantPlayed(t, played)
 
-	// no table at all, or no hook, is silent and does not crash
 	btn.SoundToken = ""
 	u.SetSounds(nil)
 	btn.Activate()

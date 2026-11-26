@@ -32,8 +32,7 @@ func (o *otoSink) Play(r io.Reader) {
 	p.Play()
 	o.mu.Lock()
 
-	// we have to keep references to playing sounds otherwise once they become
-	// unreachable (after GC) they'll stop before we want them to
+	// oto stops a player once it's unreachable, so hold the playing ones
 	live := o.playing[:0]
 	for _, q := range o.playing {
 		if q.IsPlaying() {

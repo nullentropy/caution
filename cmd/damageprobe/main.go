@@ -1,9 +1,3 @@
-// damageprobe: damage frames must be pixel identical to a full render
-//
-// one small change at a time to a scene built to make partial repaints hard,
-// each damage frame compared against a from-scratch render of the same list
-//
-//	go run ./cmd/damageprobe
 package main
 
 import (
@@ -13,8 +7,9 @@ import (
 	"time"
 
 	"github.com/go-gl/glfw/v3.3/glfw"
+	"github.com/nullentropy/caution/terminal"
 	"github.com/nullentropy/caution/terminal/gfx"
-	"github.com/nullentropy/caution/terminal/glx"
+	"github.com/nullentropy/caution/terminal/gpu"
 	"github.com/nullentropy/caution/terminal/render"
 	"github.com/nullentropy/caution/terminal/text"
 	"github.com/nullentropy/caution/terminal/ui"
@@ -27,15 +22,17 @@ const (
 
 func init() { runtime.LockOSThread() }
 
+var dev gpu.Device
+
 type scene struct {
 	u      *ui.UI
 	root   *ui.Panel
-	under  *ui.Label // covered by a later sibling
-	edge   *ui.Label // straddles the shadowed card's edge
-	slider *ui.Panel // slides under the unchanged text
-	inner  *ui.Label // inside the clipping scroller
+	under  *ui.Label
+	edge   *ui.Label
+	slider *ui.Panel
+	inner  *ui.Label
 	shadow *ui.Panel
-	fx     *ui.Panel // carries an effect layer
+	fx     *ui.Panel
 	pane   *ui.ShaderPane
 	banner *ui.Label
 }
@@ -48,8 +45,6 @@ func build(sh *text.Shaper) *scene {
 	root.Bg = ui.Theme["bg"]
 	s := &scene{u: u, root: root}
 
-	// later sibling covers half of it, replaying the label alone would put it
-	// on top
 	s.under = ui.NewLabel("under the card, half covered", gfx.NewFont(14, gfx.FontOpts{}), nil)
 	s.under.Frame = &gfx.Rect{X: 20, Y: 20, W: 300, H: 20}
 	root.Add(s.under)
@@ -88,15 +83,12 @@ func build(sh *text.Shaper) *scene {
 	fxLabel.Frame = &gfx.Rect{X: 10, Y: 10, W: 180, H: 18}
 	s.fx.Add(fxLabel)
 
-	// animated pane. the command is identical frame to frame but u_time isn't,
-	// its damage has to survive every diff
 	s.pane = ui.NewShaderPane()
 	s.pane.Frame = &gfx.Rect{X: 460, Y: 130, W: 200, H: 120}
 	s.pane.Frag = "vec4 effect(vec2 uv) { return vec4(uv.x, uv.y, fract(u_time), 1.0); }"
 	s.pane.Animate = true
 	root.Add(s.pane)
 
-	// so the tree isn't trivially small
 	for i := 0; i < 24; i++ {
 		row := ui.NewPanel()
 		row.Frame = &gfx.Rect{X: 20, Y: float32(270 + i*8), W: 640, H: 7}
@@ -136,25 +128,20 @@ func run() error {
 		return err
 	}
 	defer glfw.Terminate()
-	glfw.WindowHint(glfw.ContextVersionMajor, 4)
-	glfw.WindowHint(glfw.ContextVersionMinor, 1)
-	glfw.WindowHint(glfw.OpenGLProfile, glfw.OpenGLCoreProfile)
-	glfw.WindowHint(glfw.OpenGLForwardCompatible, glfw.True)
+	glfw.WindowHint(glfw.ClientAPI, glfw.NoAPI)
 	glfw.WindowHint(glfw.Visible, glfw.False)
 	win, err := glfw.CreateWindow(W, H, "damageprobe", nil, nil)
 	if err != nil {
 		return err
 	}
-	win.MakeContextCurrent()
-	if err := glx.Init(); err != nil {
+	dev, err = terminal.OpenDevice(win)
+	if err != nil {
 		return err
 	}
 
 	fbo, read := target()
 
-	// live keeps state and takes the damage path, fresh renders from nothing
-	// and is the ground truth
-	live, err := render.New()
+	live, err := render.New(dev)
 	if err != nil {
 		return err
 	}
@@ -166,37 +153,32 @@ func run() error {
 		wantFull bool
 	}{
 		{"nothing changed", func() {}, false},
-		{"one label's text (overlapped by a later sibling)", func() { s.under.Text = "under the card, TEXT CHANGED"; s.under.Invalidate() }, false},
-		{"text straddling the card edge", func() { s.edge.Text = "straddling the EDGE of the card and beyond"; s.edge.Invalidate() }, false},
-		{"text inside a clipping parent", func() { s.inner.Text = "clipped text RUNNING off the right edge"; s.inner.Invalidate() }, false},
-		{"the shadowed card moves", func() { s.shadow.Frame.X = 170; s.shadow.Invalidate() }, false},
+		{"one label's text (overlapped by a later sibling)", func() { s.under.Text = "under the card, TEXT CHANGED"; s.under.InvalidateWidget() }, false},
+		{"text straddling the card edge", func() { s.edge.Text = "straddling the EDGE of the card and beyond"; s.edge.InvalidateWidget() }, false},
+		{"text inside a clipping parent", func() { s.inner.Text = "clipped text RUNNING off the right edge"; s.inner.InvalidateWidget() }, false},
+		{"the shadowed card moves", func() { s.shadow.Frame.X = 170; s.shadow.InvalidateWidget() }, false},
 		{"a label inside the effect layer", func() {
 			l := s.fx.Base().Kids[0].(*ui.Label)
 			l.Text = "inside the EFFECT layer"
-			l.Invalidate()
+			l.InvalidateWidget()
 		}, false},
-		{"the banner above the tree", func() { s.banner.Text = "banner CHANGED above everything"; s.banner.Invalidate() }, false},
-		{"a shadow's blur grows past its widget", func() { s.shadow.DropShadow.Blur = 30; s.shadow.Invalidate() }, false},
-		{"one row far down the list", func() { w := s.root.Base().Kids[12]; w.Base().Frame.X += 3; w.Base().Invalidate() }, false},
-		// the unchanged label has to be replayed inside the damage rect
-		{"a quad moves under unchanged text", func() { s.slider.Frame.X = 60; s.slider.Invalidate() }, false},
-		// fewer commands than last frame, index-aligned walk can't apply so
-		// the prefix/suffix trim has to isolate the loss
-		{"a drop shadow disappears", func() { s.shadow.DropShadow = nil; s.shadow.Invalidate() }, false},
-		// same command, different u_time, must repaint anyway
+		{"the banner above the tree", func() { s.banner.Text = "banner CHANGED above everything"; s.banner.InvalidateWidget() }, false},
+		{"a shadow's blur grows past its widget", func() { s.shadow.DropShadow.Blur = 30; s.shadow.InvalidateWidget() }, false},
+		{"one row far down the list", func() { w := s.root.Base().Kids[12]; w.Base().Frame.X += 3; w.Base().InvalidateWidget() }, false},
+		{"a quad moves under unchanged text", func() { s.slider.Frame.X = 60; s.slider.InvalidateWidget() }, false},
+		{"a drop shadow disappears", func() { s.shadow.DropShadow = nil; s.shadow.InvalidateWidget() }, false},
 		{"only the clock moved (animated pane)", func() {}, false},
-		// one token is still worth scissoring. a whole theme isn't, and it
-		// moves the clear color which no display list records
-		{"one theme token", func() { ui.ApplyTheme(map[string]string{"panelAlt": "#3a2030"}); s.u.Invalidate() }, false},
+		{"one theme token", func() { ui.ApplyTheme(map[string]string{"panelAlt": "#3a2030"}); s.u.InvalidateAll() }, false},
 		{"the whole theme", func() {
 			ui.ApplyTheme(map[string]string{"bg": "#2a1020", "panel": "#3a2030", "panelAlt": "#452838", "ink": "#ffe8f0"})
-			s.u.Invalidate()
+			s.u.InvalidateAll()
 		}, true},
 	}
 
 	t := float32(1.0)
 	prev := s.frame()
 	live.Render(prev, *ui.Tok("bg"), frame(fbo, t))
+	dev.Present()
 	fails := 0
 	view := gfx.R(0, 0, W, H)
 	for i, step := range steps {
@@ -204,18 +186,19 @@ func run() error {
 		t += 0.25
 		before := live.Frames
 		dl := s.frame()
-		// reported so a step that quietly stopped changing anything can't pass
 		rects, _ := gfx.DiffDamage(prev, dl, view, gfx.PlanDamage(dl, view).Rects)
 		prev = dl
 		bg := *ui.Tok("bg")
 		live.Render(dl, bg, frame(fbo, t))
+		dev.Present()
 		got := read()
 		path := live.Frames.Damage - before.Damage
-		fresh, err := render.New()
+		fresh, err := render.New(dev)
 		if err != nil {
 			return err
 		}
 		fresh.Render(dl, bg, frame(fbo, t))
+		dev.Present()
 		want := read()
 
 		diff, first := compare(got, want)
@@ -242,15 +225,18 @@ func run() error {
 
 	for i := range 3 {
 		t += 0.25
-		if !live.RenderPartial(*ui.Tok("bg"), frame(fbo, t)) {
+		okPartial := live.RenderPartial(*ui.Tok("bg"), frame(fbo, t))
+		dev.Present()
+		if !okPartial {
 			return fmt.Errorf("animation continuation %d refused the retained list", i+1)
 		}
 		got := read()
-		fresh, err := render.New()
+		fresh, err := render.New(dev)
 		if err != nil {
 			return err
 		}
 		fresh.Render(prev, *ui.Tok("bg"), frame(fbo, t))
+		dev.Present()
 		diff, first := compare(got, read())
 		status := "identical"
 		if diff > 0 {
@@ -268,31 +254,25 @@ func run() error {
 	return bench(*ui.Tok("bg"), fbo)
 }
 
-func frame(fbo uint32, t float32) render.Frame { return frameOpt(fbo, t, true) }
+func frame(fbo gpu.Texture, t float32) render.Frame { return frameOpt(fbo, t, true) }
 
-// the probe reads the destination instead of presenting it, and the
-// presentation check depends on what an unpainted frame leaves there
-func frameOpt(fbo uint32, t float32, skipUnpainted bool) render.Frame {
+func frameOpt(fbo gpu.Texture, t float32, skipUnpainted bool) render.Frame {
 	return render.Frame{
-		ViewW: W, ViewH: H, DevW: W * dpr, DevH: H * dpr, FBO: fbo, Time: t,
+		ViewW: W, ViewH: H, DevW: W * dpr, DevH: H * dpr, Target: fbo, Time: t,
 		SkipUnpainted: skipUnpainted,
 	}
 }
 
-func target() (uint32, func() []byte) {
-	devW, devH := int32(W*dpr), int32(H*dpr)
-	var tex, fbo uint32
-	glx.GenTextures(1, &tex)
-	glx.ActiveTexture(glx.TEXTURE0)
-	glx.BindTexture(glx.TEXTURE_2D, tex)
-	glx.TexImage2D(glx.TEXTURE_2D, 0, glx.RGBA, devW, devH, 0, glx.RGBA, glx.UNSIGNED_BYTE, nil)
-	glx.GenFramebuffers(1, &fbo)
-	glx.BindFramebuffer(glx.FRAMEBUFFER, fbo)
-	glx.FramebufferTexture2D(glx.FRAMEBUFFER, glx.COLOR_ATTACHMENT0, glx.TEXTURE_2D, tex, 0)
-	return fbo, func() []byte {
-		pix := make([]byte, devW*devH*4)
-		glx.BindFramebuffer(glx.FRAMEBUFFER, fbo)
-		glx.ReadPixels(0, 0, devW, devH, glx.RGBA, glx.UNSIGNED_BYTE, glx.Ptr(pix))
+func target() (gpu.Texture, func() []byte) {
+	tex, err := dev.NewTexture(W*dpr, H*dpr, gpu.Nearest)
+	if err != nil {
+		panic(err)
+	}
+	return tex, func() []byte {
+		pix, err := dev.ReadPixels(tex)
+		if err != nil {
+			panic(err)
+		}
 		return pix
 	}
 }
@@ -305,23 +285,16 @@ func compare(got, want []byte) (int, string) {
 			n++
 			if first == "" {
 				px := i / 4
-				first = fmt.Sprintf("(%d,%d)", px%(W*dpr), H*dpr-1-px/(W*dpr))
+				first = fmt.Sprintf("(%d,%d)", px%(W*dpr), px/(W*dpr))
 			}
 		}
 	}
 	return n, first
 }
 
-// -- cost -------------------------------------------------------------------
-
-// two commands each, the ~2600-command tree the build benchmarks use
-// mostly below the viewport like a long scrolled list
 const benchRows = 1300
 
-// two different lists force the whole-frame path (area guard declines),
-// a list and a one-label variant force the damage path. same GL pipeline
-// both ways so the difference is what invalidation saves
-func bench(bg gfx.Color, fbo uint32) error {
+func bench(bg gfx.Color, fbo gpu.Texture) error {
 	u := ui.New()
 	sh := text.NewShaper(text.NewRegistry())
 	u.Measure = func(f gfx.Font, s string) *text.Run { return sh.Shape(f, dpr, s) }
@@ -347,36 +320,36 @@ func bench(bg gfx.Color, fbo uint32) error {
 		u.BuildFrame(dl, W, H)
 		return dl
 	}
-	r, err := render.New()
+	r, err := render.New(dev)
 	if err != nil {
 		return err
 	}
 	a := build()
-	// everything moved, nothing worth scissoring
 	root.Base().Bounds.Y += 3
 	for _, k := range root.Base().Kids {
 		k.Base().Frame.Y += 3
 	}
-	u.Invalidate()
+	u.InvalidateAll()
 	far := build()
 	for _, k := range root.Base().Kids {
 		k.Base().Frame.Y -= 3
 	}
-	u.Invalidate()
+	u.InvalidateAll()
 	a = build()
 	first.Text = "row 0 - PATCHED"
-	first.Invalidate()
+	first.InvalidateWidget()
 	near := build()
 
 	timeIt := func(n int, lists ...*gfx.DisplayList) time.Duration {
 		start := time.Now()
 		for i := 0; i < n; i++ {
 			r.Render(lists[i%len(lists)], bg, frame(fbo, float32(i)))
+			dev.Present()
 		}
 		return time.Since(start) / time.Duration(n)
 	}
 	const n = 300
-	timeIt(20, a, far) // warm
+	timeIt(20, a, far)
 	full := timeIt(n, a, far)
 	timeIt(20, a, near)
 	dmg := timeIt(n, a, near)
@@ -387,12 +360,7 @@ func bench(bg gfx.Color, fbo uint32) error {
 	return nil
 }
 
-// -- presentation ------------------------------------------------------------
-
-// a shell can only skip the swap if an empty-damage frame reports Painted
-// false AND left the destination byte for byte. otherwise a stale or cleared
-// frame hits the screen for a tick
-func presentation(bg gfx.Color, fbo uint32, read func() []byte) error {
+func presentation(bg gfx.Color, fbo gpu.Texture, read func() []byte) error {
 	u := ui.New()
 	sh := text.NewShaper(text.NewRegistry())
 	u.Measure = func(f gfx.Font, s string) *text.Run { return sh.Shape(f, dpr, s) }
@@ -413,19 +381,19 @@ func presentation(bg gfx.Color, fbo uint32, read func() []byte) error {
 		return dl
 	}
 
-	r, err := render.New()
+	r, err := render.New(dev)
 	if err != nil {
 		return err
 	}
-	// nothing retained, everything painted
 	first := r.Render(build(), bg, frame(fbo, 1))
+	dev.Present()
 	if !first.Painted || !first.Full {
 		return fmt.Errorf("first frame reported %+v, want a painted full frame", first)
 	}
 	before := read()
 
-	// same tree
 	quiet := r.Render(build(), bg, frame(fbo, 2))
+	dev.Present()
 	if quiet.Painted || quiet.Rects != 0 {
 		return fmt.Errorf("an unchanged frame reported %+v, want nothing painted", quiet)
 	}
@@ -435,10 +403,10 @@ func presentation(bg gfx.Color, fbo uint32, read func() []byte) error {
 			"show a stale frame", n, first)
 	}
 
-	// a real change still presents or the skip strands the screen
 	label.Text = "still life, moved"
-	label.Invalidate()
+	label.InvalidateWidget()
 	changed := r.Render(build(), bg, frame(fbo, 3))
+	dev.Present()
 	if !changed.Painted || changed.Rects == 0 {
 		return fmt.Errorf("a changed frame reported %+v, want damage painted", changed)
 	}
@@ -446,20 +414,19 @@ func presentation(bg gfx.Color, fbo uint32, read func() []byte) error {
 		return fmt.Errorf("a changed frame left the destination identical")
 	}
 
-	// a swap leaves the destination undefined behind the renderer's back, so
-	// clobber it like a swap would. by default Render must blit, a caller that
-	// always presents needs its pixels there. opted in it must skip, safe only
-	// because that caller doesn't present
 	clobber := func() {
-		glx.BindFramebuffer(glx.FRAMEBUFFER, fbo)
-		glx.Disable(glx.SCISSOR_TEST)
-		glx.ClearColor(1, 0, 1, 1) // magenta, nothing in the scene is this
-		glx.Clear(glx.COLOR_BUFFER_BIT)
+		dev.SetTarget(fbo, W*dpr, H*dpr)
+		dev.SetScissor(nil)
+		dev.Clear(1, 0, 1, 1)
+		dev.Present()
 	}
 	good := read()
 
 	clobber()
-	if res := r.Render(build(), bg, frameOpt(fbo, 4, false)); res.Painted {
+	res := r.Render(build(), bg, frameOpt(fbo, 4, false))
+	dev.Present()
+	dev.Present()
+	if res.Painted {
 		return fmt.Errorf("unchanged frame reported %+v, want nothing painted", res)
 	}
 	if n, at := compare(read(), good); n > 0 {
@@ -469,7 +436,9 @@ func presentation(bg gfx.Color, fbo uint32, read func() []byte) error {
 	}
 
 	clobber()
-	if res := r.Render(build(), bg, frameOpt(fbo, 5, true)); res.Painted {
+	res = r.Render(build(), bg, frameOpt(fbo, 5, true))
+	dev.Present()
+	if res.Painted {
 		return fmt.Errorf("unchanged frame reported %+v, want nothing painted", res)
 	}
 	if n, _ := compare(read(), good); n == 0 {

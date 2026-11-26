@@ -56,7 +56,6 @@ func TestRegisteredFamilyResolvesByWeightAndItalic(t *testing.T) {
 	if want := width(s, gfx.NewFont(14, gfx.FontOpts{Weight: 700}), sample); bold != want {
 		t.Fatalf("weight 700 shaped at %v, the family's bold file (the Go bold face) gives %v", bold, want)
 	}
-	// 600 sits between the files, the nearer range wins
 	if near := width(s, gfx.NewFont(14, gfx.FontOpts{Family: "custom", Weight: 600}), sample); near != bold {
 		t.Fatalf("weight 600 shaped at %v, want the bold file's %v", near, bold)
 	}
@@ -75,7 +74,6 @@ func TestVariableFontShapesAtTheExactWeight(t *testing.T) {
 	if !(w400 < w650 && w650 < w700) {
 		t.Fatalf("widths must grow with weight: 400=%v 650=%v 700=%v", w400, w650, w700)
 	}
-	// outside the axis range clamps to its end instead of failing
 	if at(2000) != at(900) {
 		t.Fatalf("weight 2000 shaped at %v, want the axis maximum's %v", at(2000), at(900))
 	}
@@ -100,7 +98,6 @@ func TestRuneMissingFromTheAppFaceFallsBack(t *testing.T) {
 	reg.Add("var", variableTestFont(t))
 	s := NewShaper(reg)
 	f := gfx.NewFont(14, gfx.FontOpts{Family: "var"})
-	// the test font has Latin but no Greek, the Go face has both
 	run := s.Shape(f, 2, "aα")
 	if len(run.Glyphs) != 2 {
 		t.Fatalf("got %d glyphs, want 2", len(run.Glyphs))
@@ -137,7 +134,6 @@ func TestFallbackFamiliesFillRunesTheDefaultFaceLacks(t *testing.T) {
 	reg.Add("var", variableTestFont(t))
 	s := NewShaper(reg)
 	plain := gfx.NewFont(14, gfx.FontOpts{})
-	// the test font has Arabic, the Go and emoji faces don't
 	if run := s.Shape(plain, 2, "aب"); run.Glyphs[1].GID != 0 {
 		t.Fatal("without a fallback the Arabic letter should be tofu")
 	}
@@ -161,7 +157,7 @@ func TestFontArrivalDropsShapedRunsAndRasterizedGlyphs(t *testing.T) {
 	if g == nil {
 		t.Fatal("no glyph rasterized")
 	}
-	a.Dirty = false
+	a.TakeDirty()
 
 	reg.Add("late", variableTestFont(t))
 	after := s.Shape(f, 2, sample)
@@ -169,7 +165,7 @@ func TestFontArrivalDropsShapedRunsAndRasterizedGlyphs(t *testing.T) {
 		t.Fatal("a cached run survived the font's arrival")
 	}
 	a.Get(after.Glyphs[0].Face, f.Size, 2, after.Glyphs[0].GID, 0)
-	if !a.Dirty {
+	if y0, y1 := a.TakeDirty(); y1 <= y0 {
 		t.Fatal("the atlas kept glyphs rasterized before the font arrived")
 	}
 }

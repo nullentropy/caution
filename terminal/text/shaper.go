@@ -1,12 +1,4 @@
-// Package text is the native terminal's text stack: go-text/typesetting
-// shaping (kerning, ligatures, mark placement) and outline rasterization into
-// a shelf-packed atlas with subpixel phases
-//
-// fonts are embedded or registered by the app, never discovered, so native
-// pixels are deterministic across machines
-//
-// not safe for concurrent use. the terminal renders on one thread and
-// go-text Faces cache internally without locks
+// go-text Faces cache without locks
 package text
 
 import (
@@ -19,19 +11,13 @@ import (
 	"golang.org/x/image/math/fixed"
 )
 
-// positioned relative to the run origin
 type Placed struct {
-	GID font.GID
-	// pen offset, logical px
-	X float32
-	// rune index this glyph maps back to, for caret and selection math
+	GID     font.GID
+	X       float32
 	Cluster int
-	// the face that shaped it, which owns the GID namespace the atlas
-	// rasterizes from
-	Face *font.Face
+	Face    *font.Face
 }
 
-// the CSS tab-size default
 const TabSize = 8
 
 func NextTabStop(x, stop float32) float32 {
@@ -48,12 +34,6 @@ type Run struct {
 	Descent float32
 }
 
-// harfbuzz plus a run cache, mirrors the browser terminal's TextShaper
-//
-// the segmenter splits text into runs of one script and direction (Unicode
-// bidi), each shapes with its own script/language/direction, and runs are
-// laid out in visual order. pure LTR is one run, so the common case is
-// byte-identical to unsegmented shaping
 type Shaper struct {
 	reg *Registry
 	gen int
@@ -64,18 +44,8 @@ type Shaper struct {
 	cache map[string]*Run
 }
 
-// set by emoji.go's init
 var emojiFace *font.Face
 
-// per rune: the first face in the chain that covers it, else the primary
-// face (.notdef, deterministic tofu instead of a system font). default-
-// ignorable runes (ZWJ, variation selectors) never force a face change so
-// emoji sequences stay whole
-//
-// force carries sequence context the per-rune interface can't see. runes
-// followed by a VS16 or combining keycap take the emoji face even when a
-// text face covers them ("1" is a text digit but "1️⃣" must ligate in the
-// emoji face's GSUB)
 type fallbackFontmap struct {
 	chain []*font.Face
 	force map[rune]bool
@@ -95,11 +65,6 @@ func (m fallbackFontmap) ResolveFace(r rune) *font.Face {
 	return m.chain[0]
 }
 
-// runes before U+FE0F (VS16) or U+20E3 (combining enclosing keycap) go to
-// the emoji face, and a keycap reaching back over a VS16 forces the base too
-// the set is per rune VALUE, so a string mixing "1" and "1️⃣" renders both
-// digits from the emoji face, accepted edge. nil when there are no markers
-// (common case, zero cost)
 func emojiForced(runes []rune) map[rune]bool {
 	var m map[rune]bool
 	mark := func(r rune) {
@@ -128,8 +93,6 @@ func NewShaper(reg *Registry) *Shaper {
 
 func fixed2f(v fixed.Int26_6) float32 { return float32(v) / 64 }
 
-// a registry change (font loaded, defaults switched) can resolve every run
-// differently, so both caches start over
 func (s *Shaper) sync() {
 	if s.gen != s.reg.gen {
 		s.gen = s.reg.gen
@@ -164,7 +127,6 @@ func (s *Shaper) Shape(f gfx.Font, dpr float32, textStr string) *Run {
 	runes := []rune(textStr)
 	run := &Run{}
 	if len(runes) == 0 {
-		// metrics still matter for empty runs (caret height in an empty field)
 		if ext, ok := face.FontHExtents(); ok {
 			scale := f.Size * dpr / float32(face.Upem())
 			run.Ascent = ext.Ascender * scale / dpr
@@ -174,9 +136,6 @@ func (s *Shaper) Shape(f gfx.Font, dpr float32, textStr string) *Run {
 		return run
 	}
 
-	// paragraph is LTR since caution UIs are LTR chrome (a per-widget `dir`
-	// prop would flow in here). script and language are seeds the segmenter
-	// overrides per run
 	inputs := s.seg.Split(shaping.Input{
 		Text:      runes,
 		RunStart:  0,
@@ -191,8 +150,6 @@ func (s *Shaper) Shape(f gfx.Font, dpr float32, textStr string) *Run {
 	outs := make([]shaping.Output, len(inputs))
 	total := 0
 	for i := range inputs {
-		// runs share the full Text with RunStart/RunEnd windows, so harfbuzz
-		// sees cross-run context and clusters stay absolute rune offsets
 		outs[i] = s.hb(inputs[i].Face).Shape(inputs[i])
 		total += len(outs[i].Glyphs)
 		a := fixed2f(outs[i].LineBounds.Ascent) / dpr
@@ -211,8 +168,7 @@ func (s *Shaper) Shape(f gfx.Font, dpr float32, textStr string) *Run {
 	for _, li := range visualOrder(inputs, di.DirectionLTR) {
 		for _, g := range outs[li].Glyphs {
 			if runes[g.ClusterIndex] == '\t' {
-				// fonts have no tab glyph and harfbuzz would draw .notdef. the
-				// blank space glyph still carries the cluster for caret math
+				// fonts have no tab glyph and harfbuzz would draw .notdef
 				if space == nil {
 					space = s.Shape(f, dpr, " ")
 				}
@@ -241,14 +197,9 @@ func (s *Shaper) Shape(f gfx.Font, dpr float32, textStr string) *Run {
 	return run
 }
 
-// visual position -> logical run index, two-level bidi like go-text's
-// computeBidiOrdering. base-direction runs anchor (mirrored wholesale for an
-// RTL base) and each maximal opposite-direction sequence reverses in place
-// full L2 reordering needs embedding levels the segmenter doesn't expose,
-// two levels covers mixed text without nested embeddings
 func visualOrder(inputs []shaping.Input, base di.Direction) []int {
 	n := len(inputs)
-	vi := make([]int, n) // logical index -> visual position
+	vi := make([]int, n)
 	for i := range vi {
 		if base.Progression() == di.TowardTopLeft {
 			vi[i] = n - 1 - i
@@ -283,7 +234,5 @@ func visualOrder(inputs []shaping.Input, base di.Direction) []int {
 }
 
 func fmtDPR(dpr float32) string {
-	// DPRs are small round-ish numbers (1, 1.5, 2), coarse quantization is a
-	// fine cache key and avoids fmt.Sprintf on the hot path
 	return string(rune('0' + int(dpr*4)))
 }

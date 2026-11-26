@@ -10,7 +10,6 @@ import (
 	"github.com/nullentropy/caution/terminal/proto"
 )
 
-// off the main thread, a big file would stall the window
 func sendDroppedFiles(sess *proto.Session, paths []string, x, y float64) {
 	go func() {
 		limit := sess.FileDropCap()
@@ -22,7 +21,6 @@ func sendDroppedFiles(sess *proto.Session, paths []string, x, y float64) {
 				log.Printf("caution: dropped %s skipped, not a readable file", p)
 				continue
 			}
-			// check before reading so an over-cap drop costs no memory
 			if total += st.Size(); total > limit {
 				log.Printf("caution: dropped files exceed the server's %d byte cap, skipped", limit)
 				return

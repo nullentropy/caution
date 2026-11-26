@@ -10,8 +10,6 @@ import (
 	"strings"
 )
 
-// no desktop-neutral setting everywhere yet, so GNOME's then KDE's. either
-// missing (another desktop, a bare window manager) reads as full motion
 func systemReducedMotion() bool {
 	if out, err := exec.Command("gsettings", "get", "org.gnome.desktop.interface", "enable-animations").Output(); err == nil {
 		if strings.TrimSpace(string(out)) == "false" {
@@ -21,7 +19,6 @@ func systemReducedMotion() bool {
 	return kdeAnimationsOff()
 }
 
-// [KDE] AnimationDurationFactor=0 in kdeglobals is Plasma's animations-off
 func kdeAnimationsOff() bool {
 	dir := os.Getenv("XDG_CONFIG_HOME")
 	if dir == "" {

@@ -5,7 +5,6 @@ import (
 	"testing"
 )
 
-// fixed advance, 7px per rune
 func meas(s string) float32 { return float32(len([]rune(s))) * 7 }
 
 func TestWrapSingleLineFits(t *testing.T) {
@@ -25,8 +24,6 @@ func TestWrapKeepsTrailingSpacesOnALineThatFits(t *testing.T) {
 }
 
 func TestWrapBreaksAtWordBoundary(t *testing.T) {
-	// 19 runes, 14 fit (98px <= 100). the fitted prefix ends at a word
-	// end so the break happens there
 	got := Wrap(meas, "aaaa aaaa aaaa aaaa", 100)
 	want := []Line{{0, 14}, {15, 19}}
 	if !reflect.DeepEqual(got, want) {
@@ -35,9 +32,7 @@ func TestWrapBreaksAtWordBoundary(t *testing.T) {
 }
 
 func TestWrapEatsBreakSpaces(t *testing.T) {
-	// spaces consumed at a break fall in the gap between lines, so
-	// s[l.Start:l.End] never carries them
-	got := Wrap(meas, "aa   bb", 30) // 4 runes fit (28px)
+	got := Wrap(meas, "aa   bb", 30)
 	want := []Line{{0, 2}, {5, 7}}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("got %v want %v", got, want)
@@ -45,7 +40,7 @@ func TestWrapEatsBreakSpaces(t *testing.T) {
 }
 
 func TestWrapHardBreaksOverlongWord(t *testing.T) {
-	got := Wrap(meas, "aaaaaaaaaaaaaaa", 70) // 15 runes, 10 per line
+	got := Wrap(meas, "aaaaaaaaaaaaaaa", 70)
 	want := []Line{{0, 10}, {10, 15}}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("got %v want %v", got, want)
@@ -61,7 +56,6 @@ func TestWrapHonorsNewlines(t *testing.T) {
 }
 
 func TestWrapTrailingNewlineYieldsEmptyLine(t *testing.T) {
-	// a textarea caret can sit on the empty line after a trailing \n
 	got := Wrap(meas, "ab\n", 100)
 	want := []Line{{0, 2}, {3, 3}}
 	if !reflect.DeepEqual(got, want) {
@@ -78,8 +72,7 @@ func TestWrapEmptyString(t *testing.T) {
 }
 
 func TestWrapMultibyteOffsetsAreBytes(t *testing.T) {
-	// é is 2 bytes, offsets must be byte positions
-	got := Wrap(meas, "éé éé", 30) // 4 runes fit, break at the space
+	got := Wrap(meas, "éé éé", 30)
 	want := []Line{{0, 4}, {5, 9}}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("got %v want %v", got, want)
@@ -87,7 +80,6 @@ func TestWrapMultibyteOffsetsAreBytes(t *testing.T) {
 }
 
 func TestWrapAlwaysAdvances(t *testing.T) {
-	// pathologically narrow, still one rune per line and never an infinite loop
 	got := Wrap(meas, "abc", 1)
 	want := []Line{{0, 1}, {1, 2}, {2, 3}}
 	if !reflect.DeepEqual(got, want) {

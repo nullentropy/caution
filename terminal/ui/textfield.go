@@ -13,40 +13,25 @@ type TextField struct {
 	Core
 	Value       string
 	Placeholder string
-	// overrides radius.control (nil = the token), for pill search boxes and
-	// other chrome-strip shapes
-	Radius *float32
-	// `size`, `mono` and `font` props, size in logical px
-	FontSize  float32
-	Mono      bool
-	Family    string
-	Sensitive bool
-	// mirrors UI focus for local echo: a focused field ignores server value sets
-	Focused bool
+	Radius      *float32
+	FontSize    float32
+	Mono        bool
+	Family      string
+	Sensitive   bool
+	Focused     bool
 
-	// OnInput fires on every edit (the protocol layer debounces), OnCommit on
-	// Enter/blur and only when changed, OnSubmit on every Enter and never on
-	// blur
 	OnInput  func(v string)
 	OnCommit func(v string)
 	OnSubmit func(v string)
-	// set, Tab stays here instead of moving focus
-	OnTab func(shift bool, value string, caret int)
-	// set on a single-line field, plain Up and Down go here (-1 and +1)
-	// instead of moving the caret, for a list the field drives
-	OnNav func(dir int)
+	OnTab    func(shift bool, value string, caret int)
+	OnNav    func(dir int)
 
-	// selEnd is the caret, selStart pins the other end
 	selStart, selEnd int
 	anchor           int
 	scrollX          float32
 	lastCommitted    string
-	// anchors the blink phase: the caret is solid right after it moves, so no
-	// per-field timer
-	lastActivity time.Time
+	lastActivity     time.Time
 
-	// snapshot undo, each entry is the state before a mutating edit
-	// runs of single-rune typing coalesce into one entry
 	undo, redo []tfSnapshot
 	lastTyping time.Time
 }
@@ -60,8 +45,6 @@ const tfUndoCap = 200
 
 const tfBlink = 530 * time.Millisecond
 
-// caret blinks this long after the last edit or move, then holds solid so an
-// idle focused field stops asking for frames. GTK's cursor-blink-timeout default
 const tfBlinkFor = 10 * time.Second
 
 func tfPadX() float32 { return Metrics.SpacePad }
@@ -94,7 +77,6 @@ func (t *TextField) selRange() (int, int) {
 	return t.selEnd, t.selStart
 }
 
-// fires OnCommit only if the value changed since focus or last commit
 func (t *TextField) Commit() {
 	if t.Value == t.lastCommitted {
 		return
@@ -105,7 +87,6 @@ func (t *TextField) Commit() {
 	}
 }
 
-// Enter: a commit if the value changed, then a submit regardless
 func (t *TextField) Submit() {
 	t.Commit()
 	if t.OnSubmit != nil {
@@ -113,22 +94,17 @@ func (t *TextField) Submit() {
 	}
 }
 
-// server-forced clear (`ClearValue`), applies even while focused for
-// submit-and-keep-typing flows
 func (t *TextField) ForceClear() {
 	t.Value = ""
 	t.lastCommitted = ""
 	t.selStart, t.selEnd, t.anchor = 0, 0, 0
 	t.scrollX = 0
-	t.undo, t.redo = nil, nil // a server-forced transition starts fresh history
+	t.undo, t.redo = nil, nil
 	t.lastTyping = time.Time{}
 	t.touch()
-	t.Invalidate()
+	t.InvalidateWidget()
 }
 
-// server-forced value (`SetValueNow`), applies even while focused for
-// validation and formatting. it becomes the new baseline: Escape reverts to it,
-// no commit fires unless the user edits again, history restarts from it
 func (t *TextField) ForceValue(v string) {
 	t.Value = v
 	t.lastCommitted = v
@@ -137,14 +113,14 @@ func (t *TextField) ForceValue(v string) {
 	t.undo, t.redo = nil, nil
 	t.lastTyping = time.Time{}
 	t.touch()
-	t.Invalidate()
+	t.InvalidateWidget()
 }
 
 func (t *TextField) SelectAll() {
 	t.selStart, t.anchor = 0, 0
 	t.selEnd = len([]rune(t.Value))
 	t.touch()
-	t.Invalidate()
+	t.InvalidateWidget()
 }
 
 func (t *TextField) OnFocusChange(focused bool) {
@@ -155,17 +131,13 @@ func (t *TextField) OnFocusChange(focused bool) {
 	} else {
 		t.Commit()
 	}
-	t.Invalidate()
+	t.InvalidateWidget()
 }
 
-// -- editing operations ---------------------------------------------------------
-
-// replaces rune range [s, e) with insert, caret after it
 func (t *TextField) edit(s, e int, insert string) {
 	t.editKind(s, e, insert, false)
 }
 
-// consecutive typing edits share one undo entry
 func (t *TextField) editKind(s, e int, insert string, typing bool) {
 	rs := []rune(t.Value)
 	s = clampInt(s, 0, len(rs))
@@ -182,10 +154,8 @@ func (t *TextField) editKind(s, e int, insert string, typing bool) {
 	if changed && t.OnInput != nil {
 		t.OnInput(next)
 	}
-	t.Invalidate()
+	t.InvalidateWidget()
 }
-
-// -- undo ---------------------------------------------------------------------
 
 func (t *TextField) pushUndo(typing bool) {
 	now := time.Now()
@@ -195,9 +165,9 @@ func (t *TextField) pushUndo(typing bool) {
 	} else {
 		t.lastTyping = time.Time{}
 	}
-	t.redo = nil // a fresh edit invalidates the redo branch
+	t.redo = nil
 	if coalesce {
-		return // the run's first snapshot already holds the pre-typing state
+		return
 	}
 	t.undo = append(t.undo, tfSnapshot{t.Value, t.selStart, t.selEnd})
 	if len(t.undo) > tfUndoCap {
@@ -214,7 +184,7 @@ func (t *TextField) restore(s tfSnapshot) {
 	if changed && t.OnInput != nil {
 		t.OnInput(t.Value)
 	}
-	t.Invalidate()
+	t.InvalidateWidget()
 }
 
 func (t *TextField) undoEdit() {
@@ -237,13 +207,11 @@ func (t *TextField) redoEdit() {
 	t.restore(top)
 }
 
-// escape-to-revert, back to the value at focus (or last commit)
-// returns false on a clean field so Escape bubbles (dialogs, selection clearing)
 func (t *TextField) revert() bool {
 	if t.Value == t.lastCommitted {
 		return false
 	}
-	t.pushUndo(false) // revert itself is undoable
+	t.pushUndo(false)
 	t.Value = t.lastCommitted
 	n := len([]rune(t.Value))
 	t.selStart, t.selEnd, t.anchor = n, n, n
@@ -251,7 +219,7 @@ func (t *TextField) revert() bool {
 	if t.OnInput != nil {
 		t.OnInput(t.Value)
 	}
-	t.Invalidate()
+	t.InvalidateWidget()
 	return true
 }
 
@@ -263,7 +231,7 @@ func (t *TextField) moveCaret(to int, extend bool) {
 		t.selStart, t.selEnd, t.anchor = to, to, to
 	}
 	t.touch()
-	t.Invalidate()
+	t.InvalidateWidget()
 }
 
 func (t *TextField) wordLeft(from int) int {
@@ -307,7 +275,6 @@ func (t *TextField) wordRangeAt(i int) (int, int) {
 	return s, e
 }
 
-// control runes drop, shortcuts arrive via OnKey
 func (t *TextField) OnChar(r rune) bool {
 	if r < 0x20 || r == 0x7f || t.hostEdited() {
 		return false
@@ -320,7 +287,6 @@ func (t *TextField) OnChar(r rune) bool {
 
 func (t *TextField) hostEdited() bool { return t.UI != nil && t.UI.HostText }
 
-// value and rune selection from the host's funnel
 func (t *TextField) SyncFromHost(value string, selStart, selEnd int, typed bool) {
 	n := len([]rune(value))
 	selStart, selEnd = clampInt(selStart, 0, n), clampInt(selEnd, 0, n)
@@ -336,7 +302,7 @@ func (t *TextField) SyncFromHost(value string, selStart, selEnd int, typed bool)
 	if changed && t.OnInput != nil {
 		t.OnInput(value)
 	}
-	t.Invalidate()
+	t.InvalidateWidget()
 }
 
 func (t *TextField) hostKey(k Key) bool {
@@ -366,9 +332,9 @@ func (t *TextField) OnKey(k Key) bool {
 		case s != e:
 			t.edit(s, e, "")
 		case k.Meta:
-			t.edit(0, t.selEnd, "") // Cmd+Backspace deletes to line start
+			t.edit(0, t.selEnd, "")
 		case k.Alt:
-			t.edit(t.wordLeft(t.selEnd), t.selEnd, "") // Alt+Backspace deletes a word
+			t.edit(t.wordLeft(t.selEnd), t.selEnd, "")
 		case t.selEnd > 0:
 			t.edit(t.selEnd-1, t.selEnd, "")
 		}
@@ -388,7 +354,7 @@ func (t *TextField) OnKey(k Key) bool {
 		case k.Alt:
 			to = t.wordLeft(t.selEnd)
 		case s != e && !k.Shift:
-			to = s // a plain arrow collapses the selection to its edge
+			to = s
 		}
 		t.moveCaret(to, k.Shift)
 		return true
@@ -443,7 +409,7 @@ func (t *TextField) OnKey(k Key) bool {
 			return true
 		}
 	case "Escape":
-		return t.revert() // clean field: let Escape bubble (dialogs, selection)
+		return t.revert()
 	}
 	return false
 }
@@ -468,7 +434,6 @@ func (t *TextField) paste() {
 		}
 		return
 	}
-	// single line: newlines flatten to spaces, other control runes drop
 	clip := strings.Map(func(r rune) rune {
 		switch {
 		case r == '\n' || r == '\t':
@@ -485,10 +450,6 @@ func (t *TextField) paste() {
 	t.edit(s, e, clip)
 }
 
-// -- geometry ---------------------------------------------------------------------
-
-// x offset of every rune boundary from the run origin, via shaping clusters
-// (runes swallowed into a cluster sit at its start)
 func runeBoundaryXs(run *text.Run, runeCount int) []float32 {
 	xs := make([]float32, runeCount+1)
 	seen := make([]bool, runeCount+1)
@@ -516,7 +477,6 @@ func (t *TextField) xAt(xs []float32, i int) float32 {
 	return xs[clampInt(i, 0, len(xs)-1)]
 }
 
-// nearest rune boundary to an x offset from the text origin
 func (t *TextField) runeAtX(xs []float32, x float32) int {
 	best, bestD := 0, float32(1e30)
 	for i, bx := range xs {
@@ -526,8 +486,6 @@ func (t *TextField) runeAtX(xs []float32, x float32) int {
 	}
 	return best
 }
-
-// -- painting -----------------------------------------------------------------------
 
 func (t *TextField) displayValue() string {
 	if t.Sensitive {
@@ -558,7 +516,6 @@ func (t *TextField) PaintSelf(dl *gfx.DisplayList) {
 	textH := run.Ascent + run.Descent
 	textY := b.Y + (b.H-textH)/2
 
-	// slide the text to keep the caret in the viewport
 	if t.Focused {
 		caretX := t.xAt(xs, t.selEnd)
 		if caretX-t.scrollX > innerW {
@@ -598,7 +555,6 @@ func (t *TextField) blinkOn() bool {
 	return since >= tfBlinkFor || (since/tfBlink)%2 == 0
 }
 
-// how long until the caret phase next flips
 func (t *TextField) blinkTick() time.Duration {
 	if t.UI.windowInactive {
 		return 0
@@ -610,8 +566,6 @@ func (t *TextField) blinkTick() time.Duration {
 	return min(tfBlink-since%tfBlink, tfBlinkFor-since)
 }
 
-// -- mouse --------------------------------------------------------------------------
-
 func (t *TextField) OnPointerDown(x, _ float32, detail int) {
 	xs := t.boundaryXs()
 	i := t.runeAtX(xs, x-(t.Bounds.X+tfPadX())+t.scrollX)
@@ -622,11 +576,11 @@ func (t *TextField) OnPointerDown(x, _ float32, detail int) {
 		s, e := t.wordRangeAt(min(i, max(0, len([]rune(t.Value))-1)))
 		t.selStart, t.selEnd, t.anchor = s, e, s
 		t.touch()
-		t.Invalidate()
+		t.InvalidateWidget()
 	default:
 		t.selStart, t.selEnd, t.anchor = i, i, i
 		t.touch()
-		t.Invalidate()
+		t.InvalidateWidget()
 	}
 }
 
@@ -636,7 +590,7 @@ func (t *TextField) OnPointerDrag(x, _ float32) {
 	if t.selStart != t.anchor || t.selEnd != i {
 		t.selStart, t.selEnd = t.anchor, i
 		t.touch()
-		t.Invalidate()
+		t.InvalidateWidget()
 	}
 }
 

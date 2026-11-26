@@ -6,9 +6,6 @@ import (
 	"github.com/nullentropy/caution/terminal/gfx"
 )
 
-// retained lists record resolved numbers, so the frame after a metrics change
-// must splice nothing. a reused subtree would carry the old radii while every
-// widget reads the new table
 func TestMetricsPatchRebuildsTheWholeFrame(t *testing.T) {
 	defer func() { Metrics = defaultMetrics() }()
 	u := fakeUi()
@@ -34,8 +31,6 @@ func TestMetricsPatchRebuildsTheWholeFrame(t *testing.T) {
 	if u.Reused() != 0 {
 		t.Fatalf("frame after a metrics patch spliced %d retained commands - they carry the old radii", u.Reused())
 	}
-	// the rebuild must resolve the new table: the button's rect (the only rounded
-	// command here) re-records square
 	var rounded, square int
 	for i := range third.Cmds {
 		c := &third.Cmds[i]
@@ -53,15 +48,11 @@ func TestMetricsPatchRebuildsTheWholeFrame(t *testing.T) {
 	}
 }
 
-// layout half: metric tokens change measurement, so a patch must move real
-// geometry on the very next frame. memoized intrinsics recompute on the epoch
-// bump, the menubar slot re-reserves, a table's scroll extent follows its rows,
-// and a per-node rowHeight prop keeps overriding the token
 func TestMetricsChangeRelayouts(t *testing.T) {
 	defer func() { Metrics = defaultMetrics() }()
 	u := fakeUi()
 	root := NewPanel()
-	btn := NewButton("Go") // 2 runes x 7px fake advance = 14px of label
+	btn := NewButton("Go")
 	root.Add(btn)
 	table := NewTableView()
 	table.RowCount = 100
@@ -69,7 +60,7 @@ func TestMetricsChangeRelayouts(t *testing.T) {
 	root.Add(table)
 	fixed := NewTableView()
 	fixed.RowCount = 100
-	fixed.RowHeight = 40 // explicit prop: the token must not touch it
+	fixed.RowHeight = 40
 	fixed.Frame = &gfx.Rect{X: 0, Y: 260, W: 300, H: 100}
 	root.Add(fixed)
 	u.Root = root
@@ -106,9 +97,6 @@ func TestMetricsChangeRelayouts(t *testing.T) {
 	}
 }
 
-// size memos (a button's intrinsic size, a label's fit) key on MeasureEpoch,
-// and a patch that left the epoch alone would leave stale sizes behind a
-// rebuilt frame
 func TestApplyMetricsBumpsMeasureEpoch(t *testing.T) {
 	defer func() { Metrics = defaultMetrics() }()
 	u := fakeUi()
@@ -119,7 +107,6 @@ func TestApplyMetricsBumpsMeasureEpoch(t *testing.T) {
 	}
 }
 
-// a newer server against an older terminal degrades to the terminal's defaults
 func TestApplyMetricTokensIgnoresUnknownNames(t *testing.T) {
 	defer func() { Metrics = defaultMetrics() }()
 	applyMetricTokens(map[string]float64{"radius.control": 3, "no.such.token": 99})
@@ -133,24 +120,18 @@ func TestApplyMetricTokensIgnoresUnknownNames(t *testing.T) {
 
 func TestCheckboxRadiusKeepsTheMarkSquare(t *testing.T) {
 	defer func() { Metrics = defaultMetrics() }()
-	// the default pair (18, 6) sits at the size/3 cap, so the stock look is unchanged
 	if got := Metrics.CheckboxRadius(); got != Metrics.RadiusControl {
 		t.Fatalf("default checkbox radius = %g; want radius.control %g", got, Metrics.RadiusControl)
 	}
-	// a smaller box keeps the default's proportion instead of growing rounder:
-	// 6px of radius on a 14px box is 43% round and reads as a radio
 	applyMetricTokens(map[string]float64{"checkbox.size": 14})
 	want := float32(14) / 3
 	if got := Metrics.CheckboxRadius(); got != want {
 		t.Fatalf("checkbox radius at size 14 = %g; want %g", got, want)
 	}
-	// squarer themes pass through, the cap never rounds a corner up
 	applyMetricTokens(map[string]float64{"radius.control": 0})
 	if got := Metrics.CheckboxRadius(); got != 0 {
 		t.Fatalf("checkbox radius under a square theme = %g; want 0", got)
 	}
-	// and the painter uses it: the 14px box paints the capped radii both unchecked
-	// (bordered) and checked (filled)
 	applyMetricTokens(map[string]float64{"radius.control": 6})
 	u := fakeUi()
 	c := NewCheckbox("x")

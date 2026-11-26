@@ -10,10 +10,6 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-// these drive the full wire path (real HTTP server, real WebSocket, the
-// session goroutine) because the behaviors under test are races between
-// messages in flight, and shortcuts would test a different program
-
 type testClient struct {
 	t   *testing.T
 	c   *websocket.Conn
@@ -38,7 +34,6 @@ func dialSessionOpts(t *testing.T, mount MountFunc, opts Options) *testClient {
 	return &testClient{t: t, c: c, url: url}
 }
 
-// same server, the sid the mount handed out, and the last seq applied
 func (tc *testClient) redial(sid string, seq int) {
 	tc.t.Helper()
 	_ = tc.c.Close()
@@ -84,7 +79,6 @@ func seqOf(t *testing.T, m map[string]any) int {
 	return int(f)
 }
 
-// root's child ids from a mount message, the way a real client learns them
 func kidIDs(t *testing.T, m map[string]any) []int {
 	t.Helper()
 	root, ok := m["root"].(map[string]any)
@@ -133,8 +127,6 @@ func TestClickDelivers(t *testing.T) {
 	expectFire(t, fired, "go")
 }
 
-// a click races the patch that removes its target: the event names an id
-// the server no longer knows and must dissolve without side effects
 func TestClickRacingARemoveIsDropped(t *testing.T) {
 	fired := make(chan string, 8)
 	sessCh := make(chan *Session, 1)
@@ -154,10 +146,6 @@ func TestClickRacingARemoveIsDropped(t *testing.T) {
 	sess.Update(func() { doomed.Remove(); close(done) })
 	<-done
 
-	// the client hasn't applied the remove patch yet, it clicks the doomed
-	// button then (after applying) the safe one. same socket so the server
-	// processes them in order: if safe fires and doomed never did, the stale
-	// click was dropped
 	tc.event(ids[0], "click", mountSeq)
 	patch := tc.read()
 	tc.event(ids[1], "click", seqOf(t, patch))
@@ -165,8 +153,6 @@ func TestClickRacingARemoveIsDropped(t *testing.T) {
 	expectQuiet(t, fired)
 }
 
-// a resume whose last-applied seq still matches gets a bare ack, the
-// client's world is intact so no remount. events keep flowing after
 func TestResumeUnchangedAcksWithoutRemount(t *testing.T) {
 	fired := make(chan string, 8)
 	mount := func(s *Session) *Node {
@@ -186,13 +172,10 @@ func TestResumeUnchangedAcksWithoutRemount(t *testing.T) {
 	if seqOf(t, ack) != seq {
 		t.Fatalf("ack seq = %d; want %d", seqOf(t, ack), seq)
 	}
-	// the kept tree still works, click the button we never re-learned about
 	tc.event(id, "click", seq)
 	expectFire(t, fired, "go")
 }
 
-// a resume after server-side changes remounts, including changes whose
-// patches were dropped while no client was connected
 func TestResumeAfterChangesRemounts(t *testing.T) {
 	sessCh := make(chan *Session, 1)
 	var lbl *Node
@@ -207,8 +190,6 @@ func TestResumeAfterChangesRemounts(t *testing.T) {
 	seq := seqOf(t, m)
 	sess := <-sessCh
 
-	// mutate while away (the client closes first so the patch is dropped
-	// server-side, and it still counts toward the seq)
 	_ = tc.c.Close()
 	done := make(chan struct{})
 	sess.Update(func() { lbl.SetText("b"); close(done) })
@@ -224,8 +205,6 @@ func TestResumeAfterChangesRemounts(t *testing.T) {
 	}
 }
 
-// keyed row-select carries {row, key}: the key is the selection identity
-// (echoed into selectedKey), row is where it sat at click time
 func TestKeyedRowSelect(t *testing.T) {
 	got := make(chan string, 8)
 	var table *Node
@@ -245,8 +224,6 @@ func TestKeyedRowSelect(t *testing.T) {
 		t.Fatal(err)
 	}
 	expectFire(t, got, "E00015@14")
-	// the echo is silent server state, prop reads happen on the session
-	// goroutine like any tree access
 	done := make(chan string, 1)
 	table.sess.Update(func() {
 		k, _ := table.Prop("selectedKey").(string)
@@ -257,9 +234,6 @@ func TestKeyedRowSelect(t *testing.T) {
 	}
 }
 
-// a click races a SetRoot remount: the id space resets so the stale click
-// arrives wearing an id that now belongs to another widget. the birth-seq
-// guard must drop it, the same click re-fired against the new tree delivers
 func TestClickRacingARemountIsDropped(t *testing.T) {
 	fired := make(chan string, 8)
 	sessCh := make(chan *Session, 1)
@@ -287,8 +261,8 @@ func TestClickRacingARemountIsDropped(t *testing.T) {
 		t.Fatalf("test premise broken: expected the remount to recycle id %d, got %d", oldID, newID)
 	}
 
-	tc.event(newID, "click", oldSeq) // fired against the old tree, must drop
-	tc.event(newID, "click", newSeq) // fired against the new tree, must land
+	tc.event(newID, "click", oldSeq)
+	tc.event(newID, "click", newSeq)
 	expectFire(t, fired, "delete")
 	expectQuiet(t, fired)
 }
@@ -335,14 +309,13 @@ func TestTreeToggleRoundTrip(t *testing.T) {
 	treeID := kidIDs(t, m)[0]
 	seq := seqOf(t, m)
 
-	// the client reports its window, then toggles "a" open
 	if err := tc.c.WriteJSON(map[string]any{
 		"t": "ev", "id": treeID, "ev": "visible-range",
 		"value": map[string]any{"start": 0, "end": 9}, "seq": seq,
 	}); err != nil {
 		t.Fatal(err)
 	}
-	rowsMsg := tc.read() // rows for the collapsed view
+	rowsMsg := tc.read()
 	if err := tc.c.WriteJSON(map[string]any{
 		"t": "ev", "id": treeID, "ev": "toggle",
 		"value": map[string]any{"row": 0, "key": "a"}, "seq": seqOf(t, rowsMsg),
@@ -350,7 +323,6 @@ func TestTreeToggleRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// expansion answers with rowCount 3 and a reset rows op carrying meta
 	patch := tc.read()
 	ops, _ := patch["ops"].([]any)
 	var sawCount, sawRows bool
@@ -385,7 +357,7 @@ func TestCellActivateRoundTrip(t *testing.T) {
 	tc := dialSession(t, func(s *Session) *Node {
 		table := Table([]Col{
 			{Key: "name", Weight: 1},
-			{Key: "ok", Kind: "checkbox", Width: 60},
+			{Key: "ok", Kind: ColCheckbox, Width: 60},
 		}, 3).OnCellActivate(func(row int, _, col, value string) {
 			got <- fmt.Sprintf("%d/%s/%s", row, col, value)
 		})
@@ -403,7 +375,7 @@ func TestCellActivateRoundTrip(t *testing.T) {
 
 func TestPreloadRidesMount(t *testing.T) {
 	tc := dialSession(t, func(s *Session) *Node {
-		s.Preload("/warm.png", "/hot.png") // pre-mount: must ride the mount message
+		s.Preload("/warm.png", "/hot.png")
 		return Panel()
 	})
 	m := tc.read()
@@ -422,7 +394,7 @@ func TestPreloadRidesMount(t *testing.T) {
 
 func TestMetricsRideMount(t *testing.T) {
 	tc := dialSession(t, func(s *Session) *Node {
-		s.SetMetrics(map[string]float64{"radius.control": 0, "row.height": 24}) // pre-mount
+		s.SetMetrics(map[string]float64{"radius.control": 0, "row.height": 24})
 		return Panel()
 	})
 	m := tc.read()
@@ -439,8 +411,6 @@ func TestMetricsRideMount(t *testing.T) {
 }
 
 func TestGlassPickRoundTrip(t *testing.T) {
-	// glass reports {x, y, target}, the SDK resolves target through the node
-	// table so the app gets the live *Node
 	got := make(chan string, 2)
 	var inner *Node
 	tc := dialSession(t, func(s *Session) *Node {
@@ -521,7 +491,7 @@ func TestAuxWithoutAHandlerIsDropped(t *testing.T) {
 	seq := seqOf(t, m)
 	tc.eventValue(0, "aux", 4, seq)
 	expectQuiet(t, fired)
-	tc.event(kidIDs(t, m)[0], "click", seq) // still alive
+	tc.event(kidIDs(t, m)[0], "click", seq)
 	expectFire(t, fired, "go")
 }
 
@@ -582,7 +552,7 @@ func TestPlayIsAnOpAfterMountAndDroppedBefore(t *testing.T) {
 	var sess *Session
 	tc := dialSession(t, func(s *Session) *Node {
 		sess = s
-		s.Play("/too-early.wav") // no client yet
+		s.Play("/too-early.wav")
 		return Panel().Kids(Label("x"))
 	})
 	m := tc.read()
@@ -750,7 +720,6 @@ func TestTabHandlerKeepsOrReleasesTheKey(t *testing.T) {
 	if got := <-calls; got != (call{false, "ab", 1}) {
 		t.Fatalf("handler got %+v", got)
 	}
-	// a kept key queues nothing, so the next message is the one after release
 	keep = false
 	ev["shift"] = true
 	tc.eventValue(id, "tab", ev, seq)

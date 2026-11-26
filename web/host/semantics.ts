@@ -55,7 +55,6 @@ export class SemanticsMirror {
     document.body.appendChild(this.host);
   }
 
-  // coalesce updates because assistive tech doesn't need 60fps
   schedule(): void {
     if (this.timer != null) return;
     this.timer = setTimeout(() => {
@@ -76,11 +75,8 @@ export class SemanticsMirror {
     for (const n of nodes) {
       const el = this.ensure(n);
       live.add(el);
-      // the funnel textarea keeps DOM focus while a text editor is focused
       if (n.focused && n.role !== 'textbox' && !this.funnelActive()) focus = el;
     }
-    // prune elements whose widgets left the tree. new elements were appended
-    // in walk order so existing ones stay put and DOM focus survives
     for (const child of Array.from(this.host.children)) {
       if (!live.has(child)) {
         child.remove();

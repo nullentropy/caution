@@ -2,14 +2,11 @@ package ui
 
 import "github.com/nullentropy/caution/terminal/gfx"
 
-// column track: fixed px, content (max natural width of its cells), or fill
-// (shares leftover space by weight). Align places the child in the column,
-// 'start' by default, 'stretch' takes the full cell width
 type GridTrack struct {
-	Kind   string // "fixed" | "content" | "fill"
+	Kind   SizeKind
 	Px     float32
 	Weight float32
-	Align  string // "start" | "center" | "end" | "stretch"
+	Align  Align
 }
 
 type gridPlaced struct {
@@ -18,10 +15,6 @@ type gridPlaced struct {
 	span     int
 }
 
-// NSGridView style rows x columns for forms and inspectors. children flow
-// row-major, GridSpan spans columns. rows size to their tallest cell and
-// children center vertically, so the classic form layout (right-aligned
-// caption column, control column) needs no manual offsets
 type Grid struct {
 	Core
 	Columns []GridTrack
@@ -62,11 +55,10 @@ func (g *Grid) LayoutChildren() {
 	placed := g.place()
 	widths := g.contentWidths(placed)
 
-	// fill columns share whatever fixed/content columns leave
 	used := g.ColGap * float32(n-1)
 	var weightSum float32
 	for i, t := range g.Columns {
-		if t.Kind == "fill" {
+		if t.Kind == SizeFill {
 			weightSum += weightOr1(t.Weight)
 		} else {
 			used += widths[i]
@@ -74,7 +66,7 @@ func (g *Grid) LayoutChildren() {
 	}
 	free := max(0, g.Bounds.W-used)
 	for i, t := range g.Columns {
-		if t.Kind == "fill" {
+		if t.Kind == SizeFill {
 			ws := weightSum
 			if ws == 0 {
 				ws = 1
@@ -104,7 +96,6 @@ func (g *Grid) LayoutChildren() {
 		cellX := g.Bounds.X + xs[p.col]
 		rowY := g.Bounds.Y + ys[p.row]
 		rowH := rows[p.row]
-		// spanning cells always stretch across their columns (merged-cell rule)
 		align := g.Columns[p.col].Align
 		if align == "" {
 			align = "start"
@@ -119,9 +110,9 @@ func (g *Grid) LayoutChildren() {
 		}
 		x := cellX
 		switch align {
-		case "center":
+		case AlignCenter:
 			x += (cellW - w) / 2
-		case "end":
+		case AlignEnd:
 			x += cellW - w
 		}
 		p.child.Base().Bounds = gfx.R(x, rowY+(rowH-sz.H)/2, w, sz.H)
@@ -129,7 +120,6 @@ func (g *Grid) LayoutChildren() {
 	}
 }
 
-// row-major flow with span-aware wrapping
 func (g *Grid) place() []gridPlaced {
 	n := len(g.Columns)
 	out := make([]gridPlaced, 0, len(g.Kids))
@@ -159,7 +149,7 @@ func (g *Grid) place() []gridPlaced {
 func (g *Grid) contentWidths(placed []gridPlaced) []float32 {
 	widths := make([]float32, len(g.Columns))
 	for i, t := range g.Columns {
-		if t.Kind == "fixed" {
+		if t.Kind == SizeFixed {
 			widths[i] = t.Px
 			continue
 		}

@@ -1,8 +1,3 @@
-// Package dev bundles the page script fresh per request from TypeScript
-// source via esbuild's Go API, around the embedded terminal wasm (rebuild
-// that with cmd/bundle)
-// separate package so only in-repo tools link esbuild, apps call
-// caution.ServeClient and get the embedded artifacts with no bundler
 package dev
 
 import (
@@ -15,13 +10,6 @@ import (
 	"github.com/nullentropy/caution"
 )
 
-// registers / and /app.js, rebuilt per request (single-digit ms here, so a
-// reload always reflects source changes)
-//
-// entry is the path to web/terminal.ts, "" locates it. a path that doesn't
-// exist from the cwd falls back to the enclosing checkout (see SourceRoot)
-// so in-repo tools run from any directory. failure is reported at startup,
-// not as a per-request 500 with a blank window
 func ServeClient(entry string) {
 	resolved, err := resolveEntry(entry)
 	if err != nil {
@@ -31,7 +19,7 @@ func ServeClient(entry string) {
 		log.Printf("caution dev: bundling %s", resolved)
 	}
 	caution.ServeHostPage()
-	caution.ServeWasm() // the embedded terminal, refresh via cmd/bundle
+	caution.ServeWasm()
 	http.HandleFunc("/app.js", func(w http.ResponseWriter, _ *http.Request) {
 		if resolved == "" {
 			http.Error(w, "caution dev: no caution checkout found - cannot bundle the client from source", http.StatusInternalServerError)

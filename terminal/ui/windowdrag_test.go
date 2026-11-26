@@ -6,14 +6,12 @@ import (
 	"github.com/nullentropy/caution/terminal/gfx"
 )
 
-// a press in a marked region moves the window only when nothing interactive
-// claims it (titlebar buttons keep working), and overlays suspend dragging
 func TestWindowDragRouting(t *testing.T) {
 	u := fakeUi()
 	root := NewPanel()
 	root.Bounds = gfx.R(0, 0, 400, 300)
 
-	bar := NewPanel() // the app's own titlebar
+	bar := NewPanel()
 	bar.Bounds = gfx.R(0, 0, 400, 40)
 	bar.WindowDrag = true
 	title := NewLabel("my app", gfx.NewFont(13, gfx.FontOpts{}), nil)
@@ -42,7 +40,7 @@ func TestWindowDragRouting(t *testing.T) {
 	if u.WindowDragAt(200, 150) {
 		t.Fatal("press outside any marked region must not drag")
 	}
-	u.Overlay = NewPanel() // an open menu suspends window dragging
+	u.Overlay = NewPanel()
 	if u.WindowDragAt(20, 20) {
 		t.Fatal("an open overlay must suspend window dragging")
 	}

@@ -1,8 +1,5 @@
-// Package gfx is the terminal's drawing vocabulary: logical-pixel geometry,
-// straight-alpha colors, fonts and the retained display list
 package gfx
 
-// logical pixels
 type Rect struct {
 	X, Y, W, H float32
 }
@@ -23,7 +20,6 @@ func Inset(r Rect, d float32) Rect {
 
 func Inflate(r Rect, d float32) Rect { return Inset(r, -d) }
 
-// shared interior area, edge-touching rects don't overlap
 func Overlaps(a, b Rect) bool {
 	return a.X < b.X+b.W && b.X < a.X+a.W && a.Y < b.Y+b.H && b.Y < a.Y+a.H
 }
@@ -36,10 +32,8 @@ func Union(a, b Rect) Rect {
 	return Rect{x, y, right - x, bottom - y}
 }
 
-// big enough for any viewport, small enough for f32
 var NoClip = Rect{-1e6, -1e6, 2e6, 2e6}
 
-// clockwise from top-left
 type Corners struct {
 	TL, TR, BR, BL float32
 }

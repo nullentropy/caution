@@ -7,11 +7,19 @@ import (
 	"github.com/nullentropy/caution/terminal/gfx"
 )
 
-// what assistive technology hears, nil means decorative. a shell with a DOM
-// (the browser terminal) mirrors these into hidden elements screen readers can
-// read and activate
+type Role string
+
+const (
+	RoleText     Role = "text"
+	RoleButton   Role = "button"
+	RoleCheckbox Role = "checkbox"
+	RoleTextbox  Role = "textbox"
+	RoleGrid     Role = "grid"
+	RoleImage    Role = "image"
+)
+
 type Semantic struct {
-	Role     string // text, button, checkbox, textbox, grid, image
+	Role     Role
 	Label    string
 	Checked  bool
 	Value    string
@@ -26,8 +34,6 @@ type SemanticRow struct {
 	Bounds   gfx.Rect
 }
 
-// IDs are stable per widget for its lifetime, so the shell keeps DOM focus on
-// the same element across updates
 type SemanticNode struct {
 	ID      int
 	Widget  Widget
@@ -36,7 +42,6 @@ type SemanticNode struct {
 	Semantic
 }
 
-// flattens the tree's meaning in paint order
 func (u *UI) Semantics() []SemanticNode {
 	var out []SemanticNode
 	var walk func(w Widget)
@@ -61,7 +66,6 @@ func (u *UI) Semantics() []SemanticNode {
 	return out
 }
 
-// assistive technology pressing a widget, or one row of a grid when row >= 0
 func (u *UI) Activate(w Widget, row int) {
 	u.setFocus(w, false)
 	if t, ok := w.(*TableView); ok && row >= 0 {
@@ -75,15 +79,15 @@ func (l *Label) Semantics() *Semantic {
 	if l.Text == "" {
 		return nil
 	}
-	return &Semantic{Role: "text", Label: l.Text}
+	return &Semantic{Role: RoleText, Label: l.Text}
 }
 
 func (b *Button) Semantics() *Semantic {
-	return &Semantic{Role: "button", Label: b.Label}
+	return &Semantic{Role: RoleButton, Label: b.Label}
 }
 
 func (c *Checkbox) Semantics() *Semantic {
-	return &Semantic{Role: "checkbox", Label: c.Label, Checked: c.Checked}
+	return &Semantic{Role: RoleCheckbox, Label: c.Label, Checked: c.Checked}
 }
 
 func (t *TextField) Semantics() *Semantic {
@@ -95,7 +99,7 @@ func (a *TextArea) Semantics() *Semantic {
 }
 
 func (t *TextField) textboxSemantics(fallback string) *Semantic {
-	s := &Semantic{Role: "textbox", Label: t.Placeholder}
+	s := &Semantic{Role: RoleTextbox, Label: t.Placeholder}
 	if s.Label == "" {
 		s.Label = fallback
 	}
@@ -109,15 +113,15 @@ func (v *ImageView) Semantics() *Semantic {
 	if v.Alt == "" {
 		return nil
 	}
-	return &Semantic{Role: "image", Label: v.Alt}
+	return &Semantic{Role: RoleImage, Label: v.Alt}
 }
 
 func (p *Progress) Semantics() *Semantic {
-	return &Semantic{Role: "text", Label: fmt.Sprintf("progress: %d%%", int(p.Value*100+0.5))}
+	return &Semantic{Role: RoleText, Label: fmt.Sprintf("progress: %d%%", int(p.Value*100+0.5))}
 }
 
 func (s *Slider) Semantics() *Semantic {
-	return &Semantic{Role: "text", Label: fmt.Sprintf("slider: %g", s.Value)}
+	return &Semantic{Role: RoleText, Label: fmt.Sprintf("slider: %g", s.Value)}
 }
 
 func (r *RadioGroup) Semantics() *Semantic {
@@ -125,7 +129,7 @@ func (r *RadioGroup) Semantics() *Semantic {
 	if r.Selected >= 0 && r.Selected < len(r.Options) {
 		label = r.Options[r.Selected]
 	}
-	return &Semantic{Role: "text", Label: "radio group: " + label}
+	return &Semantic{Role: RoleText, Label: "radio group: " + label}
 }
 
 func (t *Tabs) Semantics() *Semantic {
@@ -133,7 +137,7 @@ func (t *Tabs) Semantics() *Semantic {
 	if t.Selected >= 0 && t.Selected < len(t.Options) {
 		label = t.Options[t.Selected]
 	}
-	return &Semantic{Role: "text", Label: "tabs: " + label}
+	return &Semantic{Role: RoleText, Label: "tabs: " + label}
 }
 
 func (t *TableView) Semantics() *Semantic {
@@ -161,7 +165,7 @@ func (t *TableView) Semantics() *Semantic {
 		titles[i] = c.Title
 	}
 	return &Semantic{
-		Role:     "grid",
+		Role:     RoleGrid,
 		Label:    fmt.Sprintf("table (%s), %d rows", strings.Join(titles, ", "), t.RowCount),
 		RowCount: t.RowCount,
 		Rows:     rows,

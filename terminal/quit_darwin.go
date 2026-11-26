@@ -16,5 +16,4 @@ func cautionQuitAllowed(sender *C.char) C.int {
 	return 0
 }
 
-// main thread, after the first window so AppKit's own handler is in place
 func installQuitFilter() { C.caution_filter_quit() }

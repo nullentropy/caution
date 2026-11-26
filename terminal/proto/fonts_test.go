@@ -12,8 +12,6 @@ import (
 	"github.com/nullentropy/caution/wire"
 )
 
-// a session wired like a shell's: a registry, a shaper measuring through it,
-// and a fetch that serves the test font for /fonts/var.ttf
 func fontSession(t *testing.T) (*Session, *ui.UI, *text.Shaper) {
 	t.Helper()
 	data, err := os.ReadFile("../text/testdata/Estedad-VF.ttf")
@@ -39,7 +37,6 @@ func fontSession(t *testing.T) (*Session, *ui.UI, *text.Shaper) {
 	return s, u, sh
 }
 
-// drains the queue until cond holds or the deadline passes
 func pumpUntil(t *testing.T, s *Session, cond func() bool) {
 	t.Helper()
 	deadline := time.Now().Add(5 * time.Second)
@@ -114,7 +111,6 @@ func TestLateFontChangesMeasuredWidths(t *testing.T) {
 		t.Fatal("the label still measures with the fallback face after its font arrived")
 	}
 
-	// the same src again is a no-op, nothing refetches and nothing remeasures
 	epoch = u.MeasureEpoch()
 	s.applyOp(&patchOp{Op: wire.OpResource, Fonts: []fontSpec{{Family: "Body", Srcs: []string{"/fonts/var.ttf"}}}})
 	if s.fontsLoading != 0 {

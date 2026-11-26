@@ -1,19 +1,3 @@
-// caution term: the native terminal as a standalone binary.
-//
-//	go run ./cmd/term                                  # ws://localhost:8787/ws
-//	go run ./cmd/term -url ws://localhost:8788/ws      # the Clojure demo
-//	go run ./cmd/term -url unix:/tmp/caution.sock      # no TCP port
-//	go run ./cmd/term -scene                           # built-in renderer scene
-//
-// headless, offscreen FBO to PNG:
-//
-//	go run ./cmd/term -shot out.png -settle 2000 -clicks "120,424@700"
-//
-// OpenGL 4.1 by default. -tags angle goes through ANGLE's Metal backend (ES 3)
-// CAUTION_ANGLE points at a dir with libEGL.dylib/libGLESv2.dylib, otherwise
-// it borrows the newest Chrome's copy:
-//
-//	go build -tags angle ./cmd/term
 package main
 
 import (
@@ -43,9 +27,6 @@ func main() {
 	cpuprofile := flag.String("cpuprofile", "", "write a pprof CPU profile here (profiles the whole run; pair with -shot -settle N)")
 	flag.Parse()
 
-	// not deferred, log.Fatal below skips defers and an unstopped profile is
-	// written as zero bytes. a teardown panic would too, terminal.wakeGate
-	// prevents that
 	stopProfile := func() {}
 	if *cpuprofile != "" {
 		f, err := os.Create(*cpuprofile)

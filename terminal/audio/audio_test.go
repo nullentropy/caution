@@ -14,8 +14,6 @@ import (
 	"time"
 )
 
-// RIFF/WAVE around raw sample bytes. extensible wraps the format in a
-// WAVE_FORMAT_EXTENSIBLE header the way pro tools export
 func wav(format, channels, rate, bits int, pcm []byte, extensible bool) []byte {
 	var fmtChunk bytes.Buffer
 	tag := format
@@ -29,18 +27,16 @@ func wav(format, channels, rate, bits int, pcm []byte, extensible bool) []byte {
 	binary.Write(&fmtChunk, binary.LittleEndian, uint16(channels*bits/8))
 	binary.Write(&fmtChunk, binary.LittleEndian, uint16(bits))
 	if extensible {
-		binary.Write(&fmtChunk, binary.LittleEndian, uint16(22)) // cbSize
+		binary.Write(&fmtChunk, binary.LittleEndian, uint16(22))
 		binary.Write(&fmtChunk, binary.LittleEndian, uint16(bits))
-		binary.Write(&fmtChunk, binary.LittleEndian, uint32(0)) // channel mask
+		binary.Write(&fmtChunk, binary.LittleEndian, uint32(0))
 		binary.Write(&fmtChunk, binary.LittleEndian, uint16(format))
-		fmtChunk.Write(make([]byte, 14)) // rest of the GUID
+		fmtChunk.Write(make([]byte, 14))
 	}
 	var out bytes.Buffer
 	out.WriteString("RIFF")
-	binary.Write(&out, binary.LittleEndian, uint32(0)) // size, unused by the decoder
+	binary.Write(&out, binary.LittleEndian, uint32(0))
 	out.WriteString("WAVE")
-	// a LIST chunk before fmt with an odd size checks chunk walking and the
-	// pad byte
 	out.WriteString("LIST")
 	binary.Write(&out, binary.LittleEndian, uint32(3))
 	out.Write([]byte{1, 2, 3, 0})
@@ -121,7 +117,6 @@ func TestDecodeRejectsGarbage(t *testing.T) {
 }
 
 func TestConvertSpreadsMonoAndResamples(t *testing.T) {
-	// a constant mono signal at 44.1k
 	mono := &Clip{Rate: 44100, Channels: 1, Samples: make([]float32, 441)}
 	for i := range mono.Samples {
 		mono.Samples[i] = 0.5
@@ -135,12 +130,10 @@ func TestConvertSpreadsMonoAndResamples(t *testing.T) {
 			t.Fatalf("sample %d = %v after resampling a constant", i, v)
 		}
 	}
-	// stereo stays stereo at the same rate, byte for byte
 	stereo := &Clip{Rate: 48000, Channels: 2, Samples: []float32{1, -1, 0.5, -0.5}}
 	if got := stereo.Convert(48000, 2); len(got) != 4 || got[0] != 1 || got[1] != -1 || got[3] != -0.5 {
 		t.Fatalf("stereo passthrough = %v", got)
 	}
-	// six channels keep the first two
 	surround := &Clip{Rate: 48000, Channels: 6, Samples: []float32{1, 2, 3, 4, 5, 6}}
 	if got := surround.Convert(48000, 2); len(got) != 2 || got[0] != 1 || got[1] != 2 {
 		t.Fatalf("downmix = %v, want [1 2]", got)
@@ -293,7 +286,7 @@ func TestStoreSurvivesBadSourcesAndNoDevice(t *testing.T) {
 	}
 	deaf.Play("/a.wav")
 	deaf.Play("/a.wav")
-	time.Sleep(50 * time.Millisecond) // nothing to observe but a crash
+	time.Sleep(50 * time.Millisecond)
 }
 
 func TestDataURISources(t *testing.T) {
@@ -305,8 +298,6 @@ func TestDataURISources(t *testing.T) {
 
 func b64(b []byte) string { return base64.StdEncoding.EncodeToString(b) }
 
-// waitLoaded blocks until a preloaded clip has finished decoding, so a
-// following Play reaches start() with the clip already cached
 func waitLoaded(t *testing.T, st *Store, src string) {
 	t.Helper()
 	for i := 0; i < 400; i++ {
@@ -322,8 +313,6 @@ func waitLoaded(t *testing.T, st *Store, src string) {
 	t.Fatalf("clip %s never finished preloading", src)
 }
 
-// opening the device blocks until the hardware is ready. playing a cached clip
-// must not wait on that or the first gesture sound freezes the render thread
 func TestStoreOpensDeviceOffTheCallerGoroutine(t *testing.T) {
 	sink := newFakeSink()
 	release := make(chan struct{})
@@ -353,7 +342,7 @@ func TestStoreOpensDeviceOffTheCallerGoroutine(t *testing.T) {
 	case <-time.After(30 * time.Millisecond):
 	}
 	close(release)
-	sink.expect(t, 1) // the queued voice starts once the device lands
+	sink.expect(t, 1)
 }
 
 // oto allows one context per process, so device tests share one sink
@@ -371,8 +360,8 @@ func deviceSink(t *testing.T) *otoSink {
 	return sink.(*otoSink)
 }
 
-// oto closes a player the moment it's unreachable, so the sink has to hold
-// looping ones. real device only: CAUTION_AUDIO_DEVICE=1 go test ./terminal/audio -run Loop
+// oto closes a player as soon as it's unreachable, so the sink has to hold
+// looping players
 func TestOtoSinkKeepsLoopAliveAcrossGC(t *testing.T) {
 	sink := deviceSink(t)
 	clip, err := Decode(tone())
@@ -397,7 +386,7 @@ func TestOtoSinkKeepsLoopAliveAcrossGC(t *testing.T) {
 	}
 	playing := mine.IsPlaying()
 	sink.mu.Unlock()
-	v.stop.Store(true) // fade it out so it doesn't bleed into the next device test
+	v.stop.Store(true)
 	if !held || !playing {
 		t.Fatalf("looping player dropped or stopped after GC (held=%v playing=%v)", held, playing)
 	}
@@ -428,7 +417,6 @@ func TestStopWhileDeviceOpensNeverPlays(t *testing.T) {
 	}
 }
 
-// real output device, only when asked: CAUTION_AUDIO_DEVICE=1 go test ./terminal/audio -run Oto
 func TestOtoSinkDrains(t *testing.T) {
 	sink := deviceSink(t)
 	clip, err := Decode(tone())
@@ -438,7 +426,6 @@ func TestOtoSinkDrains(t *testing.T) {
 	samples := clip.Convert(Rate, Channels)
 	sink.Play(&voice{samples: samples, fadeLeft: -1, done: func() {}})
 
-	// and the same bytes through a player we can watch drain
 	buf := make([]byte, len(samples)*4)
 	for i, f := range samples {
 		binary.LittleEndian.PutUint32(buf[i*4:], math.Float32bits(f))

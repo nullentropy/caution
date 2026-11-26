@@ -7,15 +7,8 @@ import (
 	"path/filepath"
 )
 
-// dev tooling only, apps built WITH caution serve the embedded terminal and
-// never look for source
-
-// relative to the checkout root, doubles as the marker that identifies it
 const srcRelEntry = "web/terminal.ts"
 
-// the directory containing web/terminal.ts. walks up from the working
-// directory, then from the executable's directory, since built binaries
-// run from anywhere
 func SourceRoot() (string, error) {
 	var tried []string
 	for _, start := range startPoints() {
@@ -28,7 +21,6 @@ func SourceRoot() (string, error) {
 		srcRelEntry, tried)
 }
 
-// absolute path to the TypeScript entrypoint
 func ClientEntry() (string, error) {
 	root, err := SourceRoot()
 	if err != nil {
@@ -64,8 +56,6 @@ func walkUp(dir string) (string, bool) {
 	}
 }
 
-// the given path when it exists, otherwise the located checkout's entry
-// the fallback is logged once so the substitution is never silent
 func resolveEntry(entry string) (string, error) {
 	if entry != "" {
 		if _, err := os.Stat(entry); err == nil {

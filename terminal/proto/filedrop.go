@@ -14,7 +14,6 @@ type DropFile struct {
 	Data []byte
 }
 
-// 0 until mounted
 func (s *Session) FileDropCap() int64 {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -23,7 +22,6 @@ func (s *Session) FileDropCap() int64 {
 
 func (s *Session) NoteFileDrag(over bool) { s.Event(0, wire.EvFileDrag, over) }
 
-// any goroutine. abandoned if over the cap or the socket goes
 func (s *Session) NoteFileDrop(files []DropFile, x, y float64) {
 	s.dropMu.Lock()
 	defer s.dropMu.Unlock()

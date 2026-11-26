@@ -30,10 +30,10 @@ type Store struct {
 	OpenSink func() (Sink, error)
 
 	mu      sync.Mutex
-	opened  bool // open has been started
-	deaf    bool // the open failed so drop all sounds
+	opened  bool
+	deaf    bool
 	sink    Sink
-	pending []*voice // waiting for the device to finish opening
+	pending []*voice
 	clips   map[string]*clipEntry
 	voices  map[string][]*voice
 }

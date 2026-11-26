@@ -8,8 +8,6 @@ import (
 	"github.com/nullentropy/caution/wire"
 )
 
-// a theme patch crossfades unless motion is reduced, so whether it lands at
-// once shows which motion setting the op installed
 func TestMotionOpControlsThemeCrossfade(t *testing.T) {
 	saved := *ui.Theme["accent"]
 	defer func() { *ui.Theme["accent"] = saved }()

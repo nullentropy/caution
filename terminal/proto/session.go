@@ -42,20 +42,17 @@ type serverMsg struct {
 	Ops       []patchOp          `json:"ops"`
 }
 
-// the mount's preload block, the `resource` op inline
 type resourceSpec struct {
 	Images []string   `json:"images"`
 	Sounds []string   `json:"sounds"`
 	Fonts  []fontSpec `json:"fonts"`
 }
 
-// one family's files, URLs or data: URIs
 type fontSpec struct {
 	Family string   `json:"family"`
 	Srcs   []string `json:"srcs"`
 }
 
-// the mount's "fonts" field and the `fonts` op. "" is the built-in face
 type fontDefaults struct {
 	UI       string   `json:"ui"`
 	Mono     string   `json:"mono"`
@@ -67,7 +64,6 @@ type keySpec struct {
 	Key string `json:"key"`
 }
 
-// top-level menu, the shell realizes it natively (NSMenu on macOS)
 type MenuSpec struct {
 	Title string     `json:"title"`
 	Items []MenuItem `json:"items"`
@@ -82,20 +78,17 @@ type MenuItem struct {
 	Items []MenuItem `json:"items"`
 }
 
-// union of every op shape, absent fields stay zero
 type patchOp struct {
-	Op     wire.Op           `json:"op"`
-	Parent int               `json:"parent"`
-	Index  int               `json:"index"`
-	Node   *nodeJSON         `json:"node"`
-	ID     int               `json:"id"`
-	P      props             `json:"p"`
-	Start  int               `json:"start"`
-	Reset  bool              `json:"reset"`
-	Rows   [][]string        `json:"rows"`
-	Tokens map[string]string `json:"tokens"`
-	// metric-theme tokens. not "tokens" because theme already owns that key in
-	// this union, with string values
+	Op       wire.Op            `json:"op"`
+	Parent   int                `json:"parent"`
+	Index    int                `json:"index"`
+	Node     *nodeJSON          `json:"node"`
+	ID       int                `json:"id"`
+	P        props              `json:"p"`
+	Start    int                `json:"start"`
+	Reset    bool               `json:"reset"`
+	Rows     [][]string         `json:"rows"`
+	Tokens   map[string]string  `json:"tokens"`
 	Metrics  map[string]float64 `json:"metrics"`
 	Menu     []MenuSpec         `json:"menu"`
 	Title    string             `json:"title"`
@@ -118,7 +111,6 @@ type patchOp struct {
 	Data     string             `json:"data"`
 }
 
-// one tree row's meta, parallel to its cells in a rows op
 type metaSpec struct {
 	Key string `json:"key"`
 	D   int    `json:"d"`
@@ -152,59 +144,31 @@ type Conn interface {
 }
 
 type Config struct {
-	URL string
-	// overrides websocket.DefaultDialer. unix sockets and in-process pipes
-	// route through its NetDial
-	Dialer *websocket.Dialer
-	// replaces gorilla entirely, the browser dials through the page's WebSocket
-	Dial func(url string) (Conn, error)
-	// resumes a session from a previous page load, the browser keeps it in
-	// sessionStorage
-	SID string
-	// fires on every mount with the server's session id
-	OnMount func(sid string)
-	// glfw.PostEmptyEvent
-	Wake func()
-	// logical window size, for the connect URL
-	ViewSize func() (int, int)
-	// called on the Pump thread (main, Cocoa requires it). nil ignores menus
-	SetMenu func(menus []MenuSpec)
-	// server-driven `title`, Pump thread. nil ignores titles
-	SetTitle func(title string)
-	// warms a resource cache entry (`resource` op, images today). Pump thread
-	// nil ignores preloads
-	Preload func(src string)
-	// decode ahead of time, play once. nil is silent, as in shot mode
+	URL          string
+	Dialer       *websocket.Dialer
+	Dial         func(url string) (Conn, error)
+	SID          string
+	OnMount      func(sid string)
+	Wake         func()
+	ViewSize     func() (int, int)
+	SetMenu      func(menus []MenuSpec)
+	SetTitle     func(title string)
+	Preload      func(src string)
 	PreloadSound func(src string)
 	Play         func(src string, loop bool)
 	Stop         func(src string)
-	// stores a Set-Cookie string for every later request to the server. nil
-	// ignores cookies
-	SetCookie func(raw string)
-	// app-registered faces, the renderer's. nil ignores fonts
-	Fonts *text.Registry
-	// bytes behind a URL the server named, fonts today. nil leaves only
-	// data: URIs loadable
-	Fetch func(src string) ([]byte, error)
+	SetCookie    func(raw string)
+	Fonts        *text.Registry
+	Fetch        func(src string) ([]byte, error)
 }
 
-// how long the first mount that names fonts waits for them before drawing
-// with fallbacks
 const fontWait = 3 * time.Second
 
-// protocol client: applies mount/patch, ships events, reconnects with
-// backoff and resumes via the server's sid (in memory natively, the browser
-// keeps it in sessionStorage and passes it back through Config.SID)
-//
-// network I/O runs on goroutines. anything touching widgets is queued as a
-// closure and drained by Pump() on the main (GL) thread, Wake pokes the
-// event loop so a blocked WaitEvents notices
 type Session struct {
-	ui   *ui.UI
-	url  string
-	dial func(url string) (Conn, error)
-	Wake func()
-	// logical window size, for the connect URL
+	ui           *ui.UI
+	url          string
+	dial         func(url string) (Conn, error)
+	Wake         func()
 	ViewSize     func() (int, int)
 	setMenu      func(menus []MenuSpec)
 	setTitle     func(title string)
@@ -219,16 +183,11 @@ type Session struct {
 
 	queue chan func()
 
-	// main thread. every family+src ever asked for, loading, loaded or
-	// failed, so a remount or repeated AddFont never refetches
 	fontSrcs     map[string]bool
 	fontsLoading int
-	// the first mount naming fonts waits for them (fontWait at most) so the
-	// first frame shows no fallbacks. messages behind it queue in held and
-	// replay in order on release
-	held      []*serverMsg
-	holdTimer *time.Timer
-	waited    bool
+	held         []*serverMsg
+	holdTimer    *time.Timer
+	waited       bool
 
 	mu      sync.Mutex
 	conn    Conn
@@ -239,17 +198,11 @@ type Session struct {
 	unfocused  bool
 	hidden     bool
 	fileCap    int64
-	// debounced events waiting out their quiet period, in arrival order, under mu
-	pending []*pendingEvent
-	// one drop on the wire at a time, the server rejects interleaved chunks
-	dropMu sync.Mutex
+	pending    []*pendingEvent
+	dropMu     sync.Mutex
 
-	mounted bool
-	// set by a denied message, under mu. the server refused us so retrying
-	// can't help
-	denied bool
-	// main thread only. once set the tree outlives the socket and disconnects
-	// show a banner instead of the status screen
+	mounted     bool
+	denied      bool
 	everMounted bool
 	retry       time.Duration
 
@@ -306,7 +259,6 @@ func NewSession(u *ui.UI, cfg Config) *Session {
 	return s
 }
 
-// call on the GL thread
 func (s *Session) Pump() {
 	for {
 		select {
@@ -326,8 +278,6 @@ func (s *Session) post(fn func()) {
 	}
 }
 
-// -- connection ----------------------------------------------------------------------
-
 func (s *Session) connect() {
 	u, err := url.Parse(s.url)
 	if err != nil {
@@ -343,8 +293,6 @@ func (s *Session) connect() {
 	s.mu.Lock()
 	if s.sid != "" {
 		q.Set("resume", s.sid)
-		// last applied seq, if nothing changed server-side the resume is a
-		// bare ack and our world stays put
 		q.Set("seq", fmt.Sprint(s.lastSeq))
 	}
 	s.mu.Unlock()
@@ -370,9 +318,6 @@ func (s *Session) scheduleRetry() {
 	s.mu.Unlock()
 	s.post(func() {
 		s.mounted = false
-		// a tree we've shown stays up and locally interactive (scroll,
-		// selection) under a reconnect banner. only a session that never
-		// mounted gets the full status screen
 		if s.everMounted {
 			s.showBanner("connection lost - reconnecting…")
 		} else {
@@ -418,8 +363,6 @@ func (s *Session) readLoop(conn Conn) {
 	}
 }
 
-// -- message handling (main thread) ----------------------------------------------------
-
 func (s *Session) handle(msg *serverMsg) {
 	if s.held != nil {
 		s.held = append(s.held, msg)
@@ -453,7 +396,7 @@ func (s *Session) handle(msg *serverMsg) {
 		s.mu.Lock()
 		s.fileCap = msg.FileCap
 		s.mu.Unlock()
-		s.applySounds(msg.Sounds) // nil is silent and replaces a table a resume left behind
+		s.applySounds(msg.Sounds)
 		if s.stop != nil {
 			s.stop("")
 		}
@@ -471,7 +414,7 @@ func (s *Session) handle(msg *serverMsg) {
 		if msg.Keys != nil {
 			s.applyKeys(msg.Keys)
 		}
-		s.ui.SetMotion(motion(msg.Motion)) // absent is system, replacing a resumed choice
+		s.ui.SetMotion(motion(msg.Motion))
 		if s.setCookie != nil {
 			for _, c := range msg.Cookies {
 				s.setCookie(c)
@@ -480,7 +423,7 @@ func (s *Session) handle(msg *serverMsg) {
 		if msg.Resources != nil {
 			s.applyResources(msg.Resources)
 		}
-		defaults := fontDefaults{} // absent is built-in, replacing a resumed choice
+		defaults := fontDefaults{}
 		if msg.Fonts != nil {
 			defaults = *msg.Fonts
 		}
@@ -505,7 +448,6 @@ func (s *Session) handle(msg *serverMsg) {
 		if fs {
 			s.Event(0, wire.EvFullscreen, true)
 		}
-		// a server assumes focused, so only the exception needs saying
 		if unfocused {
 			s.Event(0, wire.EvFocus, false)
 		}
@@ -513,7 +455,6 @@ func (s *Session) handle(msg *serverMsg) {
 			s.Event(0, wire.EvVisible, false)
 		}
 	case wire.MsgResume:
-		// nothing changed while we were away, keep everything
 		s.mounted = true
 		s.everMounted = true
 		s.hideBanner()
@@ -521,8 +462,6 @@ func (s *Session) handle(msg *serverMsg) {
 		if !s.mounted {
 			return
 		}
-		// ops naming one node mark just that node (paint splices around it),
-		// ops that reshape the tree or the client's chrome rebuild the whole frame
 		full := false
 		for i := range msg.Ops {
 			if s.applyOp(&msg.Ops[i]) {
@@ -530,18 +469,16 @@ func (s *Session) handle(msg *serverMsg) {
 			}
 		}
 		if full {
-			s.ui.Invalidate()
+			s.ui.InvalidateAll()
 		}
 	}
 }
 
-// true when the frame has to be rebuilt whole
 func (s *Session) applyOp(op *patchOp) bool {
 	switch op.Op {
 	case wire.OpSet:
 		if w, ok := s.store.ByID[op.ID]; ok {
 			s.store.Apply(w, op.ID, op.P)
-			// targeted invalidation, we know which node a set op touched
 			s.ui.Damage(w)
 		}
 	case wire.OpCmd:
@@ -564,15 +501,11 @@ func (s *Session) applyOp(op *patchOp) bool {
 		return true
 	case wire.OpRows:
 		if w, ok := s.store.ByID[op.ID].(*ui.TableView); ok {
-			w.ApplyRows(op.Start, op.Rows, rowMeta(op.Meta), op.Reset) // marks itself
+			w.ApplyRows(op.Start, op.Rows, rowMeta(op.Meta), op.Reset)
 		}
 	case wire.OpTheme:
-		// a patched theme is a switch the user watched, so fade it. the mount's
-		// theme still snaps since first paint has no before
-		s.ui.AnimateTheme(op.Tokens) // every widget's colors, whole frame
+		s.ui.AnimateTheme(op.Tokens)
 	case wire.OpMetrics:
-		// geometry snaps (no tween) and invalidates measurement caches with the
-		// frame, see UI.ApplyMetrics
 		s.ui.ApplyMetrics(op.Metrics)
 	case wire.OpMenu:
 		if s.setMenu != nil {
@@ -636,15 +569,12 @@ func (s *Session) applyOp(op *patchOp) bool {
 	return false
 }
 
-// i is clamped to the valid range
 func insertKid(parent, w ui.Widget, i int) {
 	pk := parent.Base()
 	i = max(0, min(i, len(pk.Kids)))
 	pk.Kids = append(pk.Kids[:i], append([]ui.Widget{w}, pk.Kids[i:]...)...)
 }
 
-// a is n or one of n's ancestors. moving a node under itself would make a
-// cycle
 func isAncestor(a, n ui.Widget) bool {
 	for ; n != nil; n = n.Base().Parent {
 		if n == a {
@@ -683,7 +613,6 @@ func (s *Session) command(w ui.Widget, cmd wire.Cmd, value string) {
 	}
 }
 
-// main thread, handle() runs on Pump
 func (s *Session) applyKeys(keys []keySpec) {
 	m := make(map[string]int, len(keys))
 	for _, k := range keys {
@@ -693,7 +622,6 @@ func (s *Session) applyKeys(keys []keySpec) {
 	s.ui.OnKeyCombo = func(id int) { s.Event(0, wire.EvKey, id) }
 }
 
-// installs the gesture table and decodes every source now
 func (s *Session) applySounds(tokens map[string]string) {
 	s.ui.SetSounds(tokens)
 	if s.preloadSound != nil {
@@ -717,8 +645,6 @@ func (s *Session) applyResources(res *resourceSpec) {
 	s.loadFonts(res.Fonts)
 }
 
-// -- fonts -------------------------------------------------------------------------------
-
 func (s *Session) setFonts(d fontDefaults) {
 	if s.fonts == nil {
 		return
@@ -738,8 +664,6 @@ func (s *Session) loadFonts(specs []fontSpec) {
 	}
 }
 
-// fetch and parse off the main thread, install on it. a file that fails to
-// fetch or parse is logged and skipped, text falls back to the built-in face
 func (s *Session) loadFont(family, src string) {
 	if s.fonts == nil {
 		return
@@ -784,7 +708,6 @@ func (s *Session) fontBytes(src string) ([]byte, error) {
 	return s.fetch(src)
 }
 
-// applies the mount that waited for its fonts and everything queued behind it
 func (s *Session) release() {
 	if s.held == nil {
 		return
@@ -797,9 +720,6 @@ func (s *Session) release() {
 	}
 }
 
-// -- upstream events -------------------------------------------------------------------
-
-// safe from any goroutine, input debounce timers fire off-thread
 func (s *Session) Event(id int, ev wire.Event, value any) { s.send(id, ev, value) }
 
 type pendingEvent struct {
@@ -809,9 +729,6 @@ type pendingEvent struct {
 	timer *time.Timer
 }
 
-// sends value once id's ev has been quiet for d, replacing any value still
-// waiting. every other event flushes what is waiting first, so the server
-// never sees an edit after the key or click that followed it
 func (s *Session) Debounce(id int, ev wire.Event, value any, d time.Duration) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -834,7 +751,6 @@ func (s *Session) Debounce(id int, ev wire.Event, value any, d time.Duration) {
 	s.pending = append(s.pending, p)
 }
 
-// false when nothing was sent
 func (s *Session) send(id int, ev wire.Event, value any) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -896,8 +812,6 @@ func MenubarSpec(menus []MenuSpec) []ui.MenuSpec {
 	return out
 }
 
-// remembered so a client that reconnects while fullscreen tells the app at
-// the next mount
 func (s *Session) NoteFullscreen(on bool) {
 	s.mu.Lock()
 	s.fullscreen = on
@@ -905,7 +819,6 @@ func (s *Session) NoteFullscreen(on bool) {
 	s.Event(0, wire.EvFullscreen, on)
 }
 
-// main thread
 func (s *Session) NoteFocus(focused bool) {
 	s.ui.SetWindowActive(focused)
 	s.mu.Lock()
@@ -927,8 +840,6 @@ func (s *Session) NoteVisible(visible bool) {
 	}
 }
 
-// debounced into the session-level resize event, node id 0 since no widget
-// owns the viewport
 func (s *Session) NoteResize(w, h int) {
 	s.resizeW, s.resizeH = w, h
 	s.resizeAt = time.Now().Add(250 * time.Millisecond)
@@ -942,25 +853,21 @@ func (s *Session) flushResize() {
 	}
 }
 
-// -- status screen ---------------------------------------------------------------------
-
-// client-owned pill over the live tree while reconnecting. the tree keeps
-// working locally and the banner never takes input
 func (s *Session) showBanner(text string) {
 	s.ui.Banner = s.pill(text)
-	s.ui.Invalidate()
+	s.ui.InvalidateAll()
 }
 
 func (s *Session) notice(text string) {
 	prev := s.ui.Banner
 	n := s.pill(text)
 	s.ui.Banner = n
-	s.ui.Invalidate()
+	s.ui.InvalidateAll()
 	time.AfterFunc(4*time.Second, func() {
 		s.post(func() {
 			if s.ui.Banner == n {
 				s.ui.Banner = prev
-				s.ui.Invalidate()
+				s.ui.InvalidateAll()
 			}
 		})
 	})
@@ -970,7 +877,7 @@ func (s *Session) pill(text string) ui.Widget {
 	f := gfx.NewFont(12, gfx.FontOpts{Weight: 500})
 	m := s.ui.Measure(f, text)
 	const padL, dot, gap, padR = 12, 8, 8, 14
-	root := ui.NewPanel() // transparent, full-viewport carrier
+	root := ui.NewPanel()
 	pill := ui.NewPanel()
 	root.Add(pill)
 	pill.Width = f32p(float32(math.Ceil(float64(padL + dot + gap + m.Width + padR))))
@@ -996,11 +903,10 @@ func (s *Session) pill(text string) ui.Widget {
 func (s *Session) hideBanner() {
 	if s.ui.Banner != nil {
 		s.ui.Banner = nil
-		s.ui.Invalidate()
+		s.ui.InvalidateAll()
 	}
 }
 
-// minimal client-owned screen for the disconnected state
 func (s *Session) showStatus(text string) {
 	root := ui.NewPanel()
 	card := ui.NewPanel()

@@ -8,14 +8,6 @@ import (
 	"github.com/nullentropy/caution/terminal/gfx"
 )
 
-// root panel with a small subtree and a glass covering everything
-//
-//	root (0,0 400x300)
-//	+- panelA (frame 20,20 100x80)
-//	|   `- labelB (frame 30,30 60x20 -> abs 50,50)
-//	+- panelC (clipping, 200,20 100x80)
-//	|   `- labelD (abs 210,30 60x20)
-//	`- glass (fills root)
 func glassFixture(u *UI) (root *Panel, g *Glass, ids map[Widget]int) {
 	root = NewPanel()
 	root.Bounds = gfx.R(0, 0, 400, 300)
@@ -52,10 +44,10 @@ func TestGlassPickResolvesDeepestTarget(t *testing.T) {
 		picks = append(picks, [3]float32{x, y, float32(target)})
 	}
 
-	g.OnPointerDown(60, 55, 1)   // inside labelB (deepest)
-	g.OnPointerDown(25, 90, 1)   // inside panelA only
-	g.OnPointerDown(390, 290, 1) // dead space -> root
-	g.OnPointerDown(215, 35, 1)  // inside clipped panelC's labelD
+	g.OnPointerDown(60, 55, 1)
+	g.OnPointerDown(25, 90, 1)
+	g.OnPointerDown(390, 290, 1)
+	g.OnPointerDown(215, 35, 1)
 
 	want := [][3]float32{
 		{60, 55, 3},
@@ -76,7 +68,6 @@ func TestGlassPickResolvesDeepestTarget(t *testing.T) {
 func TestGlassClipExcludesOutsideChildren(t *testing.T) {
 	u := fakeUi()
 	root, g, ids := glassFixture(u)
-	// a child hanging outside its clipping parent is unreachable there
 	outside := NewLabel("x", gfx.NewFont(13, gfx.FontOpts{}), nil)
 	outside.Bounds = gfx.R(350, 200, 40, 20)
 	for _, k := range root.Base().Kids {
@@ -110,7 +101,6 @@ func TestGlassDragDropAndUnsubscribedTransparency(t *testing.T) {
 	if len(drops) != 1 || drops[0] != [2]float32{30, 40} {
 		t.Fatalf("drops = %v, want [[30 40]]", drops)
 	}
-	// no pick, no drop: release without press reports nothing
 	g.OnPointerUp(50, 50)
 	if len(drops) != 1 {
 		t.Fatalf("release without press must not drop: %v", drops)
@@ -120,7 +110,7 @@ func TestGlassDragDropAndUnsubscribedTransparency(t *testing.T) {
 func TestGlassRightGestureCaptureAndCoalescing(t *testing.T) {
 	u := fakeUi()
 	root, g, _ := glassFixture(u)
-	u.Root = root // RightDown walks the tree from the UI, unlike direct dispatch
+	u.Root = root
 	var log []string
 	g.OnRPick = func(x, y float32) { log = append(log, fmt.Sprintf("pick %g,%g", x, y)) }
 	g.OnRDragTo = func(x, y float32) { log = append(log, fmt.Sprintf("drag %g,%g", x, y)) }
@@ -129,9 +119,7 @@ func TestGlassRightGestureCaptureAndCoalescing(t *testing.T) {
 	if !u.RightDown(60, 55) {
 		t.Fatal("right press over a subscribed glass must capture")
 	}
-	// inside the coalesce window the move is dropped silently...
 	u.PointerMove(80, 70)
-	// ...and after it, positions flow
 	g.rSent = time.Now().Add(-2 * dragCoalesce)
 	u.PointerMove(100, 90)
 	u.RightUp(120, 110)
@@ -146,8 +134,6 @@ func TestGlassRightGestureCaptureAndCoalescing(t *testing.T) {
 		}
 	}
 
-	// unsubscribed: the press isn't captured so the shell falls through to the
-	// context menu, and moves route nowhere
 	g.OnRPick = nil
 	if u.RightDown(60, 55) {
 		t.Fatal("right press over an unsubscribed glass must not capture")

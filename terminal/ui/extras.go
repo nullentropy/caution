@@ -6,10 +6,6 @@ import (
 	"github.com/nullentropy/caution/terminal/gfx"
 )
 
-// painted entirely by an app fragment shader (ShaderToy style). the GLSL
-// defines `vec4 effect(vec2 uv)` and may use u_time, u_res and custom float
-// uniforms. Animate keeps it repainting while visible. decorative, no
-// semantics or interaction
 type ShaderPane struct {
 	Core
 	Frag     string
@@ -25,18 +21,15 @@ func (s *ShaderPane) PaintSelf(dl *gfx.DisplayList) {
 	}
 }
 
-// Src is a URL or data: URI, the texture loads async (placeholder until
-// ready). Radius rounds corners in the shader. Alt is for screen readers,
-// unused natively until a semantics bridge exists
 type ImageView struct {
 	Core
 	Src    string
-	Fit    string // contain | cover | fill
+	Fit    gfx.Fit
 	Radius gfx.Corners
 	Alt    string
 }
 
-func NewImageView() *ImageView { v := &ImageView{Fit: "contain"}; v.self = v; return v }
+func NewImageView() *ImageView { v := &ImageView{Fit: gfx.FitContain}; v.self = v; return v }
 
 func (v *ImageView) PaintSelf(dl *gfx.DisplayList) {
 	if v.Src != "" {
@@ -44,9 +37,6 @@ func (v *ImageView) PaintSelf(dl *gfx.DisplayList) {
 	}
 }
 
-// the closed control is server-driven state, the open list is a client-local
-// popover on the overlay, so opening, hovering and closing never touch the
-// network. picking local-echoes and emits `select`
 type Select struct {
 	Core
 	Options  []string
@@ -58,7 +48,6 @@ type Select struct {
 
 var selectFont = gfx.NewFont(13, gfx.FontOpts{})
 
-// selChevronW is the closed control's pull-down zone (clip inset + mark)
 const (
 	selPad      = 6
 	selChevronW = 24
@@ -102,9 +91,6 @@ func (s *Select) PaintSelf(dl *gfx.DisplayList) {
 	paintChevron(dl, b)
 }
 
-// geometry, not text: the Go fonts lack U+25BE and system fonts each size it
-// differently, so a glyph never converges across terminals. five shrinking
-// bars make the same stepped triangle everywhere
 func paintChevron(dl *gfx.DisplayList, b gfx.Rect) {
 	cx := float32(math.Floor(float64(b.X + b.W - 15)))
 	cy := float32(math.Floor(float64(b.Y + b.H/2)))
@@ -128,10 +114,9 @@ func (s *Select) Activate() { s.toggle() }
 
 func (s *Select) OnHoverChange(h bool) {
 	s.hovered = h
-	s.Invalidate()
+	s.InvalidateWidget()
 }
 
-// local echo, the server syncs silently
 func (s *Select) Pick(i int) {
 	if i != s.Selected {
 		s.Selected = i
@@ -141,7 +126,7 @@ func (s *Select) Pick(i int) {
 		}
 	}
 	s.UI.dismissOverlay()
-	s.Invalidate()
+	s.InvalidateWidget()
 }
 
 func (s *Select) toggle() {
@@ -168,7 +153,6 @@ func (s *Select) toggle() {
 	s.sound("open")
 }
 
-// client-local option list on the overlay layer, above everything
 type selectPopup struct {
 	Core
 	owner    *Select
@@ -204,7 +188,7 @@ func (p *selectPopup) OnPointerDown(_, y float32, _ int) {
 func (p *selectPopup) OnPointerHover(_, y float32) {
 	if i := p.rowAt(y); i != p.hoverRow {
 		p.hoverRow = i
-		p.Invalidate()
+		p.InvalidateWidget()
 	}
 }
 

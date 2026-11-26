@@ -6,19 +6,23 @@ import (
 
 type Size struct{ W, H float32 }
 
-// springs-and-struts pinning against the parent's bounds, like cocoa autoresizing
-// pin one edge and the widget keeps its size, pin both opposing edges and it stretches
-// pointers because unset is meaningful
 type Anchors struct {
 	Left, Right, Top, Bottom *float32
-	// offset from the parent's center
-	CenterX, CenterY *float32
+	CenterX, CenterY         *float32
 }
 
-type DockSide = string // "top" | "bottom" | "left" | "right" | "fill" ("" = fill)
+type DockSide = string
+
+type SizeKind string
+
+const (
+	SizeContent SizeKind = "content"
+	SizeFixed   SizeKind = "fixed"
+	SizeFill    SizeKind = "fill"
+)
 
 type StackSize struct {
-	Kind   string // "content" (default) | "fixed" | "fill"
+	Kind   SizeKind
 	Px     float32
 	Weight float32
 }
@@ -30,7 +34,7 @@ type Effect struct {
 }
 
 type Key struct {
-	Name                   string // "Enter", "Backspace", "Left", " ", "a", ...
+	Name                   string
 	Meta, Ctrl, Shift, Alt bool
 	Text                   string
 }
@@ -42,13 +46,10 @@ func Contains(r gfx.Rect, x, y float32) bool {
 type Widget interface {
 	Base() *Core
 	IntrinsicSize() Size
-	// ok=false means height doesn't depend on width (only wrapped labels say true)
 	HeightForWidth(w float32) (h float32, ok bool)
 	LayoutChildren()
 	PaintSelf(dl *gfx.DisplayList)
 	PaintOverlay(dl *gfx.DisplayList)
-	// oldBase is where the subtree's commands started in the previous list, -1 when
-	// there is nothing to reuse (see Core.PaintTree)
 	PaintTree(dl *gfx.DisplayList, oldBase int)
 	Interactive() bool
 	Focusable() bool
@@ -66,11 +67,7 @@ type Widget interface {
 	OnPointerHover(x, y float32)
 }
 
-// layout inputs (Frame/Anchors/Dock/StackSize) are read by the parent container,
-// Bounds is the absolute result
-// base layout: anchors if present, else frame, else intrinsic size at the parent origin
 type Core struct {
-	// outer widget, our virtual dispatch for the tree walks. constructors set it
 	self Widget
 
 	Parent Widget
@@ -85,91 +82,52 @@ type Core struct {
 	Width     *float32
 	Height    *float32
 
-	Clips bool
-	// widgets inserted into this subtree appear without the insert fade
+	Clips  bool
 	NoFade bool
 
-	// -- geometric animation (server-driven reflows only; see UI.animGeometry) --
-	// prevX/prevY are last frame's laid-out position. a structural frame
-	// (insert/remove/move) that moves a widget decays its paint position from the
-	// old spot to the new one, and fadeR fades in a freshly inserted subtree.
-	// zero means idle so widget literals never animate
-	prevX, prevY   float32
-	hadFrame       bool
-	animDx, animDy float32
-	animR          float32 // slide remaining: 1 -> 0, 0 = idle
-	fadeR          float32 // fade-in remaining: 1 -> 0, 0 = opaque
-	// renders the subtree offscreen and composites it back through app GLSL
-	// visual only, hit-testing sees the real geometry
-	Effect *Effect
-	// window-move region (the app's own titlebar): a press here no interactive
-	// widget claims moves the window. see UI.WindowDragAt
-	WindowDrag bool
-	// tooltip (`tip` prop), client-local
-	// a tip makes an otherwise inert widget hover-targetable
-	Tip string
-	// `sound` prop: "" keeps each gesture's own token, "none" silences the widget
-	SoundToken string
-	// right-click menu (`context` prop), deepest carrier under the pointer wins
-	// picks come back through OnContextPick with the server-assigned id
+	prevX, prevY    float32
+	hadFrame        bool
+	animDx, animDy  float32
+	animR           float32
+	fadeR           float32
+	Effect          *Effect
+	WindowDrag      bool
+	Tip             string
+	SoundToken      string
 	ContextItems    []ContextItem
 	OnContextPick   func(id int)
 	SelectionItems  []ContextItem
 	OnSelectionPick func(id, start, end int)
 
-	// absolute, logical px, valid after layout
 	Bounds gfx.Rect
 
-	// -- per-subtree retained display list (see Core.PaintTree) --
-	// dirty: this widget's own paint may have changed. Invalidate sets it, the
-	// marking pass clears it. needsPaint is dirty over the whole subtree, false
-	// means the subtree splices last frame's commands instead of being walked
-	dirty      bool
-	needsPaint bool
-	// cacheOff is where this subtree's commands began in last frame's list,
-	// relative to the parent's start (absolute for the UI's roots). relative so
-	// they survive a parent splicing its whole range verbatim, which keeps deep
-	// caches valid frame after frame. the parent records both
-	cacheOff, cacheLen int32
-	cacheOK            bool
-	// geometry and ambient clip the cached commands were recorded under
-	// either one differs and the cache is stale
+	dirty                  bool
+	needsPaint             bool
+	cacheOff, cacheLen     int32
+	cacheOK                bool
 	cacheBounds, cacheClip gfx.Rect
 
-	// -- layout skipping (see layoutSubtree) --
-	// layoutDirty: something in this subtree changed what layout would produce.
-	// Invalidate raises it here and on every ancestor, so a container can tell a
-	// subtree that still fits its old geometry from one that must be walked again.
-	// laidOutAt is the bounds it was last laid out for, laidOut says there is one
 	layoutDirty bool
 	laidOut     bool
 	laidOutAt   gfx.Rect
 
-	// server focus and reveal park until the next frame's marking walk (a widget
-	// built by the same patch that commands it has no UI yet)
 	wantsFocus  bool
 	wantsReveal bool
-	// outside its clipping parent last paint, so it recorded no commands
-	culled bool
+	culled      bool
 
-	// assigned on first semantics visit
 	semID int
 }
 
-// server-driven `Focus()`, consumed at the next frame
 func (b *Core) RequestFocus() {
 	b.wantsFocus = true
-	b.Invalidate()
+	b.InvalidateWidget()
 }
 
-// server-driven `Reveal()`, consumed at the next frame when bounds are fresh
 func (b *Core) RequestReveal() {
 	b.wantsReveal = true
-	b.Invalidate()
+	b.InvalidateWidget()
 }
 
-// runs from the marking walks rather than paint, which skips culled widgets
-// and a reveal mostly targets exactly those
 func (b *Core) takeRequests() {
 	if b.UI == nil {
 		return
@@ -179,7 +137,7 @@ func (b *Core) takeRequests() {
 		if b.self.Focusable() {
 			b.UI.FocusWidget(b.self)
 		}
-		b.UI.RevealWidget(b.self) // server focus also brings it into view
+		b.UI.RevealWidget(b.self)
 	}
 	if b.wantsReveal {
 		b.wantsReveal = false
@@ -248,8 +206,6 @@ func (b *Core) LayoutChildren() {
 	b.LayoutInto(b.Bounds)
 }
 
-// frame/anchors placement against any parent rect (ScrollView passes a
-// virtual one, Dialog its card content area)
 func (b *Core) LayoutInto(p gfx.Rect) {
 	for _, c := range b.Kids {
 		cb := c.Base()
@@ -257,9 +213,6 @@ func (b *Core) LayoutInto(p gfx.Rect) {
 		w, h := sz.W, sz.H
 		var x, y float32
 		if a := cb.Anchors; a != nil {
-			// one-sided pins clamp to the parent's opposite edge so an anchored child
-			// never outgrows its parent and labels truncate instead of overflowing
-			// use an explicit frame for overflow
 			switch {
 			case a.Left != nil && a.Right != nil:
 				x = p.X + *a.Left
@@ -275,7 +228,6 @@ func (b *Core) LayoutInto(p gfx.Rect) {
 			default:
 				x = p.X
 			}
-			// height-for-width: once width is settled, wrapped labels restate their height
 			if cb.Height == nil {
 				if hh, ok := c.HeightForWidth(w); ok {
 					h = hh
@@ -309,11 +261,6 @@ func (b *Core) LayoutInto(p gfx.Rect) {
 func (b *Core) PaintSelf(_ *gfx.DisplayList)    {}
 func (b *Core) PaintOverlay(_ *gfx.DisplayList) {}
 
-// when nothing inside can have changed (no dirty widget, no moved bounds,
-// same ambient clip) last frame's commands for the subtree are copied
-// wholesale instead of rebuilt. the copy is byte-for-byte what the walk
-// would produce (TestPaintReuseMatchesFullWalk) so the damage diff and
-// everything downstream is unaffected
 func (b *Core) PaintTree(dl *gfx.DisplayList, oldBase int) {
 	if u := b.UI; u != nil && u.reuse != nil && oldBase >= 0 && !b.needsPaint &&
 		b.cacheClip == dl.Clip() && oldBase+int(b.cacheLen) <= len(u.reuse.Cmds) {
@@ -323,9 +270,6 @@ func (b *Core) PaintTree(dl *gfx.DisplayList, oldBase int) {
 	}
 	start := len(dl.Cmds)
 	b.cacheBounds, b.cacheClip = b.Bounds, dl.Clip()
-	// a freshly inserted subtree fades through its own layer, outside any app
-	// effect layer. rect is inflated so drop shadows fade with the widget instead
-	// of popping in at the end
 	fading := b.fadeR > 0
 	if fading {
 		dl.BeginLayer(gfx.Inflate(b.Bounds, 24))
@@ -338,18 +282,13 @@ func (b *Core) PaintTree(dl *gfx.DisplayList, oldBase int) {
 	if b.Clips {
 		dl.PushClip(b.Bounds)
 	}
-	// the parent records each child's range, it is the only one that knows where
-	// both its own range and the child's started
 	for _, c := range b.Kids {
 		cb := c.Base()
 		at := len(dl.Cmds)
 		if b.Clips && !gfx.Overlaps(gfx.Inflate(cb.Bounds, cullMargin), dl.Clip()) {
-			// an empty range. culling depends only on bounds and clip, the same
-			// pair the splice check compares, so it stays valid until one changes
 			cb.cacheBounds, cb.cacheClip, cb.culled = cb.Bounds, dl.Clip(), true
 		} else {
 			oldChild := -1
-			// a culled child's descendants hold offsets into a range it never wrote
 			if oldBase >= 0 && cb.cacheOK && !cb.culled {
 				oldChild = oldBase + int(cb.cacheOff)
 			}
@@ -373,11 +312,8 @@ func (b *Core) PaintTree(dl *gfx.DisplayList, oldBase int) {
 	}
 }
 
-// how far outside a clipping parent a child may sit and still be painted, for
-// drop shadows and focus rings that reach past its bounds
 const cullMargin = 64
 
-// pipeline is premultiplied so scaling the sample scales coverage and color together
 const fadeFrag = `vec4 effect(vec2 uv) { return src(uv) * u_fade; }`
 
 func (b *Core) Interactive() bool                 { return false }
@@ -394,7 +330,6 @@ func (b *Core) OnPointerUp(_, _ float32)          {}
 func (b *Core) OnHoverChange(_ bool)              {}
 func (b *Core) OnPointerHover(_, _ float32)       {}
 
-// topmost interactive (or tipped) widget at (x, y), in paint order
 func (b *Core) HitTest(x, y float32) Widget {
 	inside := Contains(b.Bounds, x, y)
 	if b.Clips && !inside {
@@ -411,33 +346,22 @@ func (b *Core) HitTest(x, y float32) Widget {
 	return nil
 }
 
-// per-widget half of UI.markPaint: own state changed, layout moved or
-// resized it since its commands were recorded, never painted, or a geometric
-// tween is moving it this frame
 func (b *Core) selfNeedsPaint() bool {
 	return b.dirty || !b.cacheOK || b.Bounds != b.cacheBounds || b.animR > 0 || b.fadeR > 0
 }
 
-// targeted: next frame repaints this widget and its ancestors' own commands
-// and splices every clean subtree around it. anything that changes what a
-// widget paints without coming through here must use UI.Invalidate, which
-// rebuilds the whole list
-func (b *Core) Invalidate() {
+func (b *Core) InvalidateWidget() {
 	b.markDirty()
 	if b.UI != nil {
 		b.UI.wake()
 	}
 }
 
-// Invalidate without the wake, for marks made during the shell's own frame step
 func (b *Core) markDirty() {
 	b.dirty = true
 	b.InvalidateLayout()
 }
 
-// marks every ancestor too, a child's size feeds every container above it
-// Invalidate already does this, call it directly only for a geometry change
-// that doesn't change what this widget paints
 func (b *Core) InvalidateLayout() {
 	for w := b; w != nil && !w.layoutDirty; {
 		w.layoutDirty = true
@@ -448,14 +372,6 @@ func (b *Core) InvalidateLayout() {
 	}
 }
 
-// skips c when its geometry is settled: nothing in the subtree invalidated
-// layout since the last pass and the parent assigned the same bounds it was
-// laid out for. containers call this instead of LayoutChildren, so a frame
-// that changed one label walks that label's spine and nothing else
-//
-// UI.layoutAll turns the skip off when the flags can't be trusted: a resize,
-// an untargeted invalidation, or a geometric animation (moves bounds after
-// layout, so they need re-deriving every frame)
 func layoutSubtree(c Widget) {
 	b := c.Base()
 	if u := b.UI; u != nil && !u.layoutAll &&

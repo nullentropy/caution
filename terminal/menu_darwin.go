@@ -31,7 +31,6 @@ func cautionMenuPicked(tag C.long) {
 	}
 }
 
-// main thread only
 func installMenu(menus []proto.MenuSpec, onPick func(id int)) {
 	menuOnPick = onPick
 	var app unsafe.Pointer
@@ -80,12 +79,11 @@ func installMenu(menus []proto.MenuSpec, onPick func(id int)) {
 	C.caution_menu_install(root)
 }
 
-// goes through the real NSMenu action path, for shot-mode verification
 func menuPerform(id int) bool {
 	return C.caution_menu_perform(C.long(id)) != 0
 }
 
-// NSEventModifierFlags
+// these are NSEventModifierFlags bits
 const (
 	modShift   = 1 << 17
 	modControl = 1 << 18
@@ -93,7 +91,6 @@ const (
 	modCommand = 1 << 20
 )
 
-// "cmd+shift+k", a bare key means cmd
 func parseMenuKey(spec string) (string, uint) {
 	if spec == "" {
 		return "", 0

@@ -11,12 +11,9 @@ import (
 	"time"
 )
 
-// the native terminal talks to one server, so domain and path never need
-// matching. persistent cookies go to disk so a restart stays signed in,
-// session cookies live as long as the process
 type cookieJar struct {
 	mu     sync.Mutex
-	path   string // "" keeps everything in memory
+	path   string
 	byName map[string]*http.Cookie
 }
 
@@ -25,7 +22,6 @@ type savedCookie struct {
 	Expires     time.Time
 }
 
-// one file per app and server under the user config dir
 func openCookieJar(key string) *cookieJar {
 	j := &cookieJar{byName: map[string]*http.Cookie{}}
 	dir, err := os.UserConfigDir()
@@ -94,7 +90,6 @@ func (j *cookieJar) Cookies(_ *url.URL) []*http.Cookie {
 	return out
 }
 
-// called with mu held
 func (j *cookieJar) save() {
 	if j.path == "" {
 		return

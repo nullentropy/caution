@@ -1,41 +1,27 @@
 package ui
 
-// geometry half of the design tokens, Theme's sibling: Theme says what color a
-// control edge is, Metrics says how round its corner is. a closed set of named
-// numbers the server can set, not a stylesheet. per-node props (Radius,
-// RowHeight, explicit sizes) still override, tokens are only the defaults
-//
-// widgets read fields at measure/paint time so a `metrics` op restyles live
-// widgets, like theme colors
 var Metrics = defaultMetrics()
 
-// fields are the wire tokens, applyMetricTokens maps the dotted names
-// all logical px
 type MetricSet struct {
-	RadiusControl float32 // "radius.control": buttons, fields, checkboxes, row highlights
-	RadiusPopover float32 // "radius.popover": menus, dropdowns, floating lists
-	RadiusPanel   float32 // "radius.panel": dialog cards
-	BorderWidth   float32 // "border.width": control hairlines and separators (emphasis = x1.5)
-	FocusRing     float32 // "focus.ring": the keyboard-focus ring's stroke width
+	RadiusControl float32
+	RadiusPopover float32
+	RadiusPanel   float32
+	BorderWidth   float32
+	FocusRing     float32
 
-	ControlHeight float32 // "control.height": buttons, selects, text fields (min), tabs +2
-	ControlPadX   float32 // "control.padX": a control's horizontal text padding (buttons, tabs)
-	RowHeight     float32 // "row.height": list rows (menus, select popups, radio rows, the menubar), the table's default
-	TableHeaderH  float32 // "table.headerHeight"
-	TableCellPadX float32 // "table.cellPadX"
-	CheckboxSize  float32 // "checkbox.size": the checkbox box, radios are -2 (circles read bigger than squares)
-	SliderThumb   float32 // "slider.thumb": thumb radius
-	SliderTrack   float32 // "slider.track": track height
-	DialogTitleH  float32 // "dialog.titleHeight"
-	SpacePad      float32 // "space.pad": field/select inner text inset
-	SpaceGap      float32 // "space.gap": mark<->label gap (checkbox, radio)
+	ControlHeight float32
+	ControlPadX   float32
+	RowHeight     float32
+	TableHeaderH  float32
+	TableCellPadX float32
+	CheckboxSize  float32
+	SliderThumb   float32
+	SliderTrack   float32
+	DialogTitleH  float32
+	SpacePad      float32
+	SpaceGap      float32
 }
 
-// radius the checkbox mark actually paints: radius.control capped at a third
-// of checkbox.size. shape carries meaning for marks (rounded square = checkbox,
-// circle = radio) and the default pair (18, 6) sits at the cap, so smaller boxes
-// keep the default's proportion instead of growing rounder until the two blur.
-// the table's 16px in-cell miniature caps for the same reason
 func (m MetricSet) CheckboxRadius() float32 {
 	return min(m.RadiusControl, m.CheckboxSize/3)
 }
@@ -62,10 +48,6 @@ func defaultMetrics() MetricSet {
 	}
 }
 
-// mutates the table in place. unknown names are ignored, so a newer server
-// against an older terminal degrades to its defaults. callers outside the
-// protocol layer want UI.ApplyMetrics, which also drops size memos and
-// rebuilds the frame
 func applyMetricTokens(tokens map[string]float64) {
 	for name, v := range tokens {
 		if p := metricSlot(name); p != nil {

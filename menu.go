@@ -2,19 +2,14 @@ package caution
 
 import "github.com/nullentropy/caution/wire"
 
-// the terminal supplies the standard app menu (About, Hide, Quit) itself
 type Menu struct {
 	Title string
 	Items []MenuItem
 	App   bool
 }
 
-// one of: a separator (Sep), a submenu (Items), or a pickable item
-// (Title + OnPick, optionally Key)
 type MenuItem struct {
-	Title string
-	// "n" (cmd+N, the command key is the platform default), "cmd+shift+k",
-	// "ctrl+opt+t". letters and digits
+	Title  string
 	Key    string
 	OnPick func()
 	Sep    bool

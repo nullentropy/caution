@@ -6,20 +6,11 @@ import (
 	"github.com/nullentropy/caution/terminal/gfx"
 )
 
-// in-window menu bar: the server's menu spec on platforms without a system
-// bar (Linux, or macOS with -menubar), mirroring the browser terminal's only
-// version. client-local like the banner, never part of the server tree.
-// a click opens a title's dropdown on the overlay, and while one is open
-// hovering another title switches to it. picks go out through onPick as
-// session-level `menu` events, same as NSMenu picks
-
-// ui-local copy of proto.MenuSpec, this package can't import proto
 type MenuSpec struct {
 	Title string
 	Items []MenuItemSpec
 }
 
-// a separator, a submenu (Items), or a pickable item (ID + Title, optionally Key)
 type MenuItemSpec struct {
 	ID    int
 	Title string
@@ -28,11 +19,8 @@ type MenuItemSpec struct {
 	Items []MenuItemSpec
 }
 
-// row.height token, re-read every frame so a metrics patch moves the whole
-// tree under the bar
 func MenubarH() float32 { return Metrics.RowHeight }
 
-// same token as the bar
 func mbRowH() float32 { return Metrics.RowHeight }
 
 var barFont = gfx.NewFont(13, gfx.FontOpts{})
@@ -53,7 +41,6 @@ type MenuBar struct {
 	popover  *menuPopover
 }
 
-// an empty spec clears it, the tree lays out below it from the next frame
 func (u *UI) SetMenubar(menus []MenuSpec, onPick func(id int)) {
 	withItems := menus[:0:0]
 	for _, m := range menus {
@@ -69,11 +56,9 @@ func (u *UI) SetMenubar(menus []MenuSpec, onPick func(id int)) {
 		mb.UI = u
 		u.Menubar = mb
 	}
-	u.Invalidate()
+	u.InvalidateAll()
 }
 
-// menu key equivalents, canonicalized like registered combos (a bare key
-// means command, the platform default for menus)
 func (m *MenuBar) Combos() map[string]int {
 	out := map[string]int{}
 	var walk func(items []MenuItemSpec)
@@ -92,8 +77,6 @@ func (m *MenuBar) Combos() map[string]int {
 	return out
 }
 
-// keyboard path, and the probe hook ("menu:N" in shot scripts when no NSMenu
-// is installed)
 func (m *MenuBar) Perform(id int) bool {
 	found := false
 	var walk func(items []MenuItemSpec)
@@ -118,8 +101,6 @@ func (m *MenuBar) Perform(id int) bool {
 
 func (m *MenuBar) Interactive() bool { return true }
 
-// reconciles open state at paint: if the overlay isn't our popover anymore
-// (click-away, Escape, a pick) the highlight clears
 func (m *MenuBar) PaintSelf(dl *gfx.DisplayList) {
 	if m.popover != nil && m.UI.Overlay != Widget(m.popover) {
 		m.popover = nil
@@ -156,7 +137,7 @@ func (m *MenuBar) OnPointerDown(x, _ float32, _ int) {
 		return
 	}
 	if i == m.openIdx {
-		m.UI.CloseOverlay() // toggling the open title closes it
+		m.UI.CloseOverlay()
 		return
 	}
 	m.open(i)
@@ -166,9 +147,8 @@ func (m *MenuBar) OnPointerHover(x, _ float32) {
 	i := m.titleAt(x)
 	if i != m.hoverIdx {
 		m.hoverIdx = i
-		m.Invalidate()
+		m.InvalidateWidget()
 	}
-	// while a menu is open, pointing at another title switches to it without a press
 	if m.openIdx >= 0 && i >= 0 && i != m.openIdx {
 		m.open(i)
 	}
@@ -177,7 +157,7 @@ func (m *MenuBar) OnPointerHover(x, _ float32) {
 func (m *MenuBar) OnHoverChange(hovered bool) {
 	if !hovered && m.hoverIdx != -1 {
 		m.hoverIdx = -1
-		m.Invalidate()
+		m.InvalidateWidget()
 	}
 }
 
@@ -185,7 +165,7 @@ func (m *MenuBar) open(i int) {
 	m.openIdx = i
 	m.popover = openMenuPopover(m.UI, m.menus[i].Items, m.onPick, m.titleX(i), m.Bounds.Y+m.Bounds.H)
 	m.sound("open")
-	m.Invalidate()
+	m.InvalidateWidget()
 }
 
 func (m *MenuBar) titleW(title string) float32 {
@@ -212,15 +192,12 @@ func (m *MenuBar) titleAt(absX float32) int {
 	return -1
 }
 
-// flattened at open time. submenus render as an indented section under a
-// non-interactive header, same as context menus
 type menuRow struct {
 	item    MenuItemSpec
 	indent  int
 	section bool
 }
 
-// the context menu's pattern plus right-aligned key equivalents and submenu sections
 type menuPopover struct {
 	Core
 	rows     []menuRow
@@ -322,7 +299,7 @@ func (p *menuPopover) OnPointerHover(_, y float32) {
 	}
 	if i != p.hoverRow {
 		p.hoverRow = i
-		p.Invalidate()
+		p.InvalidateWidget()
 	}
 }
 
@@ -344,8 +321,6 @@ func (p *menuPopover) rowAt(absY float32) int {
 	return -1
 }
 
-// "shift+cmd+k" (a bare key means Cmd+key) into the registered-combo form
-// cmd+ctrl+alt+shift+key. mirrored in the browser terminal
 func CanonicalMenuCombo(spec string) string {
 	parts := strings.Split(strings.ToLower(spec), "+")
 	key := parts[len(parts)-1]
@@ -380,8 +355,6 @@ func CanonicalMenuCombo(spec string) string {
 	return out + key
 }
 
-// "shift+cmd+k" -> "Shift+Cmd+K". mac modifier order, spelled out since the
-// embedded fonts carry no modifier glyphs
 func ComboLabel(spec string) string {
 	canonical := CanonicalMenuCombo(spec)
 	parts := strings.Split(canonical, "+")

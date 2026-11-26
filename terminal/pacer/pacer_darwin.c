@@ -8,7 +8,6 @@ static void pacerCallout(CFRunLoopTimerRef t, void *info) { cautionPacerFire(); 
 
 void caution_pacer_install(void) {
 	if (pacerTimer) return;
-	// Created idle: first fire pushed to the far future until armed.
 	pacerTimer = CFRunLoopTimerCreate(NULL, CFAbsoluteTimeGetCurrent() + 1e9,
 		1.0 / 60.0, 0, 0, pacerCallout, NULL);
 	CFRunLoopTimerSetTolerance(pacerTimer, 0.004);
@@ -17,7 +16,7 @@ void caution_pacer_install(void) {
 
 void caution_pacer_arm(double interval) {
 	if (!pacerTimer) return;
-	// Interval changes only take effect via next-fire-date on macOS
+	// on macOS a new interval only takes effect by setting the next fire date
 	CFRunLoopTimerSetNextFireDate(pacerTimer, CFAbsoluteTimeGetCurrent() + interval);
 }
 

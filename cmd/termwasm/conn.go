@@ -10,8 +10,7 @@ import (
 	"github.com/nullentropy/caution/terminal/proto"
 )
 
-// socket callbacks run on the JS thread and must never block. messages queue
-// under a mutex and ReadMessage waits on a signal channel
+// socket callbacks run on the JS thread and must never block
 type jsConn struct {
 	ws     js.Value
 	funcs  []js.Func

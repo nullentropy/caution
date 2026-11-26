@@ -1,7 +1,6 @@
 import '../vendor/wasm_exec.js';
 
 export interface WasmTerm {
-  // logical size, device size, clock in seconds. returns [animating, kind]
   paint(w: number, h: number, devW: number, devH: number, time: number): [number, number];
   tickIn(): number;
   tick(): void;
@@ -20,18 +19,13 @@ export interface WasmTerm {
   semantics(): string;
   activate(id: number, row: number): void;
   fullscreen(on: boolean): void;
-  // the OS reduce-motion preference, at startup and on every change
   reduceMotion(on: boolean): void;
-  // window focus, false while the tab is hidden too
   focus(focused: boolean): void;
   fileDrag(over: boolean): void;
-  // most bytes the server takes in one drop, 0 until it mounts
   fileDropCap(): number;
-  // x, y in logical px
   fileDrop(x: number, y: number, files: { name: string; type: string; data: Uint8Array }[]): void;
 }
 
-// frame kinds paint reports
 export const FRAME_DAMAGE = 2;
 export const FRAME_PARTIAL = 3;
 
@@ -43,7 +37,6 @@ export interface HostCallbacks {
   invalidate(): void;
   setCursor(name: string): void;
   setTitle(title: string): void;
-  // a Set-Cookie string, document.cookie takes the same syntax
   setCookie(raw: string): void;
   writeClipboard(text: string): void;
   saveFile(name: string, data: Uint8Array): void;

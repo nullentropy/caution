@@ -6,7 +6,6 @@ import (
 	"github.com/nullentropy/caution/terminal/gfx"
 )
 
-// a row inserted above another, so one frame both fades and slides
 func insertRow(u *UI, root *Panel, noFade bool) *gfx.DisplayList {
 	moved := NewPanel()
 	moved.Frame = &gfx.Rect{X: 0, Y: 0, W: 100, H: 20}

@@ -7,13 +7,6 @@ import (
 	"github.com/nullentropy/caution/terminal/gfx"
 )
 
-// layout skips subtrees whose geometry can't have moved (see layoutSubtree).
-// the failure mode is stale bounds behind pixels that still look right, so
-// these drive the same scene twice, with the skip and fully laid out, and
-// compare every widget's bounds after each step
-
-// one of every container the layout pass walks, plus a wrapped label whose
-// height depends on the width it gets
 type parityScene struct {
 	root    *Panel
 	dock    *Dock
@@ -126,23 +119,21 @@ type parityStep struct {
 	mutate func(u *UI, s *parityScene)
 }
 
-// every mutation invalidates the way the protocol layer or a widget's own
-// interaction would
 var paritySteps = []parityStep{
 	{"initial", 900, 600, nil},
 	{"label text", 900, 600, func(_ *UI, s *parityScene) {
 		s.cell.Text = "a considerably longer cell label"
-		s.cell.Invalidate()
+		s.cell.InvalidateWidget()
 	}},
 	{"narrower viewport", 700, 600, nil},
 	{"scroll", 700, 600, func(_ *UI, s *parityScene) { s.scroll.ScrollBy(120) }},
 	{"divider drag", 700, 600, func(_ *UI, s *parityScene) {
 		s.split.Pos = 320
-		s.split.Invalidate()
+		s.split.InvalidateWidget()
 	}},
 	{"explicit width", 700, 600, func(_ *UI, s *parityScene) {
 		s.pinned.Width = f32p(160)
-		s.pinned.Invalidate()
+		s.pinned.InvalidateWidget()
 	}},
 	{"append a row", 700, 600, func(_ *UI, s *parityScene) {
 		row := NewHStack()
@@ -157,27 +148,27 @@ var paritySteps = []parityStep{
 	{"wrapped text", 700, 600, func(_ *UI, s *parityScene) {
 		s.wrapped.Text = "a much longer wrapped label, long enough that the line " +
 			"count changes with the width it is handed and the height follows"
-		s.wrapped.Invalidate()
+		s.wrapped.InvalidateWidget()
 	}},
 	{"row count", 700, 600, func(_ *UI, s *parityScene) {
 		s.table.RowCount = 5000
-		s.table.Invalidate()
+		s.table.InvalidateWidget()
 	}},
 	{"grid column", 700, 600, func(_ *UI, s *parityScene) {
 		s.grid.Columns[0] = GridTrack{Kind: "fixed", Px: 140, Align: "end"}
-		s.grid.Invalidate()
+		s.grid.InvalidateWidget()
 	}},
 	{"stack spacing", 700, 600, func(_ *UI, s *parityScene) {
 		s.vstack.Spacing = 20
-		s.vstack.Invalidate()
+		s.vstack.InvalidateWidget()
 	}},
 	{"anchors", 700, 600, func(_ *UI, s *parityScene) {
 		s.pinned.Anchors = &Anchors{Left: f32p(12), Top: f32p(3)}
-		s.pinned.Invalidate()
+		s.pinned.InvalidateWidget()
 	}},
 	{"card size", 700, 600, func(_ *UI, s *parityScene) {
 		s.dialog.CardW, s.dialog.CardH = 420, 240
-		s.dialog.Invalidate()
+		s.dialog.InvalidateWidget()
 	}},
 	{"metrics", 700, 600, func(u *UI, _ *parityScene) {
 		u.ApplyMetrics(map[string]float64{"row.height": 40, "control.height": 44, "space.pad": 14})
@@ -200,9 +191,7 @@ func TestLayoutSkipMatchesFullLayout(t *testing.T) {
 			step.mutate(fullUI, fullScene)
 		}
 		skipUI.BuildFrame(&gfx.DisplayList{}, step.w, step.h)
-		// the reference lays out in full, an untargeted invalidation turns the skip
-		// off for the frame
-		fullUI.Invalidate()
+		fullUI.InvalidateAll()
 		fullUI.BuildFrame(&gfx.DisplayList{}, step.w, step.h)
 		compareBounds(t, fmt.Sprintf("step %d (%s)", i, step.name), "root",
 			skipScene.root, fullScene.root)
@@ -226,9 +215,6 @@ func compareBounds(t *testing.T, step, path string, got, want Widget) {
 	}
 }
 
-// keeps the parity test honest, it would pass if nothing were ever skipped.
-// corrupt a child's bounds, and finding them still corrupt after a quiet frame
-// proves the parent never recursed
 func TestLayoutSkipActuallySkips(t *testing.T) {
 	u, s := fakeUi(), newParityScene()
 	u.Root = s.root
@@ -242,17 +228,13 @@ func TestLayoutSkipActuallySkips(t *testing.T) {
 		t.Fatalf("a quiet frame re-laid-out a clean subtree: bounds = %v", s.cell.Bounds)
 	}
 
-	// and the skip has to end the moment anything in the subtree invalidates
-	s.cell.Invalidate()
+	s.cell.InvalidateWidget()
 	u.BuildFrame(&gfx.DisplayList{}, 900, 600)
 	if s.cell.Bounds == junk {
 		t.Fatal("an invalidated widget kept its stale bounds")
 	}
 }
 
-// the one case the dirty flags can't describe: animGeometry offsets bounds
-// after layout, so while a tween is in flight every frame must re-derive them
-// or the offsets compound
 func TestGeometricAnimationLaysOutInFull(t *testing.T) {
 	u, s := fakeUi(), newParityScene()
 	u.Root = s.root

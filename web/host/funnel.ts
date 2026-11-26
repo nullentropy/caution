@@ -1,7 +1,6 @@
 import type { WasmTerm } from './wasm';
 
-// UTF-16 unit index -> rune index, and back. the textarea counts in units,
-// the terminal in runes
+// the textarea counts in UTF-16 units, the terminal in runes
 function runeAt(s: string, cu: number): number {
   let runes = 0;
   for (let i = 0; i < cu && i < s.length; ) {
@@ -31,8 +30,6 @@ export class Funnel {
     return this.active && this.ta != null && document.activeElement === this.ta;
   }
 
-  // bring the textarea in line with the terminal's focused editor, or let it
-  // go when none is focused. runs after every input event and every frame
   sync(): void {
     const st = this.term.textState();
     if (!st) {
@@ -46,7 +43,6 @@ export class Funnel {
       ta.focus({ preventScroll: true });
     }
     ta.setAttribute('aria-label', placeholder || 'text field');
-    // over the field so IME candidate windows appear near the text
     const origin = this.canvas.getBoundingClientRect();
     ta.style.left = `${origin.left + x}px`;
     ta.style.top = `${origin.top + y}px`;
@@ -107,7 +103,6 @@ export class Funnel {
       if (this.active && document.activeElement === ta) this.report(false);
     });
     ta.addEventListener('blur', () => {
-      // focus left through a non-canvas path (e.g. browser chrome)
       if (!this.releasing && this.active) {
         this.active = false;
         this.term.blur();

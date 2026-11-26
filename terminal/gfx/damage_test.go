@@ -23,7 +23,7 @@ func TestPlanDamageTopLevelQuad(t *testing.T) {
 	dl := &DisplayList{}
 	dl.Fill(R(0, 0, 1000, 700), White, Corners{})
 	dl.ShaderQuad(R(100, 100, 200, 150), "f", nil, true)
-	dl.ShaderQuad(R(600, 50, 50, 50), "f", nil, false) // static: no damage
+	dl.ShaderQuad(R(600, 50, 50, 50), "f", nil, false)
 
 	p := PlanDamage(dl, testView)
 	want := []Rect{R(100, 100, 200, 150)}
@@ -53,15 +53,12 @@ func TestPlanDamageNoAnimationMeansNoPartial(t *testing.T) {
 }
 
 func TestPlanDamagePromotesThroughLayers(t *testing.T) {
-	// outer layer > inner layer > animated quad
-	// damage is the OUTER rect since a composite may map any texel anywhere,
-	// and neither layer is cacheable
 	dl := &DisplayList{}
-	dl.BeginLayer(R(0, 0, 400, 400))                 // idx 0
-	dl.BeginLayer(R(50, 50, 100, 100))               // idx 1
-	dl.ShaderQuad(R(60, 60, 20, 20), "f", nil, true) // idx 2
-	dl.EndLayer("f", nil, false)                     // idx 3
-	dl.EndLayer("f", nil, false)                     // idx 4
+	dl.BeginLayer(R(0, 0, 400, 400))
+	dl.BeginLayer(R(50, 50, 100, 100))
+	dl.ShaderQuad(R(60, 60, 20, 20), "f", nil, true)
+	dl.EndLayer("f", nil, false)
+	dl.EndLayer("f", nil, false)
 
 	p := PlanDamage(dl, testView)
 	want := []Rect{R(0, 0, 400, 400)}
@@ -77,8 +74,6 @@ func TestPlanDamagePromotesThroughLayers(t *testing.T) {
 }
 
 func TestPlanDamageAnimatedCompositeOverStaticContentIsCacheable(t *testing.T) {
-	// the CRT case, static content with u_time in the composite
-	// the texture never changes so it's cacheable, but its rect is still damage
 	dl := &DisplayList{}
 	dl.BeginLayer(R(0, 0, 1000, 700))
 	dl.Text("static", 10, 10, Font{}, White)
@@ -96,10 +91,10 @@ func TestPlanDamageAnimatedCompositeOverStaticContentIsCacheable(t *testing.T) {
 
 func TestPlanDamageAnimatedNestedCompositePoisonsEnclosing(t *testing.T) {
 	dl := &DisplayList{}
-	dl.BeginLayer(R(0, 0, 500, 500)) // outer, idx 0
-	dl.BeginLayer(R(10, 10, 50, 50)) // inner, idx 1
+	dl.BeginLayer(R(0, 0, 500, 500))
+	dl.BeginLayer(R(10, 10, 50, 50))
 	dl.Text("x", 12, 12, Font{}, White)
-	dl.EndLayer("spin", nil, true) // inner composite animates within outer
+	dl.EndLayer("spin", nil, true)
 	dl.EndLayer("f", nil, false)
 
 	p := PlanDamage(dl, testView)
@@ -118,8 +113,8 @@ func TestPlanDamageAnimatedNestedCompositePoisonsEnclosing(t *testing.T) {
 func TestPlanDamageMergesOverlapsKeepsDisjoint(t *testing.T) {
 	dl := &DisplayList{}
 	dl.ShaderQuad(R(0, 0, 100, 100), "f", nil, true)
-	dl.ShaderQuad(R(50, 50, 100, 100), "f", nil, true) // overlaps the first
-	dl.ShaderQuad(R(500, 500, 40, 40), "f", nil, true) // far away
+	dl.ShaderQuad(R(50, 50, 100, 100), "f", nil, true)
+	dl.ShaderQuad(R(500, 500, 40, 40), "f", nil, true)
 
 	p := PlanDamage(dl, testView)
 	want := []Rect{R(0, 0, 150, 150), R(500, 500, 40, 40)}
@@ -130,14 +125,13 @@ func TestPlanDamageMergesOverlapsKeepsDisjoint(t *testing.T) {
 
 func TestPlanDamageClampsToViewAndCaps(t *testing.T) {
 	dl := &DisplayList{}
-	dl.ShaderQuad(R(950, 650, 200, 200), "f", nil, true) // straddles the edge
+	dl.ShaderQuad(R(950, 650, 200, 200), "f", nil, true)
 	p := PlanDamage(dl, testView)
 	want := []Rect{R(950, 650, 50, 50)}
 	if !rectsEqual(p.Rects, want) {
 		t.Fatalf("rects = %v, want %v", p.Rects, want)
 	}
 
-	// past the pass cap damage collapses to one bounding box
 	dl = &DisplayList{}
 	for i := 0; i < maxDamageRects+1; i++ {
 		dl.ShaderQuad(R(float32(i*70), float32(i*50), 10, 10), "f", nil, true)
@@ -153,22 +147,18 @@ func TestPlanDamageClampsToViewAndCaps(t *testing.T) {
 }
 
 func TestPaintedBoundsIsConservative(t *testing.T) {
-	// shadows paint outside their rect, the vertex shader inflates the quad
-	// by blur*2.5 + 1 (see render/shaders.go)
 	sh := &Cmd{Kind: CmdShadow, Rect: R(100, 100, 50, 50), Blur: 10, Clip: NoClip}
 	b := PaintedBounds(sh)
 	if b.X > 100-26 || b.Y > 100-26 || b.X+b.W < 176 || b.Y+b.H < 176 {
 		t.Fatalf("shadow bounds %v don't cover the inflated quad", b)
 	}
 
-	// rects get 1px of AA margin
 	rc := &Cmd{Kind: CmdRect, Rect: R(10, 10, 20, 20), Clip: NoClip}
 	b = PaintedBounds(rc)
 	if b.X > 9 || b.X+b.W < 31 {
 		t.Fatalf("rect bounds %v miss the AA margin", b)
 	}
 
-	// unmeasured text is bounded by its clip, NoClip matches all
 	tx := &Cmd{Kind: CmdText, Clip: R(50, 50, 100, 20)}
 	if !Overlaps(PaintedBounds(tx), R(140, 60, 5, 5)) {
 		t.Fatal("clipped text must intersect damage inside its clip")
@@ -181,26 +171,17 @@ func TestPaintedBoundsIsConservative(t *testing.T) {
 		t.Fatal("unclipped text must conservatively intersect everything")
 	}
 
-	// a clip tighter than the rect bounds the paint
 	clipped := &Cmd{Kind: CmdRect, Rect: R(0, 0, 900, 900), Clip: R(200, 200, 50, 50)}
 	if Overlaps(PaintedBounds(clipped), R(600, 600, 10, 10)) {
 		t.Fatal("clip must bound a huge rect's painted extent")
 	}
 
-	// shader quads record no clip (their rect is pre-intersected)
-	// the zero Clip must not empty their bounds or the animated pane drops out
-	// of its own replay
 	sq := &Cmd{Kind: CmdShaderQuad, Rect: R(100, 100, 50, 50)}
 	if !Overlaps(PaintedBounds(sq), R(120, 120, 5, 5)) {
 		t.Fatal("shader quad must intersect damage inside its rect despite zero Clip")
 	}
 }
 
-// -- real damage -------------------------------------------------------------
-
-// a field CmdEqual forgets is a stale pixel, so every Cmd field gets mutated
-// reflectively and must be noticed. a new Cmd field fails here until CmdEqual
-// compares it
 func TestCmdEqualSeesEveryField(t *testing.T) {
 	base := Cmd{
 		Kind: CmdRect, Rect: R(1, 2, 3, 4), Radii: Corners{1, 2, 3, 4}, Clip: R(0, 0, 9, 9),
@@ -225,8 +206,6 @@ func TestCmdEqualSeesEveryField(t *testing.T) {
 	}
 }
 
-// descends into structs and arrays (Rect, Corners, Font, UV) until it finds
-// a scalar to move
 func perturb(v reflect.Value) bool {
 	switch v.Kind() {
 	case reflect.Float32:
@@ -291,7 +270,6 @@ func TestDiffDamageOneChangedCommand(t *testing.T) {
 	if !ok {
 		t.Fatal("want a partial frame")
 	}
-	// old and new position, each inflated 1px for the AA margin
 	want := []Rect{R(99, 199, 42, 22), R(99, 299, 42, 22)}
 	if !rectsEqual(got, want) {
 		t.Fatalf("rects = %v, want %v", got, want)
@@ -304,8 +282,6 @@ func TestDiffDamageSeedsAnimatedRects(t *testing.T) {
 		dl.ShaderQuad(R(10, 10, 30, 30), "f", nil, true)
 		return dl
 	}
-	// same command every frame but u_time isn't, so animation damage has to
-	// survive the diff
 	got, ok := DiffDamage(build(), build(), testView, []Rect{R(10, 10, 30, 30)})
 	if !ok || !rectsEqual(got, []Rect{R(10, 10, 30, 30)}) {
 		t.Fatalf("rects = %v (ok=%v), want the animated rect", got, ok)
@@ -326,8 +302,6 @@ func TestDiffDamagePromotesToOutermostLayer(t *testing.T) {
 	if !ok {
 		t.Fatal("want a partial frame")
 	}
-	// a composite may map any texel anywhere, so the whole outer layer is
-	// damage, not just the changed fill
 	if !rectsEqual(got, []Rect{R(100, 100, 200, 200)}) {
 		t.Fatalf("rects = %v, want the outer layer rect", got)
 	}
@@ -339,7 +313,7 @@ func TestDiffDamageLengthChangeTrimsEnds(t *testing.T) {
 	prev.Fill(R(600, 600, 10, 10), White, Corners{})
 	next := &DisplayList{}
 	next.Fill(R(0, 0, 1000, 700), White, Corners{})
-	next.Fill(R(300, 300, 20, 20), White, Corners{}) // a hover ring appears
+	next.Fill(R(300, 300, 20, 20), White, Corners{})
 	next.Fill(R(600, 600, 10, 10), White, Corners{})
 
 	got, ok := DiffDamage(prev, next, testView, nil)
@@ -355,7 +329,7 @@ func TestDiffDamageLayerAppearingTakesTheFullFrame(t *testing.T) {
 	prev := &DisplayList{}
 	prev.Fill(R(0, 0, 100, 100), White, Corners{})
 	next := &DisplayList{}
-	next.BeginLayer(R(0, 0, 100, 100)) // a fade-in starts
+	next.BeginLayer(R(0, 0, 100, 100))
 	next.Fill(R(0, 0, 100, 100), White, Corners{})
 	next.EndLayer("f", nil, false)
 
@@ -382,8 +356,6 @@ func TestDiffDamageNothingRetained(t *testing.T) {
 	}
 }
 
-// ~2600 commands, what the diff scans on every real invalidation and the
-// tax it adds to the whole-frame path when it declines
 func bigList(shift float32) *DisplayList {
 	dl := &DisplayList{Measure: func(_ Font, s string) (float32, float32, float32) {
 		return float32(len(s)) * 7, 10, 3

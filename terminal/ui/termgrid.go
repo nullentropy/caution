@@ -203,7 +203,7 @@ func (t *TermGrid) RawKeys() bool     { return true }
 func (t *TermGrid) OnFocusChange(f bool) {
 	t.focused = f
 	t.Touch()
-	t.Invalidate()
+	t.InvalidateWidget()
 }
 
 func (t *TermGrid) OnKey(k Key) bool {

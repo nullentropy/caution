@@ -13,24 +13,13 @@ import (
 
 const AtlasSize = 2048
 
-// horizontal subpixel offsets per glyph. snapping every glyph to a whole
-// device pixel keeps it crisp but quantizes the gaps, so spacing wobbles by
-// up to half a pixel and reads as bad kerning. each glyph is rasterized at
-// Phases offsets and the renderer picks the nearest, so spacing lands within
-// 1/Phases of true and the bitmap stays sharp
 const Phases = 4
 
-// region is device pixels including a 1px transparent pad on each side
-// BX/BY offset from the device-px pen position at the baseline to the quad's
-// top-left
 type Glyph struct {
 	X0, Y0, X1, Y1 int
 	W, H           int
 	BX, BY         int
-	// color glyphs (emoji) must not be tinted. outline rasterization never sets
-	// it, it's here so the renderer contract matches the browser's when bitmap
-	// glyphs arrive
-	Colored bool
+	Colored        bool
 }
 
 type glyphKey struct {
@@ -41,15 +30,11 @@ type glyphKey struct {
 	phase uint8
 }
 
-// shelf-packed CPU buffer the renderer uploads wholesale when Dirty
-// glyphs are white on transparent, premultiplied so every channel is the
-// coverage, and the shader tints them. resets wholesale when full, cheap and
-// fine until we need incremental eviction
 type Atlas struct {
-	// AtlasSize squared, premultiplied RGBA
-	Pix []byte
-	// Pix has glyphs the GPU texture hasn't seen
-	Dirty bool
+	Pix     []byte
+	OnReset func()
+
+	dirtyY0, dirtyY1 int
 
 	reg        *Registry
 	gen        int
@@ -59,22 +44,34 @@ type Atlas struct {
 
 func NewAtlas(reg *Registry) *Atlas {
 	return &Atlas{
-		Pix:    make([]byte, AtlasSize*AtlasSize*4),
-		reg:    reg,
-		gen:    reg.gen,
-		glyphs: make(map[glyphKey]*Glyph),
-		x:      1,
-		y:      1,
+		Pix:     make([]byte, AtlasSize*AtlasSize*4),
+		reg:     reg,
+		gen:     reg.gen,
+		glyphs:  make(map[glyphKey]*Glyph),
+		x:       1,
+		y:       1,
+		dirtyY0: 0,
+		dirtyY1: AtlasSize,
 	}
 }
 
-// rasterizes on miss. face is the one that shaped the glyph (Placed.Face),
-// size the font's logical px, phase a subpixel offset index in [0, Phases)
-// nil means no ink (spaces), cached too
+func (a *Atlas) TakeDirty() (y0, y1 int) {
+	y0, y1 = a.dirtyY0, a.dirtyY1
+	a.dirtyY0, a.dirtyY1 = 0, 0
+	return y0, y1
+}
+
+func (a *Atlas) markDirty(y0, y1 int) {
+	y0, y1 = max(0, y0), min(AtlasSize, y1)
+	if a.dirtyY1 <= a.dirtyY0 {
+		a.dirtyY0, a.dirtyY1 = y0, y1
+		return
+	}
+	a.dirtyY0, a.dirtyY1 = min(a.dirtyY0, y0), max(a.dirtyY1, y1)
+}
+
 func (a *Atlas) Get(face *font.Face, size, dpr float32, gid font.GID, phase int) *Glyph {
 	if a.gen != a.reg.gen {
-		// a swapped font leaves glyphs rasterized from faces nothing shapes
-		// with any more
 		a.gen = a.reg.gen
 		a.Reset()
 	}
@@ -90,16 +87,13 @@ func (a *Atlas) Get(face *font.Face, size, dpr float32, gid font.GID, phase int)
 		return nil
 	}
 
-	// font units -> device px, y flipped (outlines are y-up), subpixel shift
-	// applied before the bounding box so the box grows with it
+	// outlines are y-up
 	scale := size * dpr / float32(face.Upem())
 	off := float32(phase) / Phases
 	tx := func(p opentype.SegmentPoint) (float32, float32) {
 		return p.X*scale + off, -p.Y * scale
 	}
 
-	// conservative ink bounds from every on-curve and control point, curves
-	// stay inside their control hull
 	minX, minY := float32(math.Inf(1)), float32(math.Inf(1))
 	maxX, maxY := float32(math.Inf(-1)), float32(math.Inf(-1))
 	for _, seg := range outline.Segments {
@@ -116,8 +110,6 @@ func (a *Atlas) Get(face *font.Face, size, dpr float32, gid font.GID, phase int)
 		return nil
 	}
 
-	// 1px transparent pad all around, linear sampling bleeds into neighbors
-	// otherwise
 	x0 := int(math.Floor(float64(minX))) - 1
 	y0 := int(math.Floor(float64(minY))) - 1
 	w := int(math.Ceil(float64(maxX))) - x0 + 1
@@ -143,7 +135,6 @@ func (a *Atlas) Get(face *font.Face, size, dpr float32, gid font.GID, phase int)
 		a.rowH = h
 	}
 
-	// coverage, then blit as premultiplied white
 	ras := vector.NewRasterizer(w, h)
 	ras.DrawOp = draw.Src
 	open := false
@@ -194,13 +185,16 @@ func (a *Atlas) Get(face *font.Face, size, dpr float32, gid font.GID, phase int)
 		BX: x0, BY: y0,
 	}
 	a.glyphs[key] = g
-	a.Dirty = true
+	a.markDirty(gy-1, gy+h+1)
 	return g
 }
 
 func (a *Atlas) Reset() {
+	if a.OnReset != nil {
+		a.OnReset()
+	}
 	clear(a.glyphs)
 	clear(a.Pix)
 	a.x, a.y, a.rowH = 1, 1, 0
-	a.Dirty = true
+	a.markDirty(0, AtlasSize)
 }

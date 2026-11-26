@@ -15,8 +15,6 @@ import (
 	"github.com/go-gl/glfw/v3.3/glfw"
 )
 
-// full-bleed content with the traffic lights floating over it
-// style picks where they sit
 func applyCustomTitlebar(win *glfw.Window, style string) {
 	s := 0
 	switch style {
@@ -37,8 +35,6 @@ func cautionFullscreenChanged(on C.int) {
 	}
 }
 
-// system fullscreen (green button, Cmd+Ctrl+F), not Options.Fullscreen
-// which takes over a monitor at a video mode
 func watchFullscreen(win *glfw.Window, fn func(on bool)) {
 	onFullscreen = fn
 	C.caution_watch_fullscreen(unsafe.Pointer(win.GetCocoaWindow()))

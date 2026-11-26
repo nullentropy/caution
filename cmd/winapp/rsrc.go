@@ -13,27 +13,26 @@ import (
 )
 
 // the only way to get resources into the .exe is a COFF object with a .rsrc
-// section. tree is type -> id -> language -> data
+// section. its resource tree nests type, then id, then language, then data
 
 const (
 	rtIcon      = 3
 	rtGroupIcon = 14
 	rtManifest  = 24
 
-	langEnUS = 0x0409 // en-US
+	langEnUS = 0x0409
 
 	imageScnCntInitializedData = 0x00000040
 	imageScnMemRead            = 0x40000000
 	imageSymClassStatic        = 3
 
-	relAmd64Addr32NB = 0x0003 // IMAGE_REL_AMD64_ADDR32NB
-	relArm64Addr32NB = 0x0002 // IMAGE_REL_ARM64_ADDR32NB
+	relAmd64Addr32NB = 0x0003
+	relArm64Addr32NB = 0x0002
 
 	machineAmd64 = 0x8664
 	machineArm64 = 0xAA64
 )
 
-// Windows scales the nearest size, cover the common DPI steps or icons blur
 var iconSizes = []int{16, 24, 32, 48, 64, 128, 256}
 
 type resource struct {
@@ -41,13 +40,13 @@ type resource struct {
 	data    []byte
 }
 
-// PNG icon images are fine since Vista
-// group gets id 1, Explorer shows the lowest-numbered group as the app icon
+// icon images may be PNG, which Windows accepts since Vista. the group gets
+// id 1 because Explorer shows the lowest-numbered group as the app icon
 func iconResources(master *image.RGBA) ([]resource, error) {
 	group := &bytes.Buffer{}
-	binary.Write(group, binary.LittleEndian, uint16(0))              // reserved
-	binary.Write(group, binary.LittleEndian, uint16(1))              // type: icon
-	binary.Write(group, binary.LittleEndian, uint16(len(iconSizes))) // image count
+	binary.Write(group, binary.LittleEndian, uint16(0))
+	binary.Write(group, binary.LittleEndian, uint16(1))
+	binary.Write(group, binary.LittleEndian, uint16(len(iconSizes)))
 
 	var out []resource
 	for i, size := range iconSizes {
@@ -58,19 +57,19 @@ func iconResources(master *image.RGBA) ([]resource, error) {
 		id := uint16(i + 1)
 		out = append(out, resource{typ: rtIcon, id: id, data: buf.Bytes()})
 
-		// GRPICONDIRENTRY. 256 is stored as 0, the field is one byte
+		// GRPICONDIRENTRY size fields are one byte, so 256 is stored as 0
 		dim := byte(size)
 		if size >= 256 {
 			dim = 0
 		}
-		group.WriteByte(dim)                                        // width
-		group.WriteByte(dim)                                        // height
-		group.WriteByte(0)                                          // palette colors
-		group.WriteByte(0)                                          // reserved
-		binary.Write(group, binary.LittleEndian, uint16(1))         // color planes
-		binary.Write(group, binary.LittleEndian, uint16(32))        // bits per pixel
-		binary.Write(group, binary.LittleEndian, uint32(buf.Len())) // bytes in image
-		binary.Write(group, binary.LittleEndian, id)                // RT_ICON id
+		group.WriteByte(dim)
+		group.WriteByte(dim)
+		group.WriteByte(0)
+		group.WriteByte(0)
+		binary.Write(group, binary.LittleEndian, uint16(1))
+		binary.Write(group, binary.LittleEndian, uint16(32))
+		binary.Write(group, binary.LittleEndian, uint32(buf.Len()))
+		binary.Write(group, binary.LittleEndian, id)
 	}
 	return append(out, resource{typ: rtGroupIcon, id: 1, data: group.Bytes()}), nil
 }
@@ -98,14 +97,13 @@ func manifestXML(appID, version string) []byte {
 `)
 }
 
-// header, section header, section bytes, relocations, symbol table
 func buildSyso(res []resource, arch string) []byte {
 	machine, relType := uint16(machineAmd64), uint16(relAmd64Addr32NB)
 	if arch == "arm64" {
 		machine, relType = machineArm64, relArm64Addr32NB
 	}
 
-	// the format requires sorted order
+	// Windows requires resource directory entries in sorted order
 	types := map[uint16][]resource{}
 	var typeOrder []uint16
 	for _, r := range res {
@@ -119,12 +117,11 @@ func buildSyso(res []resource, arch string) []byte {
 		slices.SortStableFunc(types[t], func(a, b resource) int { return cmp.Compare(a.id, b.id) })
 	}
 
-	// one root, one per type, one per leaf (language level), then data entries
 	const dirSize, entrySize, dataEntrySize = 16, 8, 16
 	size := dirSize + entrySize*len(typeOrder)
 	for _, t := range typeOrder {
-		size += dirSize + entrySize*len(types[t])     // the id level
-		size += (dirSize + entrySize) * len(types[t]) // one language dir per id
+		size += dirSize + entrySize*len(types[t])
+		size += (dirSize + entrySize) * len(types[t])
 	}
 	dataEntriesAt := size
 	size += dataEntrySize * len(res)
@@ -133,7 +130,6 @@ func buildSyso(res []resource, arch string) []byte {
 	var dirs, dataEntries, payloads bytes.Buffer
 	var relocs []uint32
 
-	// root, one entry per type
 	idDirAt := dirSize + entrySize*len(typeOrder)
 	writeDir(&dirs, len(typeOrder))
 	off := idDirAt
@@ -143,7 +139,6 @@ func buildSyso(res []resource, arch string) []byte {
 		off += dirSize + entrySize*len(types[t]) + (dirSize+entrySize)*len(types[t])
 	}
 
-	// per type, an id dir then a language dir per id
 	dataIndex := 0
 	for _, t := range typeOrder {
 		group := types[t]
@@ -162,7 +157,7 @@ func buildSyso(res []resource, arch string) []byte {
 		idDirAt = langDirAt + (dirSize+entrySize)*len(group)
 	}
 
-	// data entries. OffsetToData is an RVA the linker patches, each needs a
+	// OffsetToData is an RVA that the linker patches, so each entry needs a
 	// relocation against the section symbol
 	payloadOff := payloadAt
 	for _, t := range typeOrder {
@@ -170,10 +165,10 @@ func buildSyso(res []resource, arch string) []byte {
 			relocs = append(relocs, uint32(dataEntriesAt+dataEntries.Len()))
 			binary.Write(&dataEntries, binary.LittleEndian, uint32(payloadOff))
 			binary.Write(&dataEntries, binary.LittleEndian, uint32(len(r.data)))
-			binary.Write(&dataEntries, binary.LittleEndian, uint32(0)) // code page
-			binary.Write(&dataEntries, binary.LittleEndian, uint32(0)) // reserved
+			binary.Write(&dataEntries, binary.LittleEndian, uint32(0))
+			binary.Write(&dataEntries, binary.LittleEndian, uint32(0))
 			payloads.Write(r.data)
-			for payloads.Len()%8 != 0 { // keep payloads 8-byte aligned
+			for payloads.Len()%8 != 0 {
 				payloads.WriteByte(0)
 			}
 			payloadOff = payloadAt + payloads.Len()
@@ -189,46 +184,46 @@ func buildSyso(res []resource, arch string) []byte {
 
 	out := &bytes.Buffer{}
 	binary.Write(out, binary.LittleEndian, machine)
-	binary.Write(out, binary.LittleEndian, uint16(1))        // one section
-	binary.Write(out, binary.LittleEndian, uint32(0))        // timestamp: zero keeps builds reproducible
-	binary.Write(out, binary.LittleEndian, uint32(symbolAt)) // symbol table offset
-	binary.Write(out, binary.LittleEndian, uint32(1))        // one symbol
-	binary.Write(out, binary.LittleEndian, uint16(0))        // no optional header
-	binary.Write(out, binary.LittleEndian, uint16(0))        // characteristics
+	binary.Write(out, binary.LittleEndian, uint16(1))
+	binary.Write(out, binary.LittleEndian, uint32(0))
+	binary.Write(out, binary.LittleEndian, uint32(symbolAt))
+	binary.Write(out, binary.LittleEndian, uint32(1))
+	binary.Write(out, binary.LittleEndian, uint16(0))
+	binary.Write(out, binary.LittleEndian, uint16(0))
 
 	out.WriteString(".rsrc\x00\x00\x00")
-	binary.Write(out, binary.LittleEndian, uint32(0))             // virtual size
-	binary.Write(out, binary.LittleEndian, uint32(0))             // virtual address
-	binary.Write(out, binary.LittleEndian, uint32(len(section)))  // raw size
-	binary.Write(out, binary.LittleEndian, uint32(sectionDataAt)) // raw data pointer
-	binary.Write(out, binary.LittleEndian, uint32(relocAt))       // relocations
-	binary.Write(out, binary.LittleEndian, uint32(0))             // line numbers
-	binary.Write(out, binary.LittleEndian, uint16(len(relocs)))   // relocation count
-	binary.Write(out, binary.LittleEndian, uint16(0))             // line number count
+	binary.Write(out, binary.LittleEndian, uint32(0))
+	binary.Write(out, binary.LittleEndian, uint32(0))
+	binary.Write(out, binary.LittleEndian, uint32(len(section)))
+	binary.Write(out, binary.LittleEndian, uint32(sectionDataAt))
+	binary.Write(out, binary.LittleEndian, uint32(relocAt))
+	binary.Write(out, binary.LittleEndian, uint32(0))
+	binary.Write(out, binary.LittleEndian, uint16(len(relocs)))
+	binary.Write(out, binary.LittleEndian, uint16(0))
 	binary.Write(out, binary.LittleEndian, uint32(imageScnCntInitializedData|imageScnMemRead))
 
 	out.Write(section)
 	for _, r := range relocs {
-		binary.Write(out, binary.LittleEndian, r)         // address to patch
-		binary.Write(out, binary.LittleEndian, uint32(0)) // symbol index: the section itself
+		binary.Write(out, binary.LittleEndian, r)
+		binary.Write(out, binary.LittleEndian, uint32(0))
 		binary.Write(out, binary.LittleEndian, relType)
 	}
 	out.WriteString(".rsrc\x00\x00\x00")
-	binary.Write(out, binary.LittleEndian, uint32(0)) // value
-	binary.Write(out, binary.LittleEndian, uint16(1)) // section number
-	binary.Write(out, binary.LittleEndian, uint16(0)) // type
+	binary.Write(out, binary.LittleEndian, uint32(0))
+	binary.Write(out, binary.LittleEndian, uint16(1))
+	binary.Write(out, binary.LittleEndian, uint16(0))
 	out.WriteByte(imageSymClassStatic)
-	out.WriteByte(0)                                  // no aux symbols
-	binary.Write(out, binary.LittleEndian, uint32(4)) // empty string table
+	out.WriteByte(0)
+	binary.Write(out, binary.LittleEndian, uint32(4))
 
 	return out.Bytes()
 }
 
 func writeDir(buf *bytes.Buffer, idEntries int) {
-	binary.Write(buf, binary.LittleEndian, uint32(0))         // characteristics
-	binary.Write(buf, binary.LittleEndian, uint32(0))         // timestamp
-	binary.Write(buf, binary.LittleEndian, uint16(0))         // major version
-	binary.Write(buf, binary.LittleEndian, uint16(0))         // minor version
-	binary.Write(buf, binary.LittleEndian, uint16(0))         // named entries
-	binary.Write(buf, binary.LittleEndian, uint16(idEntries)) // id entries
+	binary.Write(buf, binary.LittleEndian, uint32(0))
+	binary.Write(buf, binary.LittleEndian, uint32(0))
+	binary.Write(buf, binary.LittleEndian, uint16(0))
+	binary.Write(buf, binary.LittleEndian, uint16(0))
+	binary.Write(buf, binary.LittleEndian, uint16(0))
+	binary.Write(buf, binary.LittleEndian, uint16(idEntries))
 }

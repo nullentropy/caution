@@ -12,7 +12,6 @@ const taPadY = 8
 
 type TextArea struct {
 	TextField
-	// visible line count for the intrinsic height (`rows` prop)
 	Rows       int
 	EnterSends bool
 
@@ -22,13 +21,11 @@ type TextArea struct {
 }
 
 type taCache struct {
-	value   string
-	fontKey string
-	epoch   int
-	w       float32
-	lines   []text.Line
-	// rune-offset twins of lines' byte offsets, the selection is rune-based
-	// (shares TextField's editing core)
+	value        string
+	fontKey      string
+	epoch        int
+	w            float32
+	lines        []text.Line
 	rstart, rend []int
 }
 
@@ -56,8 +53,6 @@ func (a *TextArea) ForceClear() {
 	a.goalX = nil
 }
 
-// -- wrapped geometry ---------------------------------------------------------
-
 func (a *TextArea) lines() *taCache {
 	w := max(1, a.Bounds.W-tfPadX()*2)
 	f := a.font()
@@ -68,7 +63,6 @@ func (a *TextArea) lines() *taCache {
 	ls := text.Wrap(func(s string) float32 { return a.UI.Measure(f, s).Width }, a.Value, w)
 	c := &taCache{value: a.Value, fontKey: f.Key, epoch: a.UI.MeasureEpoch(), w: w, lines: ls,
 		rstart: make([]int, len(ls)), rend: make([]int, len(ls))}
-	// one ordered walk converts byte offsets to rune offsets
 	bo, ro := 0, 0
 	advanceTo := func(target int) int {
 		for bo < target {
@@ -86,7 +80,6 @@ func (a *TextArea) lines() *taCache {
 	return c
 }
 
-// gaps (the eaten separators) belong to the line before them
 func (a *TextArea) lineOf(c *taCache, r int) int {
 	li := 0
 	for i := range c.rstart {
@@ -133,8 +126,6 @@ func (a *TextArea) runeAtPoint(x, y float32) int {
 	}
 	return c.rstart[li] + best
 }
-
-// -- line-aware editing -----------------------------------------------------------
 
 func (a *TextArea) lineStart(r int) int {
 	c := a.lines()
@@ -219,7 +210,7 @@ func (a *TextArea) OnKey(k Key) bool {
 	switch k.Name {
 	case "Enter":
 		if cmdish || a.EnterSends && !k.Shift && !k.Alt {
-			a.Submit() // Cmd+Enter submits without leaving the field
+			a.Submit()
 			return true
 		}
 		a.edit(s, e, "\n")
@@ -229,7 +220,7 @@ func (a *TextArea) OnKey(k Key) bool {
 		case s != e:
 			a.edit(s, e, "")
 		case k.Meta:
-			a.edit(a.lineStart(a.selEnd), a.selEnd, "") // Cmd+Backspace deletes to visual line start
+			a.edit(a.lineStart(a.selEnd), a.selEnd, "")
 		case k.Alt:
 			a.edit(a.wordLeft(a.selEnd), a.selEnd, "")
 		case a.selEnd > 0:
@@ -247,7 +238,7 @@ func (a *TextArea) OnKey(k Key) bool {
 		to := a.selEnd - 1
 		switch {
 		case k.Meta:
-			to = a.lineStart(a.selEnd) // Cmd+Left is visual line start
+			to = a.lineStart(a.selEnd)
 		case k.Alt:
 			to = a.wordLeft(a.selEnd)
 		case s != e && !k.Shift:
@@ -259,7 +250,7 @@ func (a *TextArea) OnKey(k Key) bool {
 		to := a.selEnd + 1
 		switch {
 		case k.Meta:
-			to = a.lineEnd(a.selEnd) // Cmd+Right is visual line end
+			to = a.lineEnd(a.selEnd)
 		case k.Alt:
 			to = a.wordRight(a.selEnd)
 		case s != e && !k.Shift:
@@ -320,12 +311,11 @@ func (a *TextArea) OnKey(k Key) bool {
 			return true
 		}
 	case "Escape":
-		return !a.EnterSends && a.revert() // clean field: let Escape bubble
+		return !a.EnterSends && a.revert()
 	}
 	return false
 }
 
-// keeps newlines, unlike the single-line paste
 func (a *TextArea) pasteMultiline() {
 	if a.UI.ReadClipboard == nil {
 		return
@@ -356,8 +346,6 @@ func (a *TextArea) pasteMultiline() {
 	a.edit(s, e, clip)
 }
 
-// -- scrolling (wheel routes here via ScrollTarget) ---------------------------------
-
 func (a *TextArea) contentH() float32 {
 	lineH, adv := a.metrics()
 	n := max(1, len(a.lines().lines))
@@ -373,11 +361,9 @@ func (a *TextArea) ScrollBy(dy float32) {
 	next := min(max(a.scrollY+dy, 0), maxS)
 	if next != a.scrollY {
 		a.scrollY = next
-		a.Invalidate()
+		a.InvalidateWidget()
 	}
 }
-
-// -- painting -----------------------------------------------------------------------
 
 func (a *TextArea) PaintSelf(dl *gfx.DisplayList) {
 	b := a.Bounds
@@ -398,7 +384,6 @@ func (a *TextArea) PaintSelf(dl *gfx.DisplayList) {
 	c := a.lines()
 	innerH := b.H - taPadY*2
 
-	// caret-follow: keep the caret's line in the viewport
 	if a.Focused && len(c.lines) > 0 {
 		li, _ := a.caretPos(c, a.selEnd)
 		cy := float32(li) * adv
@@ -422,7 +407,7 @@ func (a *TextArea) PaintSelf(dl *gfx.DisplayList) {
 	for i, ln := range c.lines {
 		y := topY + float32(i)*adv
 		if y+lineH < b.Y || y > b.Y+b.H {
-			continue // off-viewport line
+			continue
 		}
 		lineText := a.Value[ln.Start:ln.End]
 		if a.Focused && s != e {
@@ -432,7 +417,7 @@ func (a *TextArea) PaintSelf(dl *gfx.DisplayList) {
 			if lb > la || (empty && s <= c.rstart[i] && e > c.rend[i]) {
 				xs, _ := a.lineRun(c, i)
 				x0 := xs[clampInt(la-c.rstart[i], 0, len(xs)-1)]
-				x1 := x0 + 4 // stub marks empty lines inside the range
+				x1 := x0 + 4
 				if lb > la {
 					x1 = xs[clampInt(lb-c.rstart[i], 0, len(xs)-1)]
 				}
@@ -450,14 +435,11 @@ func (a *TextArea) PaintSelf(dl *gfx.DisplayList) {
 	dl.PopClip()
 }
 
-// -- mouse ---------------------------------------------------------------------------
-
 func (a *TextArea) OnPointerDown(x, y float32, detail int) {
 	a.goalX = nil
 	i := a.runeAtPoint(x, y)
 	switch {
 	case detail >= 3:
-		// triple-click selects the hard paragraph around the point
 		rs := []rune(a.Value)
 		s := clampInt(i, 0, len(rs))
 		for s > 0 && rs[s-1] != '\n' {
@@ -469,16 +451,16 @@ func (a *TextArea) OnPointerDown(x, y float32, detail int) {
 		}
 		a.selStart, a.selEnd, a.anchor = s, e, s
 		a.touch()
-		a.Invalidate()
+		a.InvalidateWidget()
 	case detail == 2:
 		s, e := a.wordRangeAt(min(i, max(0, len([]rune(a.Value))-1)))
 		a.selStart, a.selEnd, a.anchor = s, e, s
 		a.touch()
-		a.Invalidate()
+		a.InvalidateWidget()
 	default:
 		a.selStart, a.selEnd, a.anchor = i, i, i
 		a.touch()
-		a.Invalidate()
+		a.InvalidateWidget()
 	}
 }
 
@@ -488,6 +470,6 @@ func (a *TextArea) OnPointerDrag(x, y float32) {
 	if a.selStart != a.anchor || a.selEnd != i {
 		a.selStart, a.selEnd = a.anchor, i
 		a.touch()
-		a.Invalidate()
+		a.InvalidateWidget()
 	}
 }

@@ -15,7 +15,6 @@ const (
 	cullH    = 300
 )
 
-// one scroll view holding far more rows than fit
 func cullScene() (*UI, *ScrollView, []*Panel) {
 	u := fakeUi()
 	sv := NewScrollView()
@@ -49,7 +48,6 @@ func frame(u *UI) *gfx.DisplayList {
 	return dl
 }
 
-// visible rows plus the margin on each side, nowhere near the whole list
 const maxPaintedRows = cullH/cullRowH + 2*cullMargin/cullRowH + 2
 
 func TestScrollViewPaintsOnlyVisibleRows(t *testing.T) {
@@ -59,8 +57,6 @@ func TestScrollViewPaintsOnlyVisibleRows(t *testing.T) {
 	}
 }
 
-// a structural insert fades every new row through its own offscreen layer, so
-// painting rows nobody can see allocated one texture each
 func TestInsertFadesOnlyVisibleRows(t *testing.T) {
 	u, sv, _ := cullScene()
 	rows := sv.Kids
@@ -73,15 +69,13 @@ func TestInsertFadesOnlyVisibleRows(t *testing.T) {
 	}
 }
 
-// splicing must never replay a culled row's empty range once it is visible,
-// so each scrolled frame has to match a from-scratch rebuild of the same state
 func TestScrolledSpliceMatchesRebuild(t *testing.T) {
 	u, sv, _ := cullScene()
 	frame(u)
 	for _, dy := range []float32{1000, 37, -400, 5000, -5000} {
 		sv.ScrollBy(dy)
 		spliced := frame(u)
-		u.Invalidate()
+		u.InvalidateAll()
 		rebuilt := frame(u)
 		if !slices.EqualFunc(spliced.Cmds, rebuilt.Cmds, cmdEqual) {
 			t.Fatalf("after scrolling %v: spliced %d cmds, rebuilt %d, contents differ",
@@ -93,7 +87,6 @@ func TestScrolledSpliceMatchesRebuild(t *testing.T) {
 	}
 }
 
-// reveal used to be consumed during paint, which never reaches a culled row
 func TestRevealReachesCulledRow(t *testing.T) {
 	u, sv, rows := cullScene()
 	frame(u)

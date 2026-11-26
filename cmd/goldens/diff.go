@@ -11,22 +11,14 @@ import (
 	"sort"
 )
 
-// compare cell means, not pixels. a cell's delta is the max per-channel
-// difference of its average color
-// both terminals shape with the same wasm engine and fonts, so leftover noise
-// is GPU AA below cell scale. real drift (missing panel, wrong border color,
-// moved widget) moves whole runs of cells hard
 const cellPx = 32
 
-// fixture scenes baseline at soft 0.00-0.04%, hard 0%, blob <=1 (the checkbox
-// glyph is the one known divergence). limits leave headroom but still catch a
-// single moved or missing button-sized element (~14 cells)
 const (
-	hardTol = 48  // a cell this different is never rasterization noise
-	softTol = 12  // above this a cell counts toward connected regions
-	maxHard = 0.1 // % of cells allowed above hardTol
-	maxBlob = 6   // largest allowed connected region of soft cells
-	maxSoft = 0.5 // % of cells allowed above softTol
+	hardTol = 48
+	softTol = 12
+	maxHard = 0.1
+	maxBlob = 6
+	maxSoft = 0.5
 )
 
 type diffResult struct {
@@ -53,7 +45,7 @@ func loadPNG(path string) (image.Image, error) {
 
 func cellMeans(img image.Image, gw, gh int) [][3]float64 {
 	b := img.Bounds()
-	sums := make([][4]float64, gw*gh) // r, g, b, count
+	sums := make([][4]float64, gw*gh)
 	for y := b.Min.Y; y < b.Max.Y; y++ {
 		cy := (y - b.Min.Y) / cellPx
 		for x := b.Min.X; x < b.Max.X; x++ {
@@ -75,7 +67,6 @@ func cellMeans(img image.Image, gw, gh int) [][3]float64 {
 	return out
 }
 
-// 4-connected, cells over softTol
 func largestBlob(delta []float64, gw, gh int) int {
 	seen := make([]bool, len(delta))
 	best := 0
@@ -110,7 +101,6 @@ func largestBlob(delta []float64, gw, gh int) int {
 	return best
 }
 
-// artifact is browser | native | heatmap side by side
 func diffFrames(name, browserPath, nativePath, outDir string) (diffResult, error) {
 	bImg, err := loadPNG(browserPath)
 	if err != nil {
@@ -180,7 +170,6 @@ func writeComposite(path string, bImg, nImg image.Image, delta []float64, gw int
 	draw.Draw(out, image.Rect(0, 0, w, h), bImg, bImg.Bounds().Min, draw.Src)
 	draw.Draw(out, image.Rect(w+gut, 0, 2*w+gut, h), nImg, nImg.Bounds().Min, draw.Src)
 
-	// heatmap, native at 35% brightness with hot cells tinted
 	hx := 2 * (w + gut)
 	for y := 0; y < h; y++ {
 		for x := 0; x < w; x++ {
@@ -188,11 +177,11 @@ func writeComposite(path string, bImg, nImg image.Image, delta []float64, gw int
 			pr, pg, pb := float64(r>>8)*0.35, float64(g>>8)*0.35, float64(b>>8)*0.35
 			d := delta[(y/cellPx)*gw+x/cellPx]
 			switch {
-			case d > hardTol: // red
+			case d > hardTol:
 				pr, pg, pb = pr*0.4+215*0.6, pg*0.4+50*0.6, pb*0.4+45*0.6
-			case d > 24: // orange
+			case d > 24:
 				pr, pg, pb = pr*0.5+235*0.5, pg*0.5+140*0.5, pb*0.5+30*0.5
-			case d > softTol: // dim yellow
+			case d > softTol:
 				pr, pg, pb = pr*0.7+190*0.3, pg*0.7+180*0.3, pb*0.7+60*0.3
 			}
 			out.SetRGBA(hx+x, y, color.RGBA{uint8(pr), uint8(pg), uint8(pb), 255})

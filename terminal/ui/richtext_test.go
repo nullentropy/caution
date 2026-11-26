@@ -8,8 +8,6 @@ import (
 	"github.com/nullentropy/caution/terminal/text"
 )
 
-// fakeUi with a wider mono face (10px per rune against 7), so mixed lines
-// measure differently from plain ones
 func richUi() *UI {
 	u := New()
 	u.Measure = func(f gfx.Font, s string) *text.Run {
@@ -27,8 +25,6 @@ func richUi() *UI {
 	return u
 }
 
-// a rich text stretched across a root of the given width, so its height
-// comes from HeightForWidth like an anchored label's does
 func mountRich(u *UI, w float32, spans ...Span) *RichText {
 	r := NewRichText(gfx.NewFont(13, gfx.FontOpts{}), nil)
 	r.SetSpans(spans)
@@ -57,7 +53,6 @@ func paintedText(dl *gfx.DisplayList) []placedText {
 
 func TestRichTextWrapsAcrossSpanBoundary(t *testing.T) {
 	u := richUi()
-	// "foobar" straddles the spans and must stay whole, the break lands at the space
 	r := mountRich(u, 50, Span{Text: "foo"}, Span{Text: "bar baz", Bold: true})
 	dl := &gfx.DisplayList{}
 	r.PaintSelf(dl)
@@ -79,7 +74,6 @@ func TestRichTextWrapsAcrossSpanBoundary(t *testing.T) {
 func TestRichTextHeightFollowsMixedFaceWidths(t *testing.T) {
 	u := richUi()
 	r := mountRich(u, 200, Span{Text: "aaaa "}, Span{Text: "bbbb", Mono: true})
-	// 35px of plain plus 40px of mono: one line at 80, two at 70
 	if h, _ := r.HeightForWidth(80); h != 13 {
 		t.Fatalf("one line should be 13 tall, got %g", h)
 	}
@@ -93,7 +87,6 @@ func TestRichTextSelectionCopiesAcrossSpansAndLines(t *testing.T) {
 	r := mountRich(u, 50, Span{Text: "foo"}, Span{Text: "bar baz", Bold: true})
 	r.Selectable = true
 
-	// drag from inside "foo" on the first line into "baz" on the second
 	u.PointerDown(28, 5)
 	u.PointerMove(14, 20)
 	u.PointerUp(14, 20)
@@ -101,7 +94,6 @@ func TestRichTextSelectionCopiesAcrossSpansAndLines(t *testing.T) {
 		t.Fatalf("selected %q, want %q", got, "ar ba")
 	}
 
-	// a double-click takes the whole word even though it spans two styles
 	u.PointerDown(10, 5)
 	u.PointerUp(10, 5)
 	u.PointerDown(10, 5)

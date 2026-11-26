@@ -4,8 +4,7 @@ import (
 	"sync"
 
 	"github.com/nullentropy/caution/terminal/gfx"
-
-	"github.com/nullentropy/caution/terminal/glx"
+	"github.com/nullentropy/caution/terminal/gpu"
 
 	"github.com/rs/zerolog/log"
 )
@@ -20,42 +19,33 @@ const (
 
 type imageEntry struct {
 	state imgState
-	tex   uint32
+	tex   gpu.Texture
 	w, h  int
 }
 
 type decodedImage struct {
 	src  string
-	pix  []byte // premultiplied RGBA
+	pix  []byte
 	w, h int
 	err  bool
 }
 
-// mirrors the browser's: src -> texture, async, placeholder until ready
-// fetch and decode run on goroutines, upload happens on the GL thread at the
-// top of the next frame (drainUploads), which OnLoad wakes
 type ImageStore struct {
-	// src is an absolute path the shell resolves against the server origin, or
-	// a full URL. nil disables network images, data: URIs always work
-	Fetch func(src string) ([]byte, error)
-	// called from fetch goroutines when a decode lands, so the shell can
-	// invalidate and wake the event loop
+	Fetch  func(src string) ([]byte, error)
 	OnLoad func()
 
 	mu      sync.Mutex
 	entries map[string]*imageEntry
 	done    []decodedImage
+	dev     gpu.Device
 }
 
-func newImageStore() *ImageStore {
-	return &ImageStore{entries: map[string]*imageEntry{}}
+func newImageStore(dev gpu.Device) *ImageStore {
+	return &ImageStore{entries: map[string]*imageEntry{}, dev: dev}
 }
 
-// the `resource` op, so the texture is ready (or failed) before any widget
-// first paints it
 func (s *ImageStore) Preload(src string) { s.get(src) }
 
-// starts a fetch on first sight. GL thread
 func (s *ImageStore) get(src string) *imageEntry {
 	s.mu.Lock()
 	if e, ok := s.entries[src]; ok {
@@ -83,45 +73,56 @@ func (s *ImageStore) load(src string) {
 	}
 }
 
-// GL thread, once per frame. true means some image changed state: same
-// display list, different pixels, so the frame can't trust a damage diff
+func (s *ImageStore) discardUploads() {
+	s.mu.Lock()
+	s.done = nil
+	s.mu.Unlock()
+}
+
 func (s *ImageStore) drainUploads() bool {
 	s.mu.Lock()
 	done := s.done
 	s.done = nil
+	entries := make([]*imageEntry, len(done))
+	for i, d := range done {
+		entries[i] = s.entries[d.src]
+	}
 	s.mu.Unlock()
-	for _, d := range done {
-		e := s.entries[d.src]
+	for i, d := range done {
+		e := entries[i]
 		if e == nil {
 			continue
 		}
-		if d.err {
+		if max := s.dev.MaxTextureSize(); d.err || d.w <= 0 || d.h <= 0 || d.w > max || d.h > max {
 			e.state = imgError
 			continue
 		}
-		glx.GenTextures(1, &e.tex)
-		glx.ActiveTexture(glx.TEXTURE0)
-		glx.BindTexture(glx.TEXTURE_2D, e.tex)
-		glx.TexParameteri(glx.TEXTURE_2D, glx.TEXTURE_MIN_FILTER, glx.LINEAR)
-		glx.TexParameteri(glx.TEXTURE_2D, glx.TEXTURE_MAG_FILTER, glx.LINEAR)
-		glx.TexParameteri(glx.TEXTURE_2D, glx.TEXTURE_WRAP_S, glx.CLAMP_TO_EDGE)
-		glx.TexParameteri(glx.TEXTURE_2D, glx.TEXTURE_WRAP_T, glx.CLAMP_TO_EDGE)
-		glx.TexImage2D(glx.TEXTURE_2D, 0, glx.RGBA, int32(d.w), int32(d.h), 0,
-			glx.RGBA, glx.UNSIGNED_BYTE, glx.Ptr(d.pix))
+		tex, err := s.dev.NewTexture(d.w, d.h, gpu.Linear)
+		if err == nil {
+			if err = s.dev.WriteTexture(tex, 0, d.pix); err != nil {
+				s.dev.DeleteTexture(tex)
+			}
+		}
+		if err != nil {
+			log.Warn().Err(err).Str("src", d.src).Msg("caution: image upload failed")
+			e.state = imgError
+			continue
+		}
+		e.tex = tex
 		e.w, e.h = d.w, d.h
 		e.state = imgReady
 	}
 	return len(done) > 0
 }
 
-func fitImage(b gfx.Rect, iw, ih int, fit string) (quad gfx.Rect, u0, v0, u1, v1 float32) {
+func fitImage(b gfx.Rect, iw, ih int, fit gfx.Fit) (quad gfx.Rect, u0, v0, u1, v1 float32) {
 	fw, fh := float32(iw), float32(ih)
-	if fit == "contain" && iw > 0 && ih > 0 {
+	if fit == gfx.FitContain && iw > 0 && ih > 0 {
 		s := min(b.W/fw, b.H/fh)
 		w, h := fw*s, fh*s
 		return gfx.R(b.X+(b.W-w)/2, b.Y+(b.H-h)/2, w, h), 0, 0, 1, 1
 	}
-	if fit == "cover" && iw > 0 && ih > 0 {
+	if fit == gfx.FitCover && iw > 0 && ih > 0 {
 		s := max(b.W/fw, b.H/fh)
 		uw := b.W / (fw * s)
 		vh := b.H / (fh * s)
@@ -129,5 +130,5 @@ func fitImage(b gfx.Rect, iw, ih int, fit string) (quad gfx.Rect, u0, v0, u1, v1
 		v0 = (1 - vh) / 2
 		return b, u0, v0, u0 + uw, v0 + vh
 	}
-	return b, 0, 0, 1, 1 // fill / degenerate
+	return b, 0, 0, 1, 1
 }

@@ -10,19 +10,14 @@ import (
 
 type File struct {
 	Name string
-	// empty when the client could not tell
 	Type string
 	Data []byte
 }
 
 const defaultMaxDropBytes = 32 << 20
 
-// fires once every byte is in, x, y in logical px. an over-cap drop or one cut
-// by a disconnect never fires
 func (s *Session) OnFileDrop(fn func(files []File, x, y float64)) { s.onFileDrop = fn }
 
-// a drop reports false first. natively macOS only, glfw has no enter or leave
-// elsewhere
 func (s *Session) OnFileDrag(fn func(over bool)) { s.onFileDrag = fn }
 
 type dropState int
@@ -32,7 +27,6 @@ const (
 	dropReceiving
 )
 
-// any protocol violation resets to idle and the rest of that drop is ignored
 type dropAssembly struct {
 	state dropState
 	x, y  float64
@@ -48,7 +42,6 @@ type dropFileSpec struct {
 	Size float64 `json:"size"`
 }
 
-// returns the finished files on end, nil otherwise
 func (d *dropAssembly) apply(v map[string]any, maxBytes int64) ([]File, float64, float64) {
 	phase, _ := v["p"].(string)
 	switch wire.DropPhase(phase) {

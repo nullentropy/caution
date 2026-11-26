@@ -7,7 +7,6 @@ import (
 	"math"
 )
 
-// interleaved samples in [-1, 1]
 type Clip struct {
 	Rate     int
 	Channels int
@@ -56,7 +55,7 @@ func Decode(data []byte) (*Clip, error) {
 		case "data":
 			pcm = chunk
 		}
-		pos = end + size%2 // chunks are word aligned
+		pos = end + size%2 // RIFF pads odd-sized chunks to an even length
 	}
 	if !haveFmt || pcm == nil {
 		return nil, errors.New("missing fmt or data chunk")

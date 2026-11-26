@@ -19,7 +19,6 @@ func TestAuthorizeRefusalIsADeniedMessage(t *testing.T) {
 	}
 }
 
-// the client's reconnect must not resume the closed session
 func TestCloseEndsTheSessionAndTheNextConnectMountsFresh(t *testing.T) {
 	mounts := make(chan *Session, 4)
 	tc := dialSession(t, func(s *Session) *Node {

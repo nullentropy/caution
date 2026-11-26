@@ -7,9 +7,6 @@ import (
 	"sort"
 )
 
-// byte stream the browser terminal decodes, appended to buf. little endian
-// flag byte, background color, string table, then one record per command
-// shaped by its kind
 func Encode(dl *DisplayList, bg Color, buf []byte) []byte {
 	e := encoder{buf: buf, strs: map[string]uint32{}}
 	var flags byte
@@ -19,8 +16,6 @@ func Encode(dl *DisplayList, bg Color, buf []byte) []byte {
 	e.u8(flags)
 	e.color(bg)
 
-	// every string a command names goes in the table once. two passes: the
-	// table has to land before the commands that index into it
 	for i := range dl.Cmds {
 		c := &dl.Cmds[i]
 		switch c.Kind {
@@ -153,7 +148,6 @@ func (e *encoder) font(f Font) {
 	e.str(f.Family)
 }
 
-// uniforms are written in key order so the same map always encodes the same way
 func (e *encoder) uniforms(u map[string]float32) {
 	keys := make([]string, 0, len(u))
 	for k := range u {
@@ -167,27 +161,26 @@ func (e *encoder) uniforms(u map[string]float32) {
 	}
 }
 
-func fitCode(fit string) byte {
+func fitCode(fit Fit) byte {
 	switch fit {
-	case "cover":
+	case FitCover:
 		return 1
-	case "fill":
+	case FitFill:
 		return 2
 	}
 	return 0
 }
 
-func fitName(code byte) string {
+func fitName(code byte) Fit {
 	switch code {
 	case 1:
-		return "cover"
+		return FitCover
 	case 2:
-		return "fill"
+		return FitFill
 	}
-	return "contain"
+	return FitContain
 }
 
-// the browser has its own decoder, this one keeps the format honest in tests
 func Decode(data []byte) (*DisplayList, Color, error) {
 	d := decoder{buf: data}
 	flags := d.u8()

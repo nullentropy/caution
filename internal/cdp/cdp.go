@@ -14,8 +14,6 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-// the -chrome flag, then $CAUTION_CHROME, then well-known bundle paths, then
-// $PATH
 func ChromeBin(flagVal string) (string, error) {
 	if flagVal != "" {
 		return flagVal, nil
@@ -39,9 +37,6 @@ func ChromeBin(flagVal string) (string, error) {
 	return "", fmt.Errorf("no Chrome/Chromium found - pass -chrome or set CAUTION_CHROME")
 }
 
-// smallest useful CDP client: one browser WebSocket, sequential commands
-// routed by id, events discarded. enough to open a tab, wait for the
-// terminal to settle and screenshot it
 type Client struct {
 	cmd     *exec.Cmd
 	conn    *websocket.Conn
@@ -59,9 +54,6 @@ type reply struct {
 
 var devtoolsRE = regexp.MustCompile(`DevTools listening on (ws://\S+)`)
 
-// fresh headless instance with a throwaway profile
-// device scale is set per target (Emulation.setDeviceMetricsOverride), not
-// here, so capture geometry can't drift from flag changes
 func Launch(bin string, w, h int) (*Client, error) {
 	dataDir, err := os.MkdirTemp("", "caution-goldens-chrome-")
 	if err != nil {
@@ -73,17 +65,14 @@ func Launch(bin string, w, h int) (*Client, error) {
 		"--user-data-dir=" + dataDir,
 		"--no-first-run", "--no-default-browser-check",
 		"--disable-extensions", "--mute-audio", "--hide-scrollbars",
-		// the terminal paints on rAF, never let a background heuristic throttle it
-		// mid-capture
+		// the terminal paints on rAF, background throttling would stall a capture
 		"--disable-background-timer-throttling",
 		"--disable-renderer-backgrounding",
 		"--disable-backgrounding-occluded-windows",
 		fmt.Sprintf("--window-size=%d,%d", w, h),
 	}
 	if os.Geteuid() == 0 {
-		// chrome refuses to start its sandbox as root and exits before printing an
-		// endpoint, and root is normal in containers (see linux/Dockerfile)
-		// never reached on a desktop, where the sandbox stays on
+		// chrome's sandbox refuses root, which is normal in containers
 		args = append(args, "--no-sandbox", "--disable-dev-shm-usage")
 	}
 	args = append(args, "about:blank")
@@ -146,7 +135,6 @@ func (c *Client) readLoop() {
 			} `json:"error"`
 		}
 		if err := c.conn.ReadJSON(&msg); err != nil {
-			// connection down, fail every waiter instead of hanging them
 			c.mu.Lock()
 			for id, ch := range c.pending {
 				ch <- reply{err: "devtools connection closed"}
@@ -156,7 +144,7 @@ func (c *Client) readLoop() {
 			return
 		}
 		if msg.ID == 0 {
-			continue // event, not ours
+			continue
 		}
 		c.mu.Lock()
 		ch := c.pending[msg.ID]
@@ -173,7 +161,6 @@ func (c *Client) readLoop() {
 	}
 }
 
-// sessionID targets an attached tab, "" is the browser itself
 func (c *Client) Call(sessionID, method string, params any) (json.RawMessage, error) {
 	c.mu.Lock()
 	c.nextID++
@@ -187,7 +174,7 @@ func (c *Client) Call(sessionID, method string, params any) (json.RawMessage, er
 	if sessionID != "" {
 		msg["sessionId"] = sessionID
 	}
-	err := c.conn.WriteJSON(msg) // single writer, calls are sequential and the reader never writes
+	err := c.conn.WriteJSON(msg)
 	c.mu.Unlock()
 	if err != nil {
 		return nil, fmt.Errorf("cdp %s: %w", method, err)
@@ -203,7 +190,6 @@ func (c *Client) Call(sessionID, method string, params any) (json.RawMessage, er
 	}
 }
 
-// by-value result as raw JSON (the CDP value field)
 func (c *Client) Eval(sessionID, expr string) (json.RawMessage, error) {
 	raw, err := c.Call(sessionID, "Runtime.evaluate",
 		map[string]any{"expression": expr, "returnByValue": true})
@@ -227,9 +213,6 @@ func (c *Client) Eval(sessionID, expr string) (json.RawMessage, error) {
 	return res.Result.Value, nil
 }
 
-// opens a fresh tab (fresh caution session, sessionStorage is per-tab),
-// forces metrics to wxh at 2x to match the native shot framebuffer, waits
-// for the terminal's readiness probe to go quiet, and writes the PNG
 func (c *Client) Capture(url, outPath string, w, h int) error {
 	tRaw, err := c.Call("", "Target.createTarget", map[string]any{"url": "about:blank"})
 	if err != nil {

@@ -1,13 +1,3 @@
-// caution bundle: build the terminal client into app.js and term.wasm
-// run after client changes and commit embedded/, it's what the SDK ships
-//
-// writes to <checkout>/dist (or -o) for out-of-module consumers and to
-// embedded/ for go:embed. works from any directory inside the checkout
-//
-// the embedded wasm is gzipped, servers decompress in-process for clients
-// that don't accept gzip. dist/ keeps it raw
-//
-//	go run ./cmd/bundle [-o path/app.js] [-pretty]
 package main
 
 import (
@@ -100,7 +90,7 @@ func vendorWasmExec(root string) error {
 	goroot := string(gorootB[:len(gorootB)-1])
 	src, err := os.ReadFile(filepath.Join(goroot, "lib", "wasm", "wasm_exec.js"))
 	if err != nil {
-		// pre-1.24 toolchains kept it under misc/
+		// toolchains before Go 1.24 keep it under misc/
 		src, err = os.ReadFile(filepath.Join(goroot, "misc", "wasm", "wasm_exec.js"))
 		if err != nil {
 			return err
@@ -112,7 +102,6 @@ func vendorWasmExec(root string) error {
 	return os.WriteFile(filepath.Join(root, "web", "vendor", "wasm_exec.js"), src, 0o644)
 }
 
-// wasm-opt is optional but committed artifacts should be built with it
 func buildWasm(modDir string) ([]byte, error) {
 	tmp, err := os.CreateTemp("", "caution-shaper-*.wasm")
 	if err != nil {
@@ -120,11 +109,11 @@ func buildWasm(modDir string) ([]byte, error) {
 	}
 	tmp.Close()
 	defer os.Remove(tmp.Name())
-	// -buildvcs=false so identical source gives identical bytes. otherwise the
-	// committed wasm churns on every commit
+	// -buildvcs=false makes identical source build identical bytes, so the
+	// committed wasm doesn't change on every commit
 	cmd := exec.Command("go", "build", "-ldflags=-s -w", "-trimpath", "-buildvcs=false",
 		"-o", tmp.Name(), "./cmd/termwasm")
-	cmd.Dir = modDir // the module, not our cwd
+	cmd.Dir = modDir
 	cmd.Env = append(os.Environ(), "GOOS=js", "GOARCH=wasm")
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return nil, fmt.Errorf("termwasm build: %v\n%s", err, out)
@@ -135,7 +124,6 @@ func buildWasm(modDir string) ([]byte, error) {
 	}
 	opt := tmp.Name() + ".opt"
 	defer os.Remove(opt)
-	// feature flags match what the Go toolchain emits
 	oc := exec.Command("wasm-opt", "-Oz",
 		"--enable-bulk-memory", "--enable-nontrapping-float-to-int",
 		"--enable-sign-ext", "--enable-mutable-globals",

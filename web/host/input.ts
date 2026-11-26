@@ -16,8 +16,6 @@ function keyName(e: KeyboardEvent): string | null {
   return e.key.length === 1 ? e.key.toLowerCase() : e.key;
 }
 
-// keys the terminal still gets while the funnel textarea has focus
-// everything else the textarea edits natively and reports through textSync
 const FUNNEL_PASSES = new Set(['Tab', 'Escape', 'Enter', 'Up', 'Down']);
 
 export interface InputHooks {
@@ -67,7 +65,7 @@ export function attachInput(canvas: HTMLCanvasElement, term: WasmTerm, hooks: In
     if (e.button !== 0) return;
     canvas.setPointerCapture(e.pointerId);
     term.pointerDown(...pos(e));
-    e.preventDefault(); // keeps focus where the terminal put it (the funnel textarea)
+    e.preventDefault();
     hooks.afterInput();
   });
 
@@ -92,7 +90,6 @@ export function attachInput(canvas: HTMLCanvasElement, term: WasmTerm, hooks: In
       let dx = e.deltaX * scale;
       let dy = e.deltaY * scale;
       if (e.shiftKey && dx === 0) {
-        // mouse-wheel convention: shift turns vertical into horizontal
         dx = dy;
         dy = 0;
       }

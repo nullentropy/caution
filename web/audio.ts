@@ -15,8 +15,6 @@ export class SoundStore {
     const unlock = () => {
       this.gesture = true;
       if (this.ctx?.state === 'suspended') void this.ctx.resume();
-      // a loop asked for before the first gesture should be sounding by now,
-      // where a one-shot that old would just be a stale noise
       for (const src of this.wanted) this.start(src, true);
       this.wanted.clear();
     };

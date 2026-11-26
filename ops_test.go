@@ -109,7 +109,6 @@ func TestSetValueNowIsOneCommandCarryingTheValue(t *testing.T) {
 func TestSetThemePatchesLiveButRidesMountBefore(t *testing.T) {
 	tokens := map[string]string{"accent": "#ff0000"}
 
-	// before mount: stored for the mount message, no op
 	pre := &Session{nodes: map[int]*Node{}}
 	pre.SetTheme(tokens)
 	if len(pre.ops) != 0 {
@@ -119,7 +118,6 @@ func TestSetThemePatchesLiveButRidesMountBefore(t *testing.T) {
 		t.Fatal("pre-mount SetTheme must store tokens for the mount")
 	}
 
-	// mounted: one theme op
 	s := liveSession(Panel())
 	s.SetTheme(tokens)
 	want := `[{"op":"theme","tokens":{"accent":"#ff0000"}}]`
@@ -131,7 +129,6 @@ func TestSetThemePatchesLiveButRidesMountBefore(t *testing.T) {
 func TestSetMetricsPatchesLiveButRidesMountBefore(t *testing.T) {
 	tokens := map[string]float64{"radius.control": 0}
 
-	// before mount: stored for the mount message, no op
 	pre := &Session{nodes: map[int]*Node{}}
 	pre.SetMetrics(tokens)
 	if len(pre.ops) != 0 {
@@ -141,7 +138,6 @@ func TestSetMetricsPatchesLiveButRidesMountBefore(t *testing.T) {
 		t.Fatal("pre-mount SetMetrics must store tokens for the mount")
 	}
 
-	// mounted: one metrics op
 	s := liveSession(Panel())
 	s.SetMetrics(tokens)
 	want := `[{"metrics":{"radius.control":0},"op":"metrics"}]`
@@ -164,7 +160,6 @@ func TestTreeFlattensExpansionAndShipsMeta(t *testing.T) {
 		t.Fatalf("collapsed rowCount = %v; want 2 (roots only)", tree.Prop("rowCount"))
 	}
 
-	// with a client window reported, expanding refreshes rows + meta
 	tree.lastStart, tree.lastEnd, tree.hasRange = 0, 9, true
 	s.ops = nil
 	tree.Expand("a")
@@ -179,7 +174,6 @@ func TestTreeFlattensExpansionAndShipsMeta(t *testing.T) {
 		t.Fatalf("ops = %s\nwant %s", got, want)
 	}
 
-	// a client toggle collapses it again and fires the app callback
 	var toggled string
 	tree.OnRowToggle(func(key string, expanded bool) {
 		toggled = key
@@ -198,12 +192,10 @@ func TestSetUniformMergesStoredAndShipsDelta(t *testing.T) {
 		Uniforms: map[string]float64{"u_a": 1, "u_b": 2}})
 	s := liveSession(Panel().Kids(pane))
 	pane.SetUniform("u_a", 3)
-	// the wire carries only the delta, the client merges
 	want := `[{"id":2,"op":"set","p":{"uniforms":{"u_a":3}}}]`
 	if got := opsJSON(t, s); got != want {
 		t.Fatalf("ops = %s; want %s", got, want)
 	}
-	// stored map stays complete so a remount ships everything
 	u, _ := pane.Prop("uniforms").(map[string]float64)
 	if u["u_a"] != 3 || u["u_b"] != 2 {
 		t.Fatalf("stored uniforms = %v; want merged u_a:3 u_b:2", u)
@@ -211,7 +203,6 @@ func TestSetUniformMergesStoredAndShipsDelta(t *testing.T) {
 }
 
 func TestPreloadDedupsAndFollowsMountContract(t *testing.T) {
-	// before mount: stored for the mount message, no op
 	pre := &Session{nodes: map[int]*Node{}}
 	pre.Preload("/a.png")
 	if len(pre.ops) != 0 {
@@ -221,8 +212,6 @@ func TestPreloadDedupsAndFollowsMountContract(t *testing.T) {
 		t.Fatal("pre-mount Preload must store srcs for the mount")
 	}
 
-	// mounted: one resource op with only the fresh srcs
-	// an all-duplicate call queues nothing
 	s := liveSession(Panel())
 	s.Preload("/a.png", "/b.png")
 	s.Preload("/a.png")
@@ -254,8 +243,6 @@ func TestEventFloodTripsTheBucket(t *testing.T) {
 	for i := 0; i < 400; i++ {
 		s.dispatch(clientMsg{T: "ev", ID: btn.id, Ev: "click", Seq: 1})
 	}
-	// burst is 240 plus whatever refills during the loop
-	// the point is hundreds of instant events do NOT all land
 	if fired < 200 || fired > 300 {
 		t.Fatalf("flood delivered %d events; want ~240 (bucket burst)", fired)
 	}
@@ -280,9 +267,9 @@ func TestFocusFollowsTheInsertOfANodeAddedInTheSameHandler(t *testing.T) {
 	root := Panel()
 	s := liveSession(root)
 	f := TextField("")
-	f.Focus() // before it has a session
+	f.Focus()
 	root.Add(f)
-	s.queuePendingFocus() // what flush does first
+	s.queuePendingFocus()
 	got := opsJSON(t, s)
 	if !strings.HasPrefix(got, `[{"index":0,"node":`) || !strings.HasSuffix(got, `{"cmd":"focus","id":2,"op":"cmd"}]`) {
 		t.Fatalf("ops = %s; want the insert first and the focus last", got)

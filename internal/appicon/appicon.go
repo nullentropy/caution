@@ -8,8 +8,6 @@ import (
 	xdraw "golang.org/x/image/draw"
 )
 
-// dark rounded tile with the demo's concentric rings, drawn so there is no
-// asset to ship
 func Default() *image.RGBA {
 	const size = 1024
 	img := image.NewRGBA(image.Rect(0, 0, size, size))
@@ -23,7 +21,6 @@ func Default() *image.RGBA {
 	rings := [][3]uint8{{0x4f, 0x8c, 0xff}, {0xa7, 0x8b, 0xfa}, {0x22, 0xc5, 0x5e}, {0x16, 0x18, 0x1d}}
 	for y := 0; y < size; y++ {
 		for x := 0; x < size; x++ {
-			// rounded-rect SDF for the tile
 			px := math.Max(math.Abs(float64(x)+0.5-cx)-(cx-inset-radius), 0)
 			py := math.Max(math.Abs(float64(y)+0.5-cy)-(cy-inset-radius), 0)
 			d := math.Hypot(px, py) - radius
@@ -31,13 +28,12 @@ func Default() *image.RGBA {
 				continue
 			}
 			c := tile
-			// concentric rings, 80px bands from the center out
 			if dist := math.Hypot(float64(x)+0.5-cx, float64(y)+0.5-cy); dist <= 320 {
 				band := rings[int(dist/80)%len(rings)]
 				c = [4]uint8{band[0], band[1], band[2], 0xff}
 			}
 			a := 1.0
-			if d > -0.5 { // edge AA
+			if d > -0.5 {
 				a = 0.5 - d
 			}
 			o := img.PixOffset(x, y)
@@ -72,8 +68,6 @@ func Slug(s string) string {
 	return strings.Trim(b.String(), "-")
 }
 
-// CatmullRom because icons are downscaled from one 1024px master and a soft
-// filter beats nearest-neighbour crunch at 16px
 func Scale(master *image.RGBA, size int) *image.RGBA {
 	out := image.NewRGBA(image.Rect(0, 0, size, size))
 	xdraw.CatmullRom.Scale(out, out.Bounds(), master, master.Bounds(), xdraw.Src, nil)

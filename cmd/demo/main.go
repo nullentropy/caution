@@ -43,7 +43,6 @@ func makeEmployees(n int) []employee {
 	return out
 }
 
-// full token maps pushed over the wire
 var themes = map[string]map[string]string{
 	"Midnight": {
 		"bg": "#16181d", "ink": "#e8eaf0", "inkDim": "#9aa3b2", "inkFaint": "#6b7280",
@@ -67,7 +66,6 @@ var themes = map[string]map[string]string{
 
 var themeNames = []string{"Midnight", "Violet", "Light"}
 
-// post-effect for the rows panel
 const crtFrag = `
 vec4 effect(vec2 uv) {
   vec2 c = uv * 2.0 - 1.0;
@@ -80,7 +78,6 @@ vec4 effect(vec2 uv) {
   return col;
 }`
 
-// raymarched torus
 const torusFrag = `
 float sdTorus(vec3 p, vec2 t) {
   vec2 q = vec2(length(p.xz) - t.x, p.y);
@@ -142,17 +139,14 @@ func main() {
 	clicks := flag.String("clicks", "", `native mode: synthetic clicks for -shot, "x,y@ms;..."`)
 	flag.Parse()
 
-	// serves its own terminal, page script bundled via esbuild's Go API, no Node
 	dev.ServeClient("")
 
-	// native mode fetches the same route over the in-process pipe
 	avatar := makeAvatar()
 	http.HandleFunc("/assets/avatar.png", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "image/png")
 		w.Header().Set("Cache-Control", "public, max-age=3600")
 		_, _ = w.Write(avatar)
 	})
-	// generated so there are no binary assets in the repo
 	for name, wav := range makeTones() {
 		http.HandleFunc("/assets/sfx/"+name+".wav", func(w http.ResponseWriter, _ *http.Request) {
 			w.Header().Set("Content-Type", "audio/wav")
@@ -161,8 +155,6 @@ func main() {
 		})
 	}
 
-	// demo login, /login?u=ada sets the identity cookie. a real app would
-	// validate a session/JWT
 	http.HandleFunc("/login", func(w http.ResponseWriter, r *http.Request) {
 		u := r.URL.Query().Get("u")
 		if u == "" {
@@ -173,8 +165,6 @@ func main() {
 	})
 
 	opts := caution.Options{
-		// runs on every connection including resumes. a resume token only
-		// re-adopts a session minted for the same identity
 		Authorize: func(r *http.Request) (any, error) {
 			if c, err := r.Cookie("user"); err == nil && c.Value != "" {
 				return c.Value, nil
@@ -184,8 +174,6 @@ func main() {
 	}
 
 	if *nativeFlag || native.InBundle() {
-		// same mount and routes either way, no port in native mode
-		// a .app bundle gets no flags so the bundle itself is the switch
 		if err := native.Run(mount, native.Options{
 			Title: "caution demo", Serve: opts,
 			Shot: *shot, SettleMs: 2500, Clicks: *clicks,
@@ -212,7 +200,7 @@ func makeAvatar() []byte {
 		for x := 0; x < size; x++ {
 			d := math.Hypot(float64(x)+0.5-center, float64(y)+0.5-center)
 			if d > center {
-				continue // transparent corners; Radius() rounds the rest
+				continue
 			}
 			img.SetNRGBA(x, y, rings[int(d/(center/4))%len(rings)])
 		}
@@ -222,7 +210,6 @@ func makeAvatar() []byte {
 	return buf.Bytes()
 }
 
-// distinct pitches so each gesture is recognizable
 func makeTones() map[string][]byte {
 	tone := func(hz float64, ms int) []byte {
 		const rate = 48000
@@ -230,7 +217,7 @@ func makeTones() map[string][]byte {
 		var pcm bytes.Buffer
 		for i := 0; i < n; i++ {
 			t := float64(i) / rate
-			env := math.Exp(-t*18) * math.Min(1, float64(i)/200) // fast attack, exponential decay
+			env := math.Exp(-t*18) * math.Min(1, float64(i)/200)
 			binary.Write(&pcm, binary.LittleEndian, int16(math.Sin(2*math.Pi*hz*t)*env*9000))
 		}
 		var out bytes.Buffer
@@ -256,20 +243,15 @@ func makeTones() map[string][]byte {
 }
 
 func mount(s *caution.Session) *caution.Node {
-	// per-session state as plain locals. handlers and the ticker all run on
-	// the session goroutine, no locking needed
 	count := 0
 	auto := false
 	events := 0
 	rowN := 0
 	start := time.Now()
-	who, _ := s.Identity().(string) // from Options.Authorize (demo: cookie)
+	who, _ := s.Identity().(string)
 
 	s.SetTitle(fmt.Sprintf("caution demo - %s", who))
 
-	// interaction sounds are a token table the client fires itself, a click
-	// never waits on the server. the ding is played by the server after it
-	// does something. off by default, decoded up front so turning on is free
 	sfx := map[string]string{}
 	var srcs []string
 	for _, tok := range []string{"press", "toggle", "select", "open", "close"} {
@@ -289,7 +271,7 @@ func mount(s *caution.Session) *caution.Node {
 		} else {
 			s.SetSounds(nil)
 		}
-		soundsBox.SetChecked(on) // the footer box and the menu item both drive this
+		soundsBox.SetChecked(on)
 		installMenu()
 	}
 
@@ -325,7 +307,7 @@ func mount(s *caution.Session) *caution.Node {
 				dim("this number lives in Go - every click is a WebSocket round-trip; a patch comes back").
 					Selectable().Anchor(caution.A{Left: caution.Px(24), Top: caution.Px(66), Right: caution.Px(24)}),
 				autoBox,
-				caution.Grid([]caution.GridCol{{Align: "end"}, {Weight: 1, Align: "stretch"}}).
+				caution.Grid([]caution.GridCol{{Align: caution.AlignEnd}, {Weight: 1, Align: caution.AlignStretch}}).
 					ColGap(12).RowGap(10).
 					Anchor(caution.A{Left: caution.Px(24), Top: caution.Px(144), Right: caution.Px(24)}).
 					Kids(dim("Row prefix"), prefixField, dim("Theme"), themeSelect, mirror),
@@ -346,8 +328,6 @@ func mount(s *caution.Session) *caution.Node {
 		FontSize(13).Color("$inkDim"))
 	var rows []*caution.Node
 
-	// clicking Post blurs the textarea, and its commit syncs `value` before
-	// the click handler reads it
 	composer := caution.Textarea("").Rows(2).
 		Placeholder("write a note… Enter makes a new line").
 		OnCommit(func(string) { events++ }).
@@ -361,8 +341,6 @@ func mount(s *caution.Session) *caution.Node {
 		}
 	}
 
-	// -- virtualized table: 10k rows live here in Go; the client only ever
-	// holds the visible window ------------------------------------------------
 	emps := makeEmployees(10000)
 	tableCaption := caution.Label("Employees - 10,000 rows, virtualized; click headers to sort server-side, click a row to select").
 		FontSize(13).Color("$inkDim").
@@ -374,7 +352,7 @@ func mount(s *caution.Session) *caution.Node {
 		{Key: "email", Title: "Email", Weight: 3},
 		{Key: "role", Title: "Role", Weight: 1},
 	}, len(emps)).
-		RowKey(0). // the ID column is the row identity, selection survives sorts
+		RowKey(0).
 		RowsFunc(func(start, end int) [][]string {
 			if start < 0 {
 				start = 0
@@ -397,7 +375,6 @@ func mount(s *caution.Session) *caution.Node {
 				}
 				return emps[a].field(key) > emps[b].field(key)
 			})
-			// no SetSelected(-1), selection is keyed and follows the employee
 			table.RefreshRows()
 		}).
 		OnColResize(func(string, float64) { events++ }).
@@ -411,20 +388,17 @@ func mount(s *caution.Session) *caution.Node {
 		}).
 		Anchor(caution.A{Left: caution.Px(16), Top: caution.Px(40), Right: caution.Px(16), Bottom: caution.Px(16)})
 
-	// spin speed is a server-pushed uniform driven by a slider
 	torus := caution.Shader(caution.FX{
 		Frag: torusFrag, Animate: true, Uniforms: map[string]float64{"u_speed": 1},
 	}).Anchor(caution.A{Left: caution.Px(12), Top: caution.Px(32), Right: caution.Px(12), Bottom: caution.Px(40)})
 	speedBar := caution.Progress(1.0 / 3).W(90).
 		Anchor(caution.A{Right: caution.Px(14), Bottom: caution.Px(19)})
 
-	// plain panel so dialogs appended last cover the docked header and footer
 	root := caution.Panel().Kids()
 	shell := caution.DockPanel().
 		Anchor(caution.A{Left: caution.Px(0), Right: caution.Px(0), Top: caution.Px(0), Bottom: caution.Px(0)})
 	root.Add(shell)
 
-	// clear rows confirmation, server-driven modal
 	var confirm *caution.Node
 	closeConfirm := func() {
 		if confirm != nil {
@@ -454,7 +428,7 @@ func mount(s *caution.Session) *caution.Node {
 				}),
 			),
 		)
-		root.Add(confirm) // last child paints on top
+		root.Add(confirm)
 	}
 
 	dec.Tip("Decrement - a full server round-trip").OnClick(bump(-1))
@@ -469,8 +443,6 @@ func mount(s *caution.Session) *caution.Node {
 		OnCommit(func(v string) {
 			events++
 			if v == "panic" {
-				// on purpose, the SDK recovers handler panics and the session
-				// keeps running
 				panic("intentional demo panic - dismiss this dialog and keep going")
 			}
 			prefix = v
@@ -480,7 +452,7 @@ func mount(s *caution.Session) *caution.Node {
 		events++
 		if i >= 0 && i < len(themeNames) {
 			s.SetTheme(themes[themeNames[i]])
-			themeSelect.SetProp("selected", i) // keep the select in sync
+			themeSelect.SetProp("selected", i)
 		}
 	}
 	addRow := func() {
@@ -509,7 +481,6 @@ func mount(s *caution.Session) *caution.Node {
 		openConfirm()
 	})
 
-	// works in BOTH terminals, independent of menus
 	s.OnKey("cmd+j", addRow)
 
 	installMenu = func() {
@@ -536,32 +507,24 @@ func mount(s *caution.Session) *caution.Node {
 	installMenu()
 
 	shell.Kids(
-		// header
 		caution.Panel().Dock("top").H(84).Kids(
 			caution.Label("caution - server-driven UI").FontSize(22).Weight(600).
 				Anchor(caution.A{Left: caution.Px(32), Top: caution.Px(22)}),
 			caution.Label("every widget on this screen was born in a Go process - the browser is a dumb terminal with excellent taste").
 				FontSize(13).Color("$inkDim").Selectable().
 				Anchor(caution.A{Left: caution.Px(32), Top: caution.Px(56), Right: caution.Px(120)}),
-			caution.Image("/assets/avatar.png").Fit("cover").Radius(22).Alt("avatar for "+who).
+			caution.Image("/assets/avatar.png").Fit(caution.FitCover).Radius(22).Alt("avatar for "+who).
 				W(44).H(44).
 				Anchor(caution.A{Right: caution.Px(32), CenterY: caution.Px(0)}),
 		),
-		// footer
 		caution.Panel().Dock("bottom").H(34).Kids(status, soundsBox),
-		// content
 		caution.Panel().Dock("fill").Kids(
-			// resizable panes: a vertical split (upper band / table), whose
-			// upper pane is itself a horizontal split (window / rows)
 			caution.VSplit().SplitPos(364).SplitMin(280, 160).
 				Anchor(caution.A{Left: caution.Px(32), Top: caution.Px(12), Right: caution.Px(32), Bottom: caution.Px(12)}).
 				OnSplitResize(func(float64) { events++ }).Kids(
 				caution.HSplit().SplitPos(552).SplitMin(520, 200).
 					OnSplitResize(func(float64) { events++ }).Kids(
-					// counter window (pane A)
 					window,
-					// pane B: rows terminal (CRT post-effect) with a note
-					// composer docked beneath, over a shader pane
 					caution.VSplit().SplitPos(210).SplitMin(120, 120).Kids(
 						caution.DockPanel().DockGap(8).Kids(
 							caution.Panel().Dock("bottom").H(56).Kids(
@@ -590,7 +553,7 @@ func mount(s *caution.Session) *caution.Node {
 							caution.Slider(0, 3, 1).Tip("Spin speed - a server-pushed shader uniform").
 								OnSlide(func(v float64) {
 									events++
-									torus.SetUniform("u_speed", v) // one key on the wire; the client merges
+									torus.SetUniform("u_speed", v)
 									speedBar.SetProgress(v / 3)
 								}).
 								Anchor(caution.A{Left: caution.Px(12), Bottom: caution.Px(10), Right: caution.Px(120)}),
@@ -598,13 +561,11 @@ func mount(s *caution.Session) *caution.Node {
 						),
 					),
 				),
-				// table panel (lower pane)
 				caution.Panel().Bg("$panelAlt").Radius(12).Border("$edgeSoft", 1).Kids(tableCaption, table),
 			),
 		),
 	)
 
-	// Server push
 	go func() {
 		t := time.NewTicker(time.Second)
 		defer t.Stop()

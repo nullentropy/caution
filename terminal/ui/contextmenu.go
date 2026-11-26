@@ -4,7 +4,6 @@ import (
 	"github.com/nullentropy/caution/terminal/gfx"
 )
 
-// one entry of a node's `context` prop, flat, no nesting yet
 type ContextItem struct {
 	ID    int
 	Title string
@@ -20,7 +19,6 @@ const (
 	ctxPad  = 6
 )
 
-// lives on the overlay layer, so click-away and Escape close it for free
 type contextMenu struct {
 	Core
 	items    []ContextItem
@@ -28,10 +26,9 @@ type contextMenu struct {
 	hoverRow int
 }
 
-// deepest carrier under (x, y) wins. the shell routes right presses here
 func (u *UI) contextClick(x, y float32) {
 	u.clearTip()
-	u.dismissOverlay() // a previous menu/popover yields to the new press
+	u.dismissOverlay()
 	var hit Widget
 	if u.Root != nil {
 		hit = u.Root.HitTest(x, y)
@@ -88,7 +85,7 @@ func (u *UI) openContextMenu(items []ContextItem, onPick func(id int), x, y floa
 	px := max(8, min(x, u.lastW-w-8))
 	py := y
 	if y+h > u.lastH-8 {
-		py = max(8, y-h) // flip up at the bottom edge
+		py = max(8, y-h)
 	}
 	m.Bounds = gfx.R(px, py, w, h)
 	u.OpenOverlay(m)
@@ -132,11 +129,10 @@ func (m *contextMenu) OnPointerDown(_, y float32, _ int) {
 func (m *contextMenu) OnPointerHover(_, y float32) {
 	if i := m.rowAt(y); i != m.hoverRow {
 		m.hoverRow = i
-		m.Invalidate()
+		m.InvalidateWidget()
 	}
 }
 
-// item at an absolute y, separators are dead space
 func (m *contextMenu) rowAt(absY float32) int {
 	y := m.Bounds.Y + ctxPad
 	for i, it := range m.items {
