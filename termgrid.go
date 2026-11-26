@@ -41,6 +41,7 @@ type TermMouse struct {
 	Kind         string
 	X, Y, Button int
 	Dy           int
+	Count        int
 	Shift, Ctrl  bool
 }
 
@@ -122,7 +123,7 @@ func (n *Node) dispatchTerm(ev wire.Event, value any) {
 		if h.mouse != nil {
 			h.mouse(TermMouse{
 				Kind: s("kind"), X: toInt(v["x"]), Y: toInt(v["y"]),
-				Button: toInt(v["button"]), Dy: toInt(v["dy"]),
+				Button: toInt(v["button"]), Dy: toInt(v["dy"]), Count: toInt(v["count"]),
 				Shift: b("shift"), Ctrl: b("ctrl"),
 			})
 		}

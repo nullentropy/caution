@@ -624,6 +624,9 @@ func Run(o Options) error {
 		if b != glfw.MouseButtonLeft {
 			return
 		}
+		if a == glfw.Press && mods&(glfw.ModShift|glfw.ModAlt) != 0 && u.Button(1, true, mouseX, mouseY, bk) {
+			return
+		}
 		if a == glfw.Press {
 			// unclaimed press on the app's titlebar drags, double-click zooms
 			if u.WindowDragAt(mouseX, mouseY) {

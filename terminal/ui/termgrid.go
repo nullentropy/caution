@@ -239,18 +239,18 @@ func (t *TermGrid) mouse(kind string, x, y float32, extra map[string]any) {
 	t.OnMouse(v)
 }
 
-func (t *TermGrid) OnPointerDown(x, y float32, _ int) {
+func (t *TermGrid) OnPointerDown(x, y float32, count int) {
 	c, r := t.cellAt(x, y)
 	t.downCell = [2]int{c, r}
 	t.held = 1
-	t.mouse("press", x, y, nil)
+	t.mouse("press", x, y, map[string]any{"count": count})
 }
 
 func (t *TermGrid) OnButton(button int, down bool, x, y float32, k Key) bool {
 	if t.OnMouse == nil {
 		return false
 	}
-	extra := map[string]any{"button": button, "ctrl": k.Ctrl, "shift": k.Shift}
+	extra := map[string]any{"button": button, "ctrl": k.Ctrl, "shift": k.Shift || k.Alt}
 	if !down {
 		t.held = 0
 		t.mouse("release", x, y, extra)
