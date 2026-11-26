@@ -50,7 +50,7 @@ type UI struct {
 	// set by the shell
 	WriteClipboard func(s string)
 	ReadClipboard  func() string
-	PasteImage func(x, y float32) bool
+	PasteImage     func(x, y float32) bool
 	// the shell owns text editing
 	HostText bool
 
@@ -66,6 +66,7 @@ type UI struct {
 	// glass that captured the in-flight right-button gesture
 	// nil means right-click keeps its context-menu meaning
 	rightGlass *Glass
+	buttonDown Widget
 
 	// pending/visible tooltip, driven by hover idle. the shell wakes for the show
 	// moment via TickIn (no timer thread)
@@ -619,6 +620,42 @@ func (u *UI) Sound(token string) {
 	}
 }
 
+type buttonTaker interface {
+	OnButton(button int, down bool, x, y float32, k Key) bool
+}
+
+func (u *UI) Button(button int, down bool, x, y float32, k Key) bool {
+	handled := false
+	guardInput("button", func() { handled = u.button(button, down, x, y, k) })
+	return handled
+}
+
+func (u *UI) button(button int, down bool, x, y float32, k Key) bool {
+	if !down {
+		w := u.buttonDown
+		u.buttonDown = nil
+		if bt, ok := w.(buttonTaker); ok {
+			bt.OnButton(button, false, x, y, k)
+			return true
+		}
+		return false
+	}
+	if u.Overlay != nil || lastDialog(u.Root) != nil || u.Root == nil {
+		return false
+	}
+	hit := u.Root.HitTest(x, y)
+	bt, ok := hit.(buttonTaker)
+	if !ok || !bt.OnButton(button, true, x, y, k) {
+		return false
+	}
+	u.clearTip()
+	u.buttonDown = hit
+	if hit.Focusable() {
+		u.setFocus(hit, false)
+	}
+	return true
+}
+
 func (u *UI) RightUp(x, y float32) {
 	guardInput("right-up", func() {
 		if u.rightGlass != nil {
@@ -700,6 +737,10 @@ func (u *UI) pointerDown(x, y float32) {
 func (u *UI) pointerMove(x, y float32) {
 	if u.rightGlass != nil {
 		u.rightGlass.RDragAt(x, y)
+		return
+	}
+	if u.buttonDown != nil {
+		u.buttonDown.OnPointerDrag(x, y)
 		return
 	}
 	if u.active != nil {

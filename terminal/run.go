@@ -587,14 +587,24 @@ func Run(o Options) error {
 		}
 		// a glass subscribed to right gestures captures it, otherwise context menu
 		// ctrl-click is always a context menu
+		bk := ui.Key{
+			Meta:  mods&glfw.ModSuper != 0,
+			Ctrl:  mods&glfw.ModControl != 0,
+			Shift: mods&glfw.ModShift != 0,
+			Alt:   mods&glfw.ModAlt != 0,
+		}
 		if b == glfw.MouseButtonRight {
 			if a == glfw.Press {
-				if !u.RightDown(mouseX, mouseY) {
+				if !u.Button(3, true, mouseX, mouseY, bk) && !u.RightDown(mouseX, mouseY) {
 					u.ContextClick(mouseX, mouseY)
 				}
-			} else if a == glfw.Release {
+			} else if a == glfw.Release && !u.Button(3, false, mouseX, mouseY, bk) {
 				u.RightUp(mouseX, mouseY)
 			}
+			return
+		}
+		if b == glfw.MouseButtonMiddle {
+			u.Button(2, a == glfw.Press, mouseX, mouseY, bk)
 			return
 		}
 		if b == glfw.MouseButton4 || b == glfw.MouseButton5 {
@@ -604,8 +614,10 @@ func Run(o Options) error {
 			return
 		}
 		if b == glfw.MouseButtonLeft && mods&glfw.ModControl != 0 {
-			if a == glfw.Press {
+			if a == glfw.Press && !u.Button(1, true, mouseX, mouseY, bk) {
 				u.ContextClick(mouseX, mouseY)
+			} else if a == glfw.Release {
+				u.Button(1, false, mouseX, mouseY, bk)
 			}
 			return
 		}
@@ -636,6 +648,9 @@ func Run(o Options) error {
 		} else if a == glfw.Release {
 			if winDrag.active {
 				winDrag.active = false
+				return
+			}
+			if u.Button(1, false, mouseX, mouseY, bk) {
 				return
 			}
 			u.PointerUp(mouseX, mouseY)
@@ -710,7 +725,6 @@ func Run(o Options) error {
 			case key >= glfw.KeyF1 && key <= glfw.KeyF12:
 				k.Name = "F" + strconv.Itoa(int(key-glfw.KeyF1)+1)
 			case chord:
-				// punctuation as the layout prints it unshifted, so Ctrl+/ is "/"
 				if name := glfw.GetKeyName(key, scancode); name != "" {
 					k.Name = name
 				} else {

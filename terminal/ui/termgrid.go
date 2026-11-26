@@ -43,6 +43,7 @@ type TermGrid struct {
 	hoverX, hover float32
 	wheelAcc      float32
 	downCell      [2]int
+	held          int
 }
 
 func NewTermGrid() *TermGrid {
@@ -241,7 +242,25 @@ func (t *TermGrid) mouse(kind string, x, y float32, extra map[string]any) {
 func (t *TermGrid) OnPointerDown(x, y float32, _ int) {
 	c, r := t.cellAt(x, y)
 	t.downCell = [2]int{c, r}
+	t.held = 1
 	t.mouse("press", x, y, nil)
+}
+
+func (t *TermGrid) OnButton(button int, down bool, x, y float32, k Key) bool {
+	if t.OnMouse == nil {
+		return false
+	}
+	extra := map[string]any{"button": button, "ctrl": k.Ctrl, "shift": k.Shift}
+	if !down {
+		t.held = 0
+		t.mouse("release", x, y, extra)
+		return true
+	}
+	c, r := t.cellAt(x, y)
+	t.downCell = [2]int{c, r}
+	t.held = button
+	t.mouse("press", x, y, extra)
+	return true
 }
 
 func (t *TermGrid) OnPointerDrag(x, y float32) {
@@ -250,10 +269,13 @@ func (t *TermGrid) OnPointerDrag(x, y float32) {
 		return
 	}
 	t.downCell = [2]int{c, r}
-	t.mouse("drag", x, y, nil)
+	t.mouse("drag", x, y, map[string]any{"button": max(t.held, 1)})
 }
 
-func (t *TermGrid) OnPointerUp(x, y float32) { t.mouse("release", x, y, nil) }
+func (t *TermGrid) OnPointerUp(x, y float32) {
+	t.held = 0
+	t.mouse("release", x, y, nil)
+}
 
 func (t *TermGrid) OnPointerHover(x, y float32) { t.hoverX, t.hover = x, y }
 

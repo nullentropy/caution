@@ -83,7 +83,6 @@ const (
 	EvRDrag Event = "rdrag"
 	EvRDrop Event = "rdrop"
 
-	// termgrid: every key and char while focused
 	EvTermInput Event = "term-input"
 	EvTermMouse Event = "term-mouse"
 	EvGridSize  Event = "grid-size"
