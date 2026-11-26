@@ -1,6 +1,7 @@
 package proto
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -113,6 +114,8 @@ type patchOp struct {
 	Motion   wire.Motion        `json:"motion"`
 	Cookie   string             `json:"cookie"`
 	Text     string             `json:"text"`
+	Name     string             `json:"name"`
+	Data     string             `json:"data"`
 }
 
 // one tree row's meta, parallel to its cells in a rows op
@@ -591,6 +594,10 @@ func (s *Session) applyOp(op *patchOp) bool {
 	case wire.OpClip:
 		if s.ui.WriteClipboard != nil {
 			s.ui.WriteClipboard(op.Text)
+		}
+	case wire.OpSave:
+		if data, err := base64.StdEncoding.DecodeString(op.Data); err == nil && s.ui.SaveFile != nil {
+			s.ui.SaveFile(op.Name, data)
 		}
 	case wire.OpResource:
 		s.applyResources(&resourceSpec{Images: op.Images, Sounds: op.Sounds, Fonts: op.Fonts})

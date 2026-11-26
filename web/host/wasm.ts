@@ -13,7 +13,7 @@ export interface WasmTerm {
   contextClick(x: number, y: number): void;
   aux(button: number): void;
   wheel(x: number, y: number, dx: number, dy: number): void;
-  keyDown(name: string, meta: boolean, ctrl: boolean, shift: boolean, alt: boolean): boolean;
+  keyDown(name: string, meta: boolean, ctrl: boolean, shift: boolean, alt: boolean, text: string): boolean;
   textSync(value: string, selStart: number, selEnd: number, typed: boolean): void;
   textState(): [string, number, number, boolean, string, number, number, number, number] | null;
   blur(): void;
@@ -46,6 +46,7 @@ export interface HostCallbacks {
   // a Set-Cookie string, document.cookie takes the same syntax
   setCookie(raw: string): void;
   writeClipboard(text: string): void;
+  saveFile(name: string, data: Uint8Array): void;
   preloadSound(src: string): void;
   play(src: string, loop: boolean): void;
   stop(src: string): void;

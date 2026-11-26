@@ -101,6 +101,11 @@ func main() {
 	}
 	u.SetCursor = func(name string) { call("setCursor", name) }
 	u.WriteClipboard = func(s string) { call("writeClipboard", s) }
+	u.SaveFile = func(name string, data []byte) {
+		b := js.Global().Get("Uint8Array").New(len(data))
+		js.CopyBytesToJS(b, data)
+		call("saveFile", name, b)
+	}
 	r.Images.OnLoad = func() { u.Invalidate() }
 
 	sid := ""
@@ -289,9 +294,11 @@ func wheel(_ js.Value, a []js.Value) any {
 }
 
 func keyDown(_ js.Value, a []js.Value) any {
-	return u.KeyDown(ui.Key{
-		Name: a[0].String(), Meta: a[1].Bool(), Ctrl: a[2].Bool(), Shift: a[3].Bool(), Alt: a[4].Bool(),
-	})
+	k := ui.Key{Name: a[0].String(), Meta: a[1].Bool(), Ctrl: a[2].Bool(), Shift: a[3].Bool(), Alt: a[4].Bool()}
+	if len(a) > 5 && a[5].Type() == js.TypeString {
+		k.Text = a[5].String()
+	}
+	return u.KeyDown(k)
 }
 
 func textSync(_ js.Value, a []js.Value) any {

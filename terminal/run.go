@@ -413,6 +413,7 @@ func Run(o Options) error {
 		return r.Shaper.Shape(f, dprOf(), s)
 	}
 	u.WriteClipboard = func(s string) { glfw.SetClipboardString(s) }
+	u.SaveFile = saveToDownloads
 	u.ReadClipboard = glfw.GetClipboardString
 
 	r.Images.Fetch = fetch

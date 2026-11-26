@@ -139,6 +139,7 @@ const (
 	OpMotion   Op = "motion"
 	OpCookie   Op = "cookie"
 	OpClip     Op = "clipboard"
+	OpSave     Op = "save"
 )
 
 // Session.SetMotion values, the mount's "motion" field and the motion op

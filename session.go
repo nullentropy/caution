@@ -2,6 +2,7 @@ package caution
 
 import (
 	"crypto/rand"
+	"encoding/base64"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -112,6 +113,7 @@ type Options struct {
 	AllowedOrigins []string
 	// both set switches to ListenAndServeTLS
 	TLSCert, TLSKey string
+	Instance        string
 	// how long a disconnected session waits for its client to resume before it
 	// ends. 0 is 60s
 	ResumeGrace time.Duration
@@ -141,6 +143,21 @@ var (
 	sessionCounter atomic.Int64
 	registry       sync.Map // token -> *Session
 )
+
+func newToken(instance string) string {
+	if instance == "" {
+		return randToken()
+	}
+	return instance + "." + randToken()
+}
+
+func ResumeInstance(r *http.Request) string {
+	instance, _, ok := strings.Cut(r.URL.Query().Get("resume"), ".")
+	if !ok {
+		return ""
+	}
+	return instance
+}
 
 func randToken() string {
 	b := make([]byte, 16)
@@ -232,7 +249,7 @@ func wsHandler(mount MountFunc, opts Options) http.HandlerFunc {
 		}
 		s := &Session{
 			sid:          int(sessionCounter.Add(1)),
-			token:        randToken(),
+			token:        newToken(opts.Instance),
 			conns:        make(chan adoptedConn, 1),
 			nodes:        map[int]*Node{},
 			updates:      make(chan func(), 64),
@@ -352,6 +369,12 @@ func (s *Session) SetMetrics(tokens map[string]float64) {
 	s.metrics = tokens
 	if s.mounted {
 		s.ops = append(s.ops, map[string]any{"op": wire.OpMetrics, "metrics": tokens})
+	}
+}
+
+func (s *Session) SaveFile(name string, data []byte) {
+	if s.mounted {
+		s.ops = append(s.ops, map[string]any{"op": wire.OpSave, "name": name, "data": base64.StdEncoding.EncodeToString(data)})
 	}
 }
 

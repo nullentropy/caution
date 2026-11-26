@@ -106,7 +106,8 @@ export function attachInput(canvas: HTMLCanvasElement, term: WasmTerm, hooks: In
     const name = keyName(e);
     if (!name) return;
     if (hooks.funnelActive() && !FUNNEL_PASSES.has(name) && !e.metaKey && !e.ctrlKey && !e.altKey) return;
-    if (term.keyDown(name, e.metaKey, e.ctrlKey, e.shiftKey, e.altKey)) e.preventDefault();
+    const text = [...e.key].length === 1 ? e.key : '';
+    if (term.keyDown(name, e.metaKey, e.ctrlKey, e.shiftKey, e.altKey, text)) e.preventDefault();
     hooks.afterInput();
   });
 }

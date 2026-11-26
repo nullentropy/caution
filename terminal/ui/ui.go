@@ -49,6 +49,7 @@ type UI struct {
 	SetCursor func(name string)
 	// set by the shell
 	WriteClipboard func(s string)
+	SaveFile       func(name string, data []byte)
 	ReadClipboard  func() string
 	PasteImage     func(x, y float32) bool
 	// the shell owns text editing

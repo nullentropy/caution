@@ -108,9 +108,7 @@ func (t *TermGrid) PaintSelf(dl *gfx.DisplayList) {
 				fg = *r.Fg
 			}
 			x := colX(r.X)
-			if r.Text != "" && !isBlank(r.Text) {
-				dl.Text(r.Text, x, top, t.font(r.Bold, r.Italic), fg)
-			}
+			t.paintRunText(dl, r, colX, top, ch, fg)
 			n := float32(cellCount(r.Text))
 			if r.Under {
 				dl.Fill(gfx.R(x, top+ch-2, n*cw, 1), fg, gfx.Corners{})
@@ -121,6 +119,26 @@ func (t *TermGrid) PaintSelf(dl *gfx.DisplayList) {
 		}
 	}
 	t.paintCursor(dl, colX, oy, cw, ch)
+}
+
+func (t *TermGrid) paintRunText(dl *gfx.DisplayList, r TermRun, colX func(int) float32, top, ch float32, fg gfx.Color) {
+	runes := []rune(r.Text)
+	start := 0
+	flush := func(end int) {
+		if seg := string(runes[start:end]); seg != "" && !isBlank(seg) {
+			dl.Text(seg, colX(r.X+start), top, t.font(r.Bold, r.Italic), fg)
+		}
+	}
+	for i, c := range runes {
+		if !cellGlyph(c) {
+			continue
+		}
+		flush(i)
+		x := colX(r.X + i)
+		paintCellGlyph(dl, c, gfx.R(x, top, colX(r.X+i+1)-x, ch), fg)
+		start = i + 1
+	}
+	flush(len(runes))
 }
 
 func (t *TermGrid) paintCursor(dl *gfx.DisplayList, colX func(int) float32, oy, cw, ch float32) {
@@ -204,6 +222,10 @@ func (t *TermGrid) OnKey(k Key) bool {
 		return false
 	}
 
+	if t.UI.HostText && k.Text != "" && !k.Ctrl && !k.Alt {
+		t.OnInput(map[string]any{"t": k.Text})
+		return true
+	}
 	if k.Name == " " && !k.Ctrl && !k.Alt {
 		return false
 	}

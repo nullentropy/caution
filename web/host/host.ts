@@ -170,6 +170,14 @@ export function hostCallbacks(canvas: HTMLCanvasElement): HostCallbacks & { bind
     writeClipboard(text) {
       void navigator.clipboard.writeText(text).catch(() => {});
     },
+    saveFile(name, data) {
+      const url = URL.createObjectURL(new Blob([data]));
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = name;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    },
     preloadSound: (src) => sounds.preload(src),
     play: (src, loop) => sounds.play(src, loop),
     stop: (src) => sounds.stop(src || undefined),

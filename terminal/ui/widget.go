@@ -32,6 +32,7 @@ type Effect struct {
 type Key struct {
 	Name                   string // "Enter", "Backspace", "Left", " ", "a", ...
 	Meta, Ctrl, Shift, Alt bool
+	Text                   string
 }
 
 func Contains(r gfx.Rect, x, y float32) bool {
