@@ -463,7 +463,9 @@ The packagers put the app's third-party licenses in
 `THIRD_PARTY_NOTICES.txt`: in `Contents/Resources` on macOS, in
 `share/doc/<slug>` on Linux, and as `<name>-THIRD_PARTY_NOTICES.txt` next
 to the `.exe` on Windows.
-`go run ./cmd/notices` regenerates the one at the repository root.
+`go run ./cmd/notices` regenerates the one at the repository root, and
+`go run ./cmd/notices -wasm -o <file>` writes one for the browser terminal
+alone, for a server that ships `embedded/term.wasm.gz`.
 
 Window options (`native.Options` / `terminal.Options` / `cmd/term` flags):
 
