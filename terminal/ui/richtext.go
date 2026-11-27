@@ -172,6 +172,18 @@ func (r *RichText) IntrinsicSize() Size {
 	return sz
 }
 
+func (r *RichText) MinContentWidth() (float32, bool) {
+	fonts := make([]gfx.Font, len(r.spans))
+	for i, s := range r.spans {
+		fonts[i] = r.spanFont(s)
+	}
+	var w float32
+	for _, wd := range wordRanges(r.text) {
+		w = max(w, r.measureRange(fonts, wd[0], wd[1]))
+	}
+	return ceil32(w), true
+}
+
 func (r *RichText) HeightForWidth(w float32) (float32, bool) {
 	return wrappedHeight(r.UI, r.Font, len(r.layout(w).lines)), true
 }

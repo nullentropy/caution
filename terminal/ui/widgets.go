@@ -158,6 +158,34 @@ func (l *Label) HeightForWidth(w float32) (float32, bool) {
 	return wrappedHeight(l.UI, l.Font, len(l.wrappedLines(w))), true
 }
 
+func (l *Label) MinContentWidth() (float32, bool) {
+	if !l.Wrap {
+		return 0, false
+	}
+	var w float32
+	for _, wd := range wordRanges(l.Text) {
+		w = max(w, l.UI.Measure(l.Font, l.Text[wd[0]:wd[1]]).Width)
+	}
+	return ceil32(w), true
+}
+
+// splits only where text.WrapRanges can break a line
+func wordRanges(s string) [][2]int {
+	var out [][2]int
+	start := -1
+	for i := 0; i <= len(s); i++ {
+		if i == len(s) || s[i] == ' ' || s[i] == '\n' {
+			if start >= 0 {
+				out = append(out, [2]int{start, i})
+				start = -1
+			}
+		} else if start < 0 {
+			start = i
+		}
+	}
+	return out
+}
+
 func (l *Label) xInLine(lineText string, bo int) float32 {
 	run := l.UI.Measure(l.Font, lineText)
 	ri := utf8.RuneCountInString(lineText[:min(bo, len(lineText))])
