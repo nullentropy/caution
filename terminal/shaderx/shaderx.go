@@ -40,7 +40,7 @@ const (
 	TexBinding  = 2
 )
 
-type Field struct{ Offset, Size int }
+type Field struct{ Offset, Size, Stride int }
 
 type Module struct {
 	SPIRV      []uint32
@@ -90,8 +90,9 @@ func Compile(stage Stage, body string, targets Target) (*Module, error) {
 	names := unsafe.Slice(o.names, n)
 	offs := unsafe.Slice(o.offsets, n)
 	sizes := unsafe.Slice(o.sizes, n)
+	strides := unsafe.Slice(o.strides, n)
 	for i := range n {
-		m.Fields[C.GoString(names[i])] = Field{Offset: int(offs[i]), Size: int(sizes[i])}
+		m.Fields[C.GoString(names[i])] = Field{Offset: int(offs[i]), Size: int(sizes[i]), Stride: int(strides[i])}
 	}
 	return m, nil
 }

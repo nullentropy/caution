@@ -81,10 +81,13 @@ static void reflect(const std::vector<uint32_t> &spv, sx_out *o) {
 	o->names = (char **)calloc(n, sizeof(char *));
 	o->offsets = (int *)calloc(n, sizeof(int));
 	o->sizes = (int *)calloc(n, sizeof(int));
+	o->strides = (int *)calloc(n, sizeof(int));
 	for (int i = 0; i < n; i++) {
 		o->names[i] = dup(c.get_member_name(ub.base_type_id, i));
 		o->offsets[i] = (int)c.type_struct_member_offset(type, i);
 		o->sizes[i] = (int)c.get_declared_struct_member_size(type, i);
+		if (!c.get_type(type.member_types[i]).array.empty())
+			o->strides[i] = (int)c.type_struct_member_array_stride(type, i);
 	}
 }
 
@@ -152,5 +155,6 @@ extern "C" void sx_free(sx_out *o) {
 	free(o->names);
 	free(o->offsets);
 	free(o->sizes);
+	free(o->strides);
 	memset(o, 0, sizeof(*o));
 }

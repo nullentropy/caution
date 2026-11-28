@@ -13,7 +13,7 @@ typedef struct sx_out {
 	char *err;
 	int ubo_size, n_members;
 	char **names;
-	int *offsets, *sizes;
+	int *offsets, *sizes, *strides;
 	int has_tex;
 } sx_out;
 
