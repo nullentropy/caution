@@ -601,12 +601,13 @@ func (ns *NodeStore) Apply(w ui.Widget, id int, p props) {
 	case *ui.ShaderPane:
 		set(p, "frag", &t.Frag)
 		if v, ok := p["uniforms"]; ok {
-			if t.Uniforms == nil {
-				t.Uniforms = map[string]float32{}
+			next := floatMap(v)
+			for k, f := range t.Uniforms {
+				if _, ok := next[k]; !ok {
+					next[k] = f
+				}
 			}
-			for k, f := range floatMap(v) {
-				t.Uniforms[k] = f
-			}
+			t.Uniforms = next
 		}
 		set(p, "animate", &t.Animate)
 	case *ui.Glass:

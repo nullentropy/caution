@@ -113,3 +113,22 @@ func TestSetOpPropsKeepReplaceOrReset(t *testing.T) {
 		t.Fatalf("null width should clear the override, got %v", *sv.Width)
 	}
 }
+
+func TestAUniformSetDamagesTheShaderPane(t *testing.T) {
+	ns := NewNodeStore(nullSink{})
+	w := ns.Build(nodeJSON{ID: 1, Type: wire.Shader, P: props{"frag": "f", "uniforms": props{"u_now": 1.0}}})
+	sp := w.(*ui.ShaderPane)
+	sp.Bounds = gfx.R(0, 0, 100, 100)
+	view := gfx.R(0, 0, 200, 200)
+
+	before := &gfx.DisplayList{}
+	sp.PaintSelf(before)
+	ns.Apply(sp, 1, props{"uniforms": props{"u_now": 2.0}})
+	after := &gfx.DisplayList{}
+	sp.PaintSelf(after)
+
+	rects, partial := gfx.DiffDamage(before, after, view, nil)
+	if partial && len(rects) == 0 {
+		t.Fatal("a uniform set left the last frame's display list equal to the next, so the pane never repaints")
+	}
+}
