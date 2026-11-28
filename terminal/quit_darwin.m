@@ -14,6 +14,10 @@ extern int cautionQuitAllowed(char *sender);
 	if (pid) proc_name([pid int32Value], name, sizeof name);
 	if (!cautionQuitAllowed(name)) return;
 	[NSApp terminate:nil];
+	[NSApp postEvent:[NSEvent otherEventWithType:NSEventTypeApplicationDefined location:NSZeroPoint
+	                               modifierFlags:0 timestamp:0 windowNumber:0 context:nil
+	                                     subtype:0 data1:0 data2:0]
+	         atStart:YES];
 }
 @end
 
