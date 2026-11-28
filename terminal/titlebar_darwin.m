@@ -15,13 +15,24 @@ static void applyToolbar(NSWindow *w, int style) {
 	}
 }
 
-void caution_custom_titlebar(void *nswindow, int style) {
+void caution_custom_titlebar(void *nswindow, int style, double width, double height) {
 	NSWindow *w = (__bridge NSWindow *)nswindow;
 	w.styleMask |= NSWindowStyleMaskFullSizeContentView;
 	w.titlebarAppearsTransparent = YES;
 	w.titleVisibility = NSWindowTitleHidden;
 	toolbarStyle = style;
 	applyToolbar(w, style);
+
+	NSScreen *screen = w.screen ? w.screen : NSScreen.mainScreen;
+	NSRect vis = screen.visibleFrame;
+	NSRect f = w.frame;
+	CGFloat fw = MIN(width, vis.size.width), fh = MIN(height, vis.size.height);
+	CGFloat top = MIN(NSMaxY(f), NSMaxY(vis));
+	NSRect nf = NSMakeRect(f.origin.x, top - fh, fw, fh);
+	if (nf.origin.y < vis.origin.y) nf.origin.y = vis.origin.y;
+	if (NSMaxX(nf) > NSMaxX(vis)) nf.origin.x = NSMaxX(vis) - fw;
+	if (nf.origin.x < vis.origin.x) nf.origin.x = vis.origin.x;
+	[w setFrame:nf display:NO];
 }
 
 void caution_watch_fullscreen(void *nswindow) {

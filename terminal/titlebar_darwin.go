@@ -4,7 +4,7 @@ package terminal
 
 /*
 #cgo LDFLAGS: -framework Cocoa
-void caution_custom_titlebar(void *nswindow, int style);
+void caution_custom_titlebar(void *nswindow, int style, double width, double height);
 void caution_watch_fullscreen(void *nswindow);
 */
 import "C"
@@ -15,7 +15,7 @@ import (
 	"github.com/go-gl/glfw/v3.3/glfw"
 )
 
-func applyCustomTitlebar(win *glfw.Window, style string) {
+func applyCustomTitlebar(win *glfw.Window, style string, w, h int) {
 	s := 0
 	switch style {
 	case "compact":
@@ -23,7 +23,7 @@ func applyCustomTitlebar(win *glfw.Window, style string) {
 	case "tall":
 		s = 2
 	}
-	C.caution_custom_titlebar(unsafe.Pointer(win.GetCocoaWindow()), C.int(s))
+	C.caution_custom_titlebar(unsafe.Pointer(win.GetCocoaWindow()), C.int(s), C.double(w), C.double(h))
 }
 
 var onFullscreen func(bool)

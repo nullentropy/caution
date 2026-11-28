@@ -278,9 +278,10 @@ func Run(o Options) error {
 	}
 	glfw.WindowHintString(glfw.X11ClassName, appID)
 	glfw.WindowHintString(glfw.X11InstanceName, appID)
+	customTitlebar := o.CustomTitlebar && o.Shot == "" && !o.Fullscreen
 	if o.Shot != "" {
 		glfw.WindowHint(glfw.Visible, glfw.False)
-	} else if o.Maximized && !o.Fullscreen {
+	} else if (o.Maximized || customTitlebar) && !o.Fullscreen {
 		glfw.WindowHint(glfw.Visible, glfw.False)
 	}
 
@@ -304,11 +305,13 @@ func Run(o Options) error {
 	if o.HideCursor && o.Shot == "" {
 		win.SetInputMode(glfw.CursorMode, glfw.CursorHidden)
 	}
-	if o.CustomTitlebar && o.Shot == "" && !o.Fullscreen {
-		applyCustomTitlebar(win, o.TitlebarStyle)
+	if customTitlebar {
+		applyCustomTitlebar(win, o.TitlebarStyle, o.W, o.H)
 	}
 	if o.Maximized && o.Shot == "" && !o.Fullscreen {
 		win.Maximize()
+	}
+	if (o.Maximized || customTitlebar) && o.Shot == "" && !o.Fullscreen {
 		win.Show()
 	}
 	dev, err := OpenDevice(win)
